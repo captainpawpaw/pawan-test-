@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { storage } from "./storage";
+import * as drive from "./driveSync";
 
 /* ---------- date helpers ---------- */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -115,24 +116,35 @@ export default function App() {
       .finally(() => setExercisesLoading(false));
   }, []);
 
-  const loadMonth = useCallback(async (d) => {
-    setLoading(true);
+  const loadMonth = useCallback(async (d, quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
       const res = await storage.get(`month:${monthKey(d)}`, false);
       setMonthData(res ? JSON.parse(res.value) : {});
     } catch (e) {
-      setMonthData({});
+      if (!quiet) setMonthData({});
     }
     setLoading(false);
   }, []);
 
   useEffect(() => { loadMonth(cursor); }, [cursor, loadMonth]);
 
+  // Re-read the month on screen when a Drive sync brings in changes to it.
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  useEffect(() => {
+    drive.initDriveSync();
+    return drive.onMonthsChanged((keys) => {
+      if (keys.includes(monthKey(cursorRef.current))) loadMonth(cursorRef.current, true);
+    });
+  }, [loadMonth]);
+
   const persist = async (next) => {
     setMonthData(next);
     try {
       const result = await storage.set(`month:${monthKey(cursor)}`, JSON.stringify(next), false);
       setSaveError(!result);
+      if (result) drive.scheduleSync();
     } catch (e) {
       setSaveError(true);
     }
@@ -146,7 +158,8 @@ export default function App() {
     persist({ ...monthData, [selected]: updated });
   };
 
-  const deleteEntry = (type, id) => {
+  const deleteEntry = async (type, id) => {
+    await drive.recordDeletion(id).catch(() => {});
     const current = monthData[selected] || { strength: [], cardio: [] };
     const updated = { ...current, [type]: (current[type] || []).filter((e) => e.id !== id) };
     persist({ ...monthData, [selected]: updated });
@@ -199,7 +212,10 @@ export default function App() {
       `}</style>
 
       <header style={styles.header}>
-        <div style={styles.eyebrow}>TRAINING LEDGER</div>
+        <div style={styles.eyebrowRow}>
+          <div style={styles.eyebrow}>TRAINING LEDGER</div>
+          <DriveStatus />
+        </div>
         <div style={styles.monthRow}>
           <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
           <div style={styles.monthTitle}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></div>
@@ -325,6 +341,48 @@ export default function App() {
       )}
       </>
       )}
+    </div>
+  );
+}
+
+function DriveStatus() {
+  const [st, setSt] = useState({ state: "off" });
+  useEffect(() => drive.subscribe(setSt), []);
+  if (!drive.driveSupported()) return null;
+
+  const time = st.lastSynced ? st.lastSynced.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+  const view = {
+    off: { label: "Connect Google Drive", action: drive.connect, hint: "Back up and sync your log" },
+    connecting: { label: "Connecting…" },
+    syncing: { label: "Syncing…" },
+    synced: { label: `Synced ${time}`, action: drive.connect, hint: "Sync now", done: true },
+    "needs-auth": { label: "Tap to sync with Drive", action: drive.connect, hint: "Google needs you to sign in again", warn: true },
+    error: { label: "Sync failed · retry", action: drive.connect, warn: true },
+  }[st.state] || { label: "" };
+
+  return (
+    <div style={styles.driveWrap}>
+      {view.action ? (
+        <button
+          onClick={view.action}
+          title={view.hint}
+          style={{ ...styles.driveBtn, ...(view.warn ? styles.driveBtnWarn : {}), ...(view.done ? styles.driveBtnDone : {}) }}
+        >
+          <span aria-hidden="true" style={{ ...styles.driveDot, background: view.done ? teal : view.warn ? rust : inkFaint }} />
+          {view.label}
+        </button>
+      ) : (
+        <span style={styles.driveBtn} role="status">
+          <span aria-hidden="true" style={{ ...styles.driveDot, background: inkFaint }} />
+          {view.label}
+        </span>
+      )}
+      {st.state === "synced" && (
+        <button onClick={drive.disconnect} style={styles.driveLink} title="Stop syncing. Your log stays in this browser and in Drive.">
+          Disconnect
+        </button>
+      )}
+      {st.message && <span style={styles.driveMsg} role="alert">{st.message}</span>}
     </div>
   );
 }
@@ -563,12 +621,41 @@ const styles = {
     margin: "0 auto",
   },
   header: { marginBottom: 4 },
+  eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
+  driveWrap: { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: "4px 10px", marginLeft: "auto" },
+  driveBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    letterSpacing: "0.04em",
+    color: ink,
+    background: "transparent",
+    border: `1px solid ${line}`,
+    borderRadius: 999,
+    padding: "3px 10px",
+    lineHeight: 1.4,
+  },
+  driveBtnWarn: { borderColor: rust, color: rust },
+  driveBtnDone: { borderColor: line, color: inkFaint },
+  driveDot: { width: 6, height: 6, borderRadius: "50%", flex: "none" },
+  driveLink: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: inkFaint,
+    background: "none",
+    border: "none",
+    padding: 0,
+    textDecoration: "underline",
+  },
+  driveMsg: { flexBasis: "100%", textAlign: "right", fontSize: 12, color: rust },
   eyebrow: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 11,
     letterSpacing: "0.18em",
     color: inkFaint,
-    marginBottom: 6,
+    paddingTop: 4,
   },
   monthRow: { display: "flex", alignItems: "baseline", justifyContent: "space-between" },
   monthTitle: {
