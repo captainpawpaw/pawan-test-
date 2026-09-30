@@ -81,7 +81,7 @@ export default function App() {
   const key = monthKey(cursor);
 
   useEffect(() => {
-    fetch("https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json")
+    fetch(`${import.meta.env.BASE_URL}exercises.json`)
       .then((r) => r.json())
       .then((data) => {
         const strength = new Set(CUSTOM_STRENGTH_NAMES);
