@@ -37,13 +37,13 @@ Any static host works. Two easy options:
 When opened as a published claude.ai artifact, entries are saved to the
 artifact's database in your own private space, so they follow you across
 devices. Anywhere else, entries are saved to the browser's `localStorage`, one key per month
-(`fitness-tracker:month:YYYY-MM`). Data lives only on the device/browser it
+(`fitness-tracker:month:YYYY-MM`). That data lives only on the device/browser it
 was entered on — there's no account system or sync. Clearing browser data
 or using a different browser/device starts fresh.
 
 ## Exercise data
 
 The exercise library and autosuggest fields load from `public/exercises.json`, a trimmed copy of the public
-[free-exercise-db](https://github.com/yuhonas/free-exercise-db) dataset on
+[free-exercise-db](https://github.com/yuhonas/free-exercise-db) dataset,
 merged with a custom list defined at the top of `src/App.jsx`
 (`CUSTOM_EXERCISES`) — edit that array to add or remove entries.
