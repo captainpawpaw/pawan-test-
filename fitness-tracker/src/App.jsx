@@ -23,9 +23,14 @@ function buildGrid(d) {
   return cells;
 }
 
+// Body-weight sets count only their added weight towards volume.
 function strengthVolume(entries) {
   return (entries || []).reduce((sum, e) => sum + (Number(e.sets) || 0) * (Number(e.reps) || 0) * (Number(e.weight) || 0), 0);
 }
+function bodyweightReps(entries) {
+  return (entries || []).filter((e) => e.bw).reduce((sum, e) => sum + (Number(e.sets) || 0) * (Number(e.reps) || 0), 0);
+}
+const weightLabel = (e) => (e.bw ? (Number(e.weight) ? `BW + ${e.weight}kg` : "BW") : `${e.weight || 0}kg`);
 function cardioDuration(entries) {
   return (entries || []).reduce((sum, e) => sum + (Number(e.duration) || 0), 0);
 }
@@ -160,6 +165,11 @@ export default function App() {
 
   const strengthNames = useMemo(() => fullExercises.filter((e) => e.category !== "cardio").map((e) => e.name), [fullExercises]);
   const cardioNames = useMemo(() => fullExercises.filter((e) => e.category === "cardio").map((e) => e.name), [fullExercises]);
+  const bodyweightNames = useMemo(
+    () => new Set(fullExercises.filter((e) => /body ?only|bodyweight/i.test(e.equipment || "")).map((e) => e.name)),
+    [fullExercises],
+  );
+  const isBodyweight = useCallback((name) => bodyweightNames.has(name), [bodyweightNames]);
   const plansByName = useMemo(() => {
     const out = {};
     fullExercises.forEach((e) => { if (e.plans?.length) out[e.name] = e.plans; });
@@ -404,18 +414,24 @@ export default function App() {
                 { key: "exercise", label: "Exercise", type: "text", placeholder: "Back squat", options: strengthNames, listId: "strength-exercise-list" },
                 { key: "sets", label: "Sets", type: "number", placeholder: "3" },
                 { key: "reps", label: "Reps", type: "number", placeholder: "5" },
-                { key: "weight", label: "Weight (kg)", type: "number", placeholder: "80" },
+                { key: "weight", label: "Weight (kg)", type: "number", placeholder: "80", bodyweightToggle: true },
               ]}
               onAdd={(vals) => addEntry("strength", vals)}
               renderRow={(e) => (
                 <>
                   <span style={styles.rowMain}>{e.exercise || "Exercise"}</span>
-                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} @ {e.weight || 0}kg</span>
+                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} @ {weightLabel(e)}</span>
                 </>
               )}
               entries={dayEntries.strength}
               onDelete={(id) => deleteEntry("strength", id)}
-              footer={dayEntries.strength && dayEntries.strength.length > 0 ? `Volume: ${strengthVolume(dayEntries.strength).toLocaleString()} kg` : null}
+              isBodyweight={isBodyweight}
+              footer={dayEntries.strength && dayEntries.strength.length > 0
+                ? [
+                    `Volume: ${strengthVolume(dayEntries.strength).toLocaleString()} kg`,
+                    bodyweightReps(dayEntries.strength) ? `${bodyweightReps(dayEntries.strength).toLocaleString()} body-weight reps` : null,
+                  ].filter(Boolean).join(" · ")
+                : null}
             />
             <Section
               className="ft-section"
@@ -509,14 +525,16 @@ function planValues(sectionType, plan) {
   return mins ? { duration: mins[1] } : {};
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight }) {
+  const hasBwToggle = fields.some((f) => f.bodyweightToggle);
+  const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
 
   useEffect(() => {
     if (prefill && prefill.type === sectionType) {
       setOpen(true);
-      setVals({ [fields[0].key]: prefill.value, ...planValues(sectionType, prefill.plan) });
+      setVals({ [fields[0].key]: prefill.value, ...planValues(sectionType, prefill.plan), ...bwFor(prefill.value) });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill]);
@@ -525,7 +543,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
     e.preventDefault();
     const primary = fields[0].key;
     if (!vals[primary]) return;
-    onAdd(vals);
+    const { bw, ...rest } = vals;
+    onAdd(bw ? { ...rest, bw: true } : rest);
     setVals({});
     setOpen(false);
   };
@@ -555,7 +574,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                 const plan = plans.find((pl) => tag && pl.tag === tag) || plans[0];
                 const fill = planValues(sectionType, plan);
                 setVals((cur) => {
-                  const next = { ...cur, [f.key]: name };
+                  const next = { ...cur, [f.key]: name, ...bwFor(name) };
                   for (const [k, v] of Object.entries(fill)) if (!cur[k]) next[k] = v;
                   return next;
                 });
@@ -564,6 +583,39 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               tagMap={tagMap || {}}
               accent={accent}
             />
+          ) : f.bodyweightToggle ? (
+            <div key={f.key} style={styles.fieldLabel}>
+              <div style={styles.weightHead}>
+                <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? "Added weight (kg), optional" : f.label}</label>
+                <div role="group" aria-label="Weight type" style={styles.unitToggle}>
+                  {[[false, "kg"], [true, "Body weight"]].map(([on, label], i) => {
+                    const active = Boolean(vals.bw) === on;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setVals((v) => ({ ...v, bw: on }))}
+                        style={{ ...styles.unitBtn, borderRadius: i === 0 ? "3px 0 0 3px" : "0 3px 3px 0", ...(active ? { background: accent, borderColor: accent, color: raised } : { borderColor: accent, color: accent }) }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <input
+                id={`${sectionType}-${f.key}`}
+                type="number"
+                placeholder={vals.bw ? "0" : f.placeholder}
+                value={vals[f.key] || ""}
+                onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
+                style={styles.input}
+                step="any"
+                min="0"
+                autoComplete="off"
+              />
+            </div>
           ) : (
             <label key={f.key} style={styles.fieldLabel}>
               {f.label}
@@ -1477,6 +1529,16 @@ const styles = {
     padding: "1px 8px",
   },
   pickList: { display: "flex", flexWrap: "wrap", gap: 6 },
+  weightHead: { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  unitToggle: { display: "inline-flex" },
+  unitBtn: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    background: "transparent",
+    border: "1px solid",
+    padding: "3px 9px",
+    marginLeft: -1,
+  },
   planHint: {
     display: "flex",
     flexDirection: "column",
