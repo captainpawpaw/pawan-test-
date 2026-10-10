@@ -33,6 +33,8 @@ test("reads a pasted tab-separated plan: day title tags, sets, reps, notes", () 
   assert.equal(ex["Back Squat"].plans[0].reps, "6–8");
   assert.equal(planText(ex["Back Squat"].plans[0]), "4 × 6–8 reps · 65-70% · RPE 8 · rest 2-3 min");
   assert.equal(planText(ex["Leg Press"].plans[0]), "4 × 10–15 reps · RPE 8-9 · rest 2-3 min");
+  assert.equal(planText(ex["Walking Lunges"].plans[0]), "3 × 20–30 steps · 40-60% · RPE 8-9 · rest 1-1.5 min");
+  assert.equal(planText(ex["Cable Wood Chops"].plans[0]), "4 × 12–15 per side · RPE 8-9 · rest 1 min");
   // matched to existing names
   assert.ok(ex["Walking Lunges"].inLibrary);
   assert.deepEqual(ex["Walking Lunges"].tags, ["day 1: legs and abs", "day 4: legs and abs"]);

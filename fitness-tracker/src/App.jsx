@@ -1260,14 +1260,7 @@ function ImportPanel({ library, onImport, onClose }) {
             })()}
             {" "}Check the names and tags, then import.
           </div>
-          <div style={styles.importList}>{likely.map(renderRow)}</div>
-          {maybe.length > 0 && (
-            <details style={{ marginTop: 8 }}>
-              <summary style={styles.libraryMeta}>Maybe exercises ({maybe.length}) — not selected</summary>
-              <div style={{ ...styles.importList, marginTop: 6 }}>{maybe.map(renderRow)}</div>
-            </details>
-          )}
-          <label style={{ ...styles.importTagLabel, marginTop: 10 }}>
+          <label style={{ ...styles.importTagLabel, marginTop: 2 }}>
             Also tag all with
             <input
               value={extraTag}
@@ -1283,6 +1276,13 @@ function ImportPanel({ library, onImport, onClose }) {
             </button>
             <button onClick={() => { setRows(null); setStatus(null); }} style={styles.tagDoneBtn}>Back</button>
           </div>
+          <div style={styles.importList}>{likely.map(renderRow)}</div>
+          {maybe.length > 0 && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={styles.libraryMeta}>Maybe exercises ({maybe.length}) — not selected</summary>
+              <div style={{ ...styles.importList, marginTop: 6 }}>{maybe.map(renderRow)}</div>
+            </details>
+          )}
         </>
       )}
     </section>

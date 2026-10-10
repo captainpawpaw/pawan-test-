@@ -385,6 +385,8 @@ export function parsePage({ html = "", text = "", library = [] } = {}) {
 
 // A short line describing a plan, e.g. "4 × 6–8 reps · RPE 8 · rest 2–3 min".
 export function planText(p) {
-  const sr = p.sets && p.reps ? `${p.sets} × ${p.reps}${p.unit && !/^reps?$/.test(p.unit) ? ` ${p.unit}` : " reps"}` : p.sets ? `${p.sets} ${p.unit || "sets"}` : p.reps || "";
+  // Reps written with their own unit ("20-30 steps", "12-15 per side") keep it as is.
+  const unit = /[a-z]/i.test(p.reps || "") ? "" : p.unit && !/^reps?$/.test(p.unit) ? ` ${p.unit}` : " reps";
+  const sr = p.sets && p.reps ? `${p.sets} × ${p.reps}${unit}` : p.sets ? `${p.sets} ${p.unit || "sets"}` : p.reps || "";
   return [sr, p.notes].filter(Boolean).join(" · ");
 }
