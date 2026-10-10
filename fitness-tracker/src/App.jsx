@@ -322,6 +322,7 @@ export default function App() {
               className="ft-section"
               sectionType="strength"
               prefill={prefill}
+              tagMap={tagMap}
               accent="#B5551F"
               accentSoft="#E0C4AC"
               title="STRENGTH"
@@ -348,6 +349,7 @@ export default function App() {
               className="ft-section"
               sectionType="cardio"
               prefill={prefill}
+              tagMap={tagMap}
               accent="#1F6E64"
               accentSoft="#C3DAD5"
               title="CARDIO"
@@ -420,7 +422,7 @@ function DriveStatus() {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap }) {
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
 
@@ -455,7 +457,16 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
 
       {open && (
         <form onSubmit={submit} style={styles.form}>
-          {fields.map((f) => (
+          {fields.map((f) => f.options ? (
+            <ExercisePicker
+              key={f.key}
+              field={f}
+              value={vals[f.key] || ""}
+              onChange={(v) => setVals((cur) => ({ ...cur, [f.key]: v }))}
+              tagMap={tagMap || {}}
+              accent={accent}
+            />
+          ) : (
             <label key={f.key} style={styles.fieldLabel}>
               {f.label}
               <input
@@ -465,14 +476,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                 onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
                 style={styles.input}
                 step={f.type === "number" ? "any" : undefined}
-                list={f.options ? f.listId : undefined}
                 autoComplete="off"
               />
-              {f.options && f.options.length > 0 && (
-                <datalist id={f.listId}>
-                  {f.options.map((name) => <option key={name} value={name} />)}
-                </datalist>
-              )}
             </label>
           ))}
           <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{addLabel}</button>
@@ -492,6 +497,130 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
         )}
       </div>
       {footer && <div style={{ ...styles.footer, color: accent }}>{footer}</div>}
+    </div>
+  );
+}
+
+// Exercise name field for the log form: pick by tag, or type to get
+// suggestions that match the name or any of its tags.
+const SUGGEST_CAP = 8;
+
+function ExercisePicker({ field, value, onChange, tagMap, accent }) {
+  const [focused, setFocused] = useState(false);
+  const [tag, setTag] = useState(null);
+  const id = `pick-${field.listId}`;
+
+  // Tags used on exercises that belong in this section, most-used first.
+  const tags = useMemo(() => {
+    const names = new Set(field.options);
+    const counts = {};
+    for (const [name, v] of Object.entries(tagMap)) {
+      if (!names.has(name)) continue;
+      (v?.tags || []).forEach((t) => { counts[t] = (counts[t] || 0) + 1; });
+    }
+    return Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+  }, [field.options, tagMap]);
+
+  useEffect(() => { if (tag && !tags.includes(tag)) setTag(null); }, [tags, tag]);
+
+  const tagged = useMemo(
+    () => (tag ? field.options.filter((n) => tagsOf(tagMap, n).includes(tag)) : []),
+    [tag, field.options, tagMap],
+  );
+
+  const suggestions = useMemo(() => {
+    const raw = value.trim().toLowerCase();
+    if (!raw) return [];
+    const tagOnly = raw.startsWith("#");
+    const q = raw.replace(/^#+/, "");
+    if (!q) return [];
+    const scored = [];
+    for (const n of field.options) {
+      const lower = n.toLowerCase();
+      if (lower === raw) return []; // already a full match
+      const nameHit = !tagOnly && lower.includes(q);
+      const tagHit = tagsOf(tagMap, n).some((t) => t.includes(q));
+      if (!nameHit && !tagHit) continue;
+      // tagged and name-prefix matches first
+      const score = (tagsOf(tagMap, n).length ? 0 : 2) + (lower.startsWith(q) || tagHit ? 0 : 1);
+      scored.push([score, n]);
+    }
+    return scored.sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1])).slice(0, SUGGEST_CAP).map(([, n]) => n);
+  }, [value, field.options, tagMap]);
+
+  const choose = (n) => { onChange(n); setTag(null); };
+
+  return (
+    <div style={styles.fieldLabel}>
+      <label htmlFor={id}>{field.label}</label>
+      {tags.length > 0 && (
+        <div style={styles.rowTags} aria-label="Pick by tag">
+          {tags.map((t) => {
+            const on = tag === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setTag(on ? null : t)}
+                style={{ ...styles.rowTag, ...(on ? { background: accent, borderColor: accent, color: raised } : {}) }}
+              >
+                #{t}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {tag && (
+        <div style={styles.pickList}>
+          {tagged.map((n) => (
+            <button key={n} type="button" onClick={() => choose(n)} style={{ ...styles.pickItem, borderColor: accent, color: accent }}>
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ position: "relative" }}>
+        <input
+          id={id}
+          type="text"
+          placeholder={field.placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && focused && suggestions.length && !field.options.includes(value)) {
+              e.preventDefault();
+              choose(suggestions[0]);
+            }
+          }}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={focused && suggestions.length > 0}
+          aria-controls={`${id}-list`}
+          style={{ ...styles.input, width: "100%" }}
+        />
+        {focused && suggestions.length > 0 && (
+          <ul id={`${id}-list`} role="listbox" style={styles.suggestList}>
+            {suggestions.map((n) => {
+              const ts = tagsOf(tagMap, n);
+              return (
+                <li
+                  key={n}
+                  role="option"
+                  aria-selected="false"
+                  onMouseDown={(e) => { e.preventDefault(); choose(n); }}
+                  style={styles.suggestItem}
+                >
+                  <span>{n}</span>
+                  {ts.length > 0 && <span style={styles.suggestTags}>{ts.map((t) => `#${t}`).join(" ")}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -906,6 +1035,53 @@ const styles = {
     border: `1px solid ${line}`,
     borderRadius: 999,
     padding: "1px 8px",
+  },
+  pickList: { display: "flex", flexWrap: "wrap", gap: 6 },
+  pickItem: {
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 13,
+    background: raised,
+    border: "1px solid",
+    borderRadius: 4,
+    padding: "5px 9px",
+    textAlign: "left",
+  },
+  suggestList: {
+    position: "absolute",
+    zIndex: 5,
+    top: "100%",
+    left: 0,
+    right: 0,
+    margin: "2px 0 0",
+    padding: 0,
+    listStyle: "none",
+    background: "#fff",
+    border: `1px solid ${line}`,
+    borderRadius: 3,
+    boxShadow: "0 4px 14px rgba(35,33,29,0.12)",
+    maxHeight: 260,
+    overflowY: "auto",
+  },
+  suggestItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    gap: 10,
+    padding: "8px 10px",
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 14,
+    color: ink,
+    cursor: "pointer",
+    borderBottom: `1px solid ${raised}`,
+  },
+  suggestTags: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: inkFaint,
+    textAlign: "right",
+    flexShrink: 1,
+    minWidth: 0,
+    overflowWrap: "anywhere",
   },
   tagFilterRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 12 },
   tagFilterLabel: {
