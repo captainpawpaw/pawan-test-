@@ -96,6 +96,15 @@ Inside a claude.ai artifact two extra options use Claude (`src/claudeRead.js`):
 Tall screenshots are cut into overlapping pieces first, since Claude sees each
 image at about 1.2 megapixels.
 
+## Progress
+
+The Progress tab charts one exercise or one tag at a time: best weight,
+estimated 1-rep max (Epley), volume, reps or sets for lifts, and minutes or
+distance for cardio. Drag to move through time; pinch (or ctrl + scroll on a
+trackpad, or the − / + buttons) to zoom. The chart groups values by day, week,
+month or year to suit the zoom, or jump straight to one with the scale buttons.
+Data logic lives in `src/progress.js`, the chart in `src/Progress.jsx`.
+
 ## Tests
 
 ```bash

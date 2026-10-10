@@ -3,6 +3,7 @@ import { storage } from "./storage";
 import * as drive from "./driveSync";
 import { parsePage, nameKey, planText } from "./importParser";
 import { getSample, getImageLimits, readWithClaude, readScreenshotsWithClaude } from "./claudeRead";
+import Progress from "./Progress";
 
 /* ---------- date helpers ---------- */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -176,7 +177,8 @@ export default function App() {
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
-  const weights = profile.bodyweight?.weights || [];
+  const weights = useMemo(() => profile.bodyweight?.weights || [], [profile]);
+  const bwOnDate = useCallback((date) => bodyweightOn(weights, date), [weights]);
   const bwOnDay = useCallback((d, day) => bodyweightOn(weights, `${monthKey(d)}-${day}`), [weights]);
 
   const saveBodyweight = async (kg) => {
@@ -219,11 +221,26 @@ export default function App() {
   }, [fullExercises]);
 
   // Re-read what's on screen when a Drive sync brings in changes to it.
+  // Bumped whenever logged data changes, so the Progress tab reloads it.
+  const [dataVersion, setDataVersion] = useState(0);
+  const loadAllMonths = useCallback(async () => {
+    const listed = await storage.list("month:");
+    const out = {};
+    for (const k of listed?.keys || []) {
+      const res = await storage.get(k).catch(() => null);
+      if (res) {
+        try { out[k.slice("month:".length)] = JSON.parse(res.value); } catch { /* skip a damaged month */ }
+      }
+    }
+    return out;
+  }, []);
+
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
   useEffect(() => {
     drive.initDriveSync();
     return drive.onMonthsChanged((keys) => {
+      setDataVersion((v) => v + 1);
       if (keys.includes(monthKey(cursorRef.current))) loadMonth(cursorRef.current, true);
       if (keys.includes("tags")) loadTags();
       if (keys.includes("exercises")) loadImported();
@@ -292,7 +309,7 @@ export default function App() {
     try {
       const result = await storage.set(`month:${monthKey(cursor)}`, JSON.stringify(next), false);
       setSaveError(!result);
-      if (result) drive.scheduleSync();
+      if (result) { drive.scheduleSync(); setDataVersion((v) => v + 1); }
     } catch (e) {
       setSaveError(true);
     }
@@ -372,7 +389,7 @@ export default function App() {
       </header>
 
       <div style={styles.tabRow}>
-        {[["log", "LOG"], ["exercises", "EXERCISES"]].map(([id, label]) => (
+        {[["log", "LOG"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -387,7 +404,9 @@ export default function App() {
         ))}
       </div>
 
-      {activeTab === "exercises" ? (
+      {activeTab === "progress" ? (
+        <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} />
+      ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
           loading={exercisesLoading}
