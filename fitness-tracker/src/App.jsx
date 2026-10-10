@@ -4,6 +4,8 @@ import * as drive from "./driveSync";
 import { parsePage, nameKey, planText } from "./importParser";
 import { getSample, getImageLimits, readWithClaude, readScreenshotsWithClaude } from "./claudeRead";
 import Progress from "./Progress";
+import FoodLog from "./FoodLog";
+import Backup from "./Backup";
 
 /* ---------- date helpers ---------- */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -323,6 +325,35 @@ export default function App() {
     persist({ ...monthData, [selected]: updated });
   };
 
+  const addFoods = (list) => {
+    const current = monthData[selected] || { strength: [], cardio: [] };
+    const updated = { ...current, food: [...(current.food || []), ...list.map((e) => ({ id: uid(), ...e }))] };
+    persist({ ...monthData, [selected]: updated });
+  };
+
+  // Foods logged this month, newest first, for one-tap re-adding.
+  const recentFoods = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const day of Object.keys(monthData).sort().reverse()) {
+      for (const e of [...(monthData[day]?.food || [])].reverse()) {
+        const k = e.name.toLowerCase();
+        if (seen.has(k) || !e.per100) continue;
+        seen.add(k);
+        out.push({ id: `recent:${k}`, name: e.name, source: e.source, per100: e.per100, portions: e.portion && e.qty ? [{ g: Math.round((e.grams / e.qty) * 10) / 10, label: e.portion }] : [], lastGrams: e.grams, group: "", estimate: e.estimate });
+      }
+    }
+    return out;
+  }, [monthData]);
+
+  const saveTargets = async (t) => {
+    const next = { ...profile, targets: { kcal: t.kcal, protein: t.protein, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+    return Boolean(res);
+  };
+
   const deleteEntry = async (type, id) => {
     await drive.recordDeletion(id).catch(() => {});
     const current = monthData[selected] || { strength: [], cardio: [] };
@@ -405,7 +436,7 @@ export default function App() {
       </div>
 
       {activeTab === "progress" ? (
-        <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} />
+        <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -525,10 +556,21 @@ export default function App() {
               footer={dayEntries.cardio && dayEntries.cardio.length > 0 ? `Total time: ${cardioDuration(dayEntries.cardio)} min` : null}
             />
           </div>
+          <FoodLog
+            key={`${key}-${selected}`}
+            entries={dayEntries.food || []}
+            recent={recentFoods}
+            onAdd={addFoods}
+            onDelete={(id) => deleteEntry("food", id)}
+            targets={profile.targets}
+            onSaveTargets={saveTargets}
+            saveError={saveError}
+          />
         </>
       )}
       </>
       )}
+      <Backup />
     </div>
   );
 }

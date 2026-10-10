@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import {
   DAY, SCALES, SCALE_LABEL, SCALE_SPAN_DAYS, METRICS,
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
-  metricsFor, bucketize, niceTicks, niceRange, compact, parseIso,
+  metricsFor, bucketize, niceTicks, niceRange, compact, parseIso, daysOnTarget,
 } from "./progress";
 
 const ink = "#23211D";
@@ -13,6 +13,8 @@ const line = "#D9D2C2";
 const grid = "#E4DDCF";
 const rust = "#B5551F";
 const teal = "#1F6E64";
+const plum = "#7A3E62";
+const colorFor = (type) => (type === "cardio" ? teal : type === "food" ? plum : rust);
 const mono = "'IBM Plex Mono', monospace";
 const condensed = "'Barlow Condensed', sans-serif";
 
@@ -31,7 +33,7 @@ function writeSaved(v) {
   try { window.localStorage.setItem(SEL_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-export default function Progress({ loadAll, version, tagMap, bwOn }) {
+export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
   const [months, setMonths] = useState(null);
   const [selection, setSelection] = useState(() => readSaved()); // { kind, value }
   const [metric, setMetric] = useState(null);
@@ -45,30 +47,33 @@ export default function Progress({ loadAll, version, tagMap, bwOn }) {
   const rows = useMemo(() => flattenMonths(months || {}), [months]);
 
   // Choices: exercises and tags that have something logged.
-  const { exercises, tags } = useMemo(() => {
+  const { exercises, tags, foodDays } = useMemo(() => {
     const counts = new Map();
-    rows.forEach((r) => counts.set(r.name, (counts.get(r.name) || 0) + 1));
+    rows.forEach((r) => { if (r.type !== "food") counts.set(r.name, (counts.get(r.name) || 0) + 1); });
     const ex = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     const tagCounts = new Map();
     for (const [name, n] of counts) {
       for (const t of tagMap[name]?.tags || []) tagCounts.set(t, (tagCounts.get(t) || 0) + n);
     }
     const tg = [...tagCounts.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
-    return { exercises: ex, tags: tg };
+    return { exercises: ex, tags: tg, foodDays: new Set(rows.filter((r) => r.type === "food").map((r) => r.date)).size };
   }, [rows, tagMap]);
 
   // Fall back to the most-logged exercise when nothing (valid) is chosen.
   const sel = useMemo(() => {
     if (selection?.kind === "exercise" && exercises.some(([n]) => n === selection.value)) return selection;
     if (selection?.kind === "tag" && tags.some(([t]) => t === selection.value)) return selection;
-    return exercises.length ? { kind: "exercise", value: exercises[0][0] } : null;
-  }, [selection, exercises, tags]);
+    if (selection?.kind === "food" && foodDays) return selection;
+    if (exercises.length) return { kind: "exercise", value: exercises[0][0] };
+    return foodDays ? { kind: "food", value: "all" } : null;
+  }, [selection, exercises, tags, foodDays]);
 
   const selRows = useMemo(() => {
     if (!sel) return [];
-    if (sel.kind === "exercise") return rows.filter((r) => r.name === sel.value);
+    if (sel.kind === "food") return rows.filter((r) => r.type === "food");
+    if (sel.kind === "exercise") return rows.filter((r) => r.name === sel.value && r.type !== "food");
     const names = new Set(Object.entries(tagMap).filter(([, v]) => (v?.tags || []).includes(sel.value)).map(([n]) => n));
-    return rows.filter((r) => names.has(r.name));
+    return rows.filter((r) => names.has(r.name) && r.type !== "food");
   }, [sel, rows, tagMap]);
 
   const metricOptions = useMemo(() => metricsFor(selRows), [selRows]);
@@ -103,21 +108,28 @@ export default function Progress({ loadAll, version, tagMap, bwOn }) {
         }}
         style={s.select}
       >
+        {foodDays > 0 && (
+          <optgroup label="Food">
+            <option value="food:all">Calories & macros ({foodDays} day{foodDays === 1 ? "" : "s"})</option>
+          </optgroup>
+        )}
         {tags.length > 0 && (
           <optgroup label="Tags">
             {tags.map(([t, n]) => <option key={`t-${t}`} value={`tag:${t}`}>#{t} ({n})</option>)}
           </optgroup>
         )}
-        <optgroup label="Exercises">
-          {exercises.map(([name, n]) => <option key={`e-${name}`} value={`exercise:${name}`}>{name} ({n})</option>)}
-        </optgroup>
+        {exercises.length > 0 && (
+          <optgroup label="Exercises">
+            {exercises.map(([name, n]) => <option key={`e-${name}`} value={`exercise:${name}`}>{name} ({n})</option>)}
+          </optgroup>
+        )}
       </select>
 
       {metricOptions.length > 1 && (
         <div role="group" aria-label="Measure" style={s.chips}>
           {metricOptions.map((m) => {
             const on = m === activeMetric;
-            const color = METRICS[m].type === "cardio" ? teal : rust;
+            const color = colorFor(METRICS[m].type);
             return (
               <button
                 key={m}
@@ -139,7 +151,8 @@ export default function Progress({ loadAll, version, tagMap, bwOn }) {
           rows={selRows}
           metric={activeMetric}
           bwOn={bwOn}
-          title={sel.kind === "tag" ? `#${sel.value}` : sel.value}
+          target={METRICS[activeMetric].target ? Number(targets?.[METRICS[activeMetric].target]) || null : null}
+          title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.value}
         />
       )}
     </div>
@@ -147,9 +160,9 @@ export default function Progress({ loadAll, version, tagMap, bwOn }) {
 }
 
 /* ---------- chart ---------- */
-function Chart({ rows, metric, bwOn, title }) {
+function Chart({ rows, metric, bwOn, title, target }) {
   const m = METRICS[metric];
-  const color = m.type === "cardio" ? teal : rust;
+  const color = colorFor(m.type);
   const boxRef = useRef(null);
   const [width, setWidth] = useState(360);
   const [hover, setHover] = useState(null); // bucket index in visible list
@@ -198,7 +211,7 @@ function Chart({ rows, metric, bwOn, title }) {
   const x = (t) => PAD.left + ((t - view.start) / span) * plotW;
   const visible = buckets.filter((b) => b.end.getTime() > view.start && b.start.getTime() < view.end);
   const vals = visible.map((b) => b.value);
-  const yTicks = m.form === "line" && vals.length ? niceRange(Math.min(...vals), Math.max(...vals)) : niceTicks(Math.max(0, ...vals) || 1);
+  const yTicks = m.form === "line" && vals.length ? niceRange(Math.min(...vals), Math.max(...vals)) : niceTicks(Math.max(0, target || 0, ...vals) || 1);
   const yMin = yTicks[0];
   const yMax = yTicks[yTicks.length - 1];
   const y = (v) => PAD.top + PLOT_H - ((v - yMin) / (yMax - yMin || 1)) * PLOT_H;
@@ -336,6 +349,9 @@ function Chart({ rows, metric, bwOn, title }) {
   const latest = inView[inView.length - 1] || null;
   const sessions = new Set(rows.filter((r) => { const t = parseIso(r.date).getTime(); return t >= view.start && t < view.end; }).map((r) => r.date)).size;
   const periodWord = { day: "day", week: "week", month: "month", year: "year" }[scale];
+  const foodDaysInView = sessions;
+  const avgInView = inView.length ? inView.reduce((a, b) => a + b.value * b.days, 0) / Math.max(1, inView.reduce((a, b) => a + b.days, 0)) : 0;
+  const onTarget = target && m.type === "food" ? daysOnTarget(rows, metric, target, view.start, view.end) : null;
 
   const hb = hover != null ? visible[hover] : null;
   const colW = Math.max(2, Math.min(24, periodPx * 0.7));
@@ -343,15 +359,29 @@ function Chart({ rows, metric, bwOn, title }) {
   return (
     <div style={s.card}>
       <div style={s.tiles}>
-        <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
-        <Tile label={`Latest ${periodWord}`} value={latest ? fmt(latest.value, m.unit) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : ""} />
-        <Tile label="Workout days in view" value={String(sessions)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
+        {m.agg === "avg" ? (
+          <>
+            <Tile label={scale === "day" ? "Average day in view" : `Average day, latest ${periodWord}`} value={latest ? fmt(scale === "day" ? avgInView : latest.value, m.unit) : "–"} sub={latest && scale !== "day" ? periodLabel(latest.start, scale, true) : `${foodDaysInView} day${foodDaysInView === 1 ? "" : "s"} logged`} />
+            <Tile label={`Highest ${scale === "day" ? "day" : `${periodWord}'s average`}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            {onTarget ? (
+              <Tile label={metric === "kcal" ? "Days within 10% of target" : "Days at or over target"} value={`${onTarget.hit} of ${onTarget.days}`} sub={`target ${fmt(target, m.unit)}`} />
+            ) : (
+              <Tile label="Days logged in view" value={String(foodDaysInView)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
+            )}
+          </>
+        ) : (
+          <>
+            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            <Tile label={`Latest ${periodWord}`} value={latest ? fmt(latest.value, m.unit) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : ""} />
+            <Tile label="Workout days in view" value={String(sessions)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
+          </>
+        )}
       </div>
 
       <div style={s.chartHead}>
         <div style={{ minWidth: 0 }}>
           <div style={s.chartTitle}>{m.label} · {title}</div>
-          <div style={s.chartSub}>{SCALE_LABEL[scale]} {m.agg === "max" ? "best" : "total"}, {m.unit}{m.note ? ` · ${m.note}` : ""}</div>
+          <div style={s.chartSub}>{m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : "total"}`}, {m.unit}{m.note ? ` · ${m.note}` : ""}</div>
         </div>
         <div role="group" aria-label="Time scale" style={s.scaleRow}>
           {SCALES.map((sc) => (
@@ -406,6 +436,12 @@ function Chart({ rows, metric, bwOn, title }) {
               )}
             {hb && (
               <line x1={x((hb.start.getTime() + hb.end.getTime()) / 2)} x2={x((hb.start.getTime() + hb.end.getTime()) / 2)} y1={PAD.top} y2={PAD.top + PLOT_H} stroke={inkFaint} strokeWidth="1" opacity="0.6" />
+            )}
+            {target && (
+              <g>
+                <line x1={PAD.left} x2={width - PAD.right} y1={y(target)} y2={y(target)} stroke={ink} strokeWidth="1.5" opacity="0.7" />
+                <text x={PAD.left + 4} y={y(target) - 5} style={s.targetLabel}>Target {compact(target)}</text>
+              </g>
             )}
             {best && hover == null && (
               <text
@@ -504,6 +540,7 @@ const s = {
   scaleBtnOn: { background: ink, color: raised },
   plotBox: { position: "relative", touchAction: "pan-y", userSelect: "none", WebkitUserSelect: "none", cursor: "grab", outlineOffset: -2 },
   tick: { fontFamily: mono, fontSize: 10, fill: inkFaint, fontVariantNumeric: "tabular-nums" },
+  targetLabel: { fontFamily: mono, fontSize: 10, fontWeight: 500, fill: ink },
   valueLabel: { fontFamily: mono, fontSize: 11, fontWeight: 500, fill: ink },
   emptyPlot: { fontFamily: "'Inter', sans-serif", fontSize: 12, fill: inkFaint },
   tooltip: { position: "absolute", pointerEvents: "none", display: "flex", flexDirection: "column", gap: 2, background: "#fff", border: `1px solid ${line}`, borderRadius: 4, boxShadow: "0 4px 14px rgba(35,33,29,0.12)", padding: "6px 9px", width: 146 },

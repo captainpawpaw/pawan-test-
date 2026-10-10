@@ -290,6 +290,28 @@ export function disconnect() {
   setStatus({ state: "off", lastSynced: null, message: "" });
 }
 
+/* ---------- export / import ---------- */
+// Everything this browser holds, as one JSON-ready object.
+export async function exportBook() {
+  const book = await readLocalBook();
+  return { app: "training-ledger", version: 1, exportedAt: new Date().toISOString(), ...book };
+}
+
+// Merges a backup into this browser's data (nothing is overwritten: entries
+// are combined and the newest tags, exercises and settings win), then syncs.
+export async function importBook(raw) {
+  if (!raw || typeof raw !== "object" || typeof raw.months !== "object") {
+    throw new Error("That file isn't a Training Ledger backup.");
+  }
+  const incoming = { months: raw.months || {}, deleted: raw.deleted || {}, tags: raw.tags || {}, exercises: raw.exercises || {}, profile: raw.profile || {} };
+  const local = await readLocalBook();
+  const merged = mergeBooks(local, incoming);
+  const changed = await writeLocalBook(merged, Object.keys(local.months));
+  if (changed.length) monthListeners.forEach((fn) => fn(changed));
+  scheduleSync();
+  return { months: Object.keys(incoming.months).length, changed: changed.length };
+}
+
 export function initDriveSync() {
   if (!driveSupported()) return;
   loadGis().catch(() => {});

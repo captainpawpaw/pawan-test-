@@ -64,13 +64,16 @@ export function flattenMonths(months) {
       const date = `${mk}-${day}`;
       for (const e of v?.strength || []) if (e?.exercise) out.push({ date, type: "strength", name: e.exercise, e });
       for (const e of v?.cardio || []) if (e?.activity) out.push({ date, type: "cardio", name: e.activity, e });
+      for (const e of v?.food || []) if (e?.name) out.push({ date, type: "food", name: e.name, e });
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /* ---------- metrics ---------- */
-// agg "sum": add up within a period; "max": the best within a period.
+// agg "sum": add up within a period; "max": the best within a period;
+// "avg": the average day (food is totalled per day, then averaged over the
+// days with food logged).
 export const METRICS = {
   best: { label: "Best weight", unit: "kg", agg: "max", type: "strength", form: "line" },
   e1rm: { label: "Est. 1-rep max", unit: "kg", agg: "max", type: "strength", form: "line", note: "Epley: weight × (1 + reps ÷ 30)" },
@@ -79,7 +82,12 @@ export const METRICS = {
   sets: { label: "Sets", unit: "sets", agg: "sum", type: "strength", form: "column" },
   minutes: { label: "Minutes", unit: "min", agg: "sum", type: "cardio", form: "column" },
   distance: { label: "Distance", unit: "mi", agg: "sum", type: "cardio", form: "column" },
+  kcal: { label: "Calories", unit: "kcal", agg: "avg", type: "food", form: "column", target: "kcal" },
+  protein: { label: "Protein", unit: "g", agg: "avg", type: "food", form: "column", target: "protein" },
+  carbs: { label: "Carbs", unit: "g", agg: "avg", type: "food", form: "column" },
+  fat: { label: "Fat", unit: "g", agg: "avg", type: "food", form: "column" },
 };
+export const FOOD_METRICS = ["kcal", "protein", "carbs", "fat"];
 
 // bwOn(date) -> body weight in kg on that date, or null.
 function loadOf(e, date, bwOn) {
@@ -104,12 +112,14 @@ export function entryValue(metric, row, bwOn) {
     case "sets": return sets > 0 ? sets : null;
     case "minutes": { const v = Number(e.duration) || 0; return v > 0 ? v : null; }
     case "distance": { const v = Number(e.distance) || 0; return v > 0 ? v : null; }
+    case "kcal": case "protein": case "carbs": case "fat": { const v = Number(e[metric]); return v >= 0 ? v : null; }
     default: return null;
   }
 }
 
 // Which metrics make sense for a selection, in display order.
 export function metricsFor(rows) {
+  if (rows.length && rows.every((r) => r.type === "food")) return FOOD_METRICS;
   const hasStrength = rows.some((r) => r.type === "strength");
   const hasCardio = rows.some((r) => r.type === "cardio");
   const names = new Set(rows.map((r) => r.name));
@@ -144,12 +154,27 @@ export function bucketize(rows, metric, scale, bwOn) {
     b.days.add(r.date);
   }
   return [...map.values()]
-    .map((b) => ({ ...b, value: Math.round(b.value * 10) / 10, days: b.days.size }))
+    .map((b) => ({ ...b, value: Math.round((m.agg === "avg" ? b.value / b.days.size : b.value) * 10) / 10, days: b.days.size }))
     .sort((a, b) => a.start - b.start);
 }
 
 /* ---------- axis helpers ---------- */
 // Round tick values: 0 to a clean max in 3-5 even steps.
+// Days with food logged in [start, end), and how many of them met a target:
+// protein at or above it, calories within 10% of it.
+export function daysOnTarget(rows, metric, target, start, end) {
+  const byDay = new Map();
+  for (const r of rows) {
+    if (r.type !== "food") continue;
+    const t = parseIso(r.date).getTime();
+    if (t < start || t >= end) continue;
+    byDay.set(r.date, (byDay.get(r.date) || 0) + (Number(r.e[metric]) || 0));
+  }
+  let hit = 0;
+  for (const v of byDay.values()) if (metric === "kcal" ? Math.abs(v - target) <= target * 0.1 : v >= target) hit += 1;
+  return { hit, days: byDay.size };
+}
+
 export function niceTicks(v) {
   if (!(v > 0)) return [0, 1];
   const raw = v / 4;

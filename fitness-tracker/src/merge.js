@@ -6,7 +6,7 @@
 // "tombstones" ({ [entryId]: deletedAtMs }) so a deleted entry doesn't come
 // back from the other copy.
 
-const TYPES = ["strength", "cardio"];
+const TYPES = ["strength", "cardio", "food"];
 
 export function mergeTombstones(a = {}, b = {}) {
   const out = { ...a };

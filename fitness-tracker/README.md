@@ -105,6 +105,51 @@ trackpad, or the − / + buttons) to zoom. The chart groups values by day, week,
 month or year to suit the zoom, or jump straight to one with the scale buttons.
 Data logic lives in `src/progress.js`, the chart in `src/Progress.jsx`.
 
+## Food
+
+Each day in the Log has a Food section: search a food, choose grams or a
+portion, and the day's calories, protein, carbs, fat and fibre add up, with
+optional daily calorie and protein targets. Food also shows in the Progress
+tab (daily totals, or the average day per week, month or year, with the
+target as a line).
+
+Where the data comes from:
+
+| Source | Where it works | What it covers |
+|---|---|---|
+| Built-in list (`public/foods.json`) | Everywhere, offline | ~8,250 everyday foods with portions, from the USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Rebuild with `node scripts/build-foods.mjs ABBREV.txt FOOD_DES.txt`. |
+| Claude estimates | claude.ai artifact | Describe a meal, or add a photo; results are marked as estimates. |
+| Open Food Facts | Website (e.g. Cloudflare Pages) | Branded products, barcode lookup and camera scanning. Data © Open Food Facts contributors, ODbL. |
+| USDA FoodData Central online | Website with the Pages Function and a key | More foods and US branded products, through `functions/api/usda.js`. |
+
+## Deploy on Cloudflare Pages
+
+1. In the Cloudflare dashboard go to **Workers & Pages → Create → Pages →
+   Connect to Git**, and pick this repository.
+2. Build settings:
+   - **Framework preset:** None (or Vite)
+   - **Root directory:** `fitness-tracker`
+   - **Build command:** `npm run build`
+   - **Build output directory:** `dist`
+3. **Environment variables** (Settings → Variables and secrets), for
+   Production and Preview:
+   - `USDA_API_KEY`: a free key from https://fdc.nal.usda.gov/api-key-signup
+     (mark it as a secret). Without it the app still works; USDA online
+     search just stays off.
+   - `VITE_GOOGLE_CLIENT_ID`: only if you want Google Drive sync (see above);
+     add your `https://<project>.pages.dev` address to the client's
+     **Authorized JavaScript origins**.
+   - `NODE_VERSION`: `20`
+4. **Save and Deploy.** Each push to the production branch redeploys; other
+   branches get preview addresses.
+
+The `functions/` folder is picked up automatically: `/api/usda` runs as a
+Pages Function, so the USDA key never reaches the browser.
+
+Moving data between the claude.ai link and the website: use **Back up or move
+your data** at the bottom of the app to export a file on one and import it on
+the other. Import only adds; nothing already logged is removed.
+
 ## Tests
 
 ```bash
