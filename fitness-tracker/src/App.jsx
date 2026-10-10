@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { storage } from "./storage";
 import * as drive from "./driveSync";
+import { parsePage, nameKey, planText } from "./importParser";
+import { getSample, getImageLimits, readWithClaude, readScreenshotsWithClaude } from "./claudeRead";
 
 /* ---------- date helpers ---------- */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -63,8 +65,6 @@ const CUSTOM_EXERCISES = [
   { name: "Incline Dumbbell Curl", category: "strength", equipment: "dumbbell", primaryMuscles: ["biceps"] },
   { name: "Incline Treadmill Run/Walk", category: "cardio", equipment: "machine", primaryMuscles: ["cardiovascular system"] },
 ];
-const CUSTOM_STRENGTH_NAMES = CUSTOM_EXERCISES.filter((e) => e.category !== "cardio").map((e) => e.name);
-const CUSTOM_CARDIO_NAMES = CUSTOM_EXERCISES.filter((e) => e.category === "cardio").map((e) => e.name);
 
 export default function App() {
   const [cursor, setCursor] = useState(new Date());
@@ -72,14 +72,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState(false);
   const [selected, setSelected] = useState(isSameMonth(new Date()) ? todayDayNum() : "01");
-  const [strengthNames, setStrengthNames] = useState([...CUSTOM_STRENGTH_NAMES].sort());
-  const [cardioNames, setCardioNames] = useState([...CUSTOM_CARDIO_NAMES].sort());
-  const [fullExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
+  const [baseExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
   const [prefill, setPrefill] = useState(null);
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
+  const [imported, setImported] = useState({});
 
   const key = monthKey(cursor);
 
@@ -87,16 +86,6 @@ export default function App() {
     fetch(`${import.meta.env.BASE_URL}exercises.json`)
       .then((r) => r.json())
       .then((data) => {
-        const strength = new Set(CUSTOM_STRENGTH_NAMES);
-        const cardio = new Set(CUSTOM_CARDIO_NAMES);
-        data.forEach((e) => {
-          if (!e.name) return;
-          if (e.category === "cardio") cardio.add(e.name);
-          else strength.add(e.name);
-        });
-        setStrengthNames([...strength].sort());
-        setCardioNames([...cardio].sort());
-
         const customLower = new Set(CUSTOM_EXERCISES.map((e) => e.name.toLowerCase()));
         const merged = [...CUSTOM_EXERCISES];
         data
@@ -142,6 +131,41 @@ export default function App() {
 
   useEffect(() => { loadTags(); }, [loadTags]);
 
+  const loadImported = useCallback(async () => {
+    try {
+      const res = await storage.get("exercises", false);
+      setImported(res ? JSON.parse(res.value) : {});
+    } catch (e) {
+      /* keep what's on screen */
+    }
+  }, []);
+
+  useEffect(() => { loadImported(); }, [loadImported]);
+
+  // The built-in library plus anything imported from web pages. An imported
+  // exercise that's already in the library adds its plan (sets, reps, notes).
+  const fullExercises = useMemo(() => {
+    const byKey = new Map(baseExercises.map((e) => [nameKey(e.name), e]));
+    const extra = [];
+    const withPlans = new Map();
+    for (const imp of Object.values(imported)) {
+      if (!imp || imp.removed || !imp.name) continue;
+      const base = byKey.get(nameKey(imp.name));
+      if (base) withPlans.set(base.name, imp.plans || []);
+      else extra.push({ name: imp.name, category: imp.category || "strength", equipment: imp.equipment || null, primaryMuscles: imp.primaryMuscles || [], plans: imp.plans || [], imported: true });
+    }
+    const list = baseExercises.map((e) => (withPlans.has(e.name) ? { ...e, plans: withPlans.get(e.name) } : e));
+    return [...list, ...extra].sort((a, b) => a.name.localeCompare(b.name));
+  }, [baseExercises, imported]);
+
+  const strengthNames = useMemo(() => fullExercises.filter((e) => e.category !== "cardio").map((e) => e.name), [fullExercises]);
+  const cardioNames = useMemo(() => fullExercises.filter((e) => e.category === "cardio").map((e) => e.name), [fullExercises]);
+  const plansByName = useMemo(() => {
+    const out = {};
+    fullExercises.forEach((e) => { if (e.plans?.length) out[e.name] = e.plans; });
+    return out;
+  }, [fullExercises]);
+
   // Re-read what's on screen when a Drive sync brings in changes to it.
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
@@ -150,8 +174,53 @@ export default function App() {
     return drive.onMonthsChanged((keys) => {
       if (keys.includes(monthKey(cursorRef.current))) loadMonth(cursorRef.current, true);
       if (keys.includes("tags")) loadTags();
+      if (keys.includes("exercises")) loadImported();
     });
-  }, [loadMonth, loadTags]);
+  }, [loadMonth, loadTags, loadImported]);
+
+  const saveImported = async (next) => {
+    setImported(next);
+    const result = await storage.set("exercises", JSON.stringify(next), false).catch(() => null);
+    if (result) drive.scheduleSync();
+    return Boolean(result);
+  };
+
+  // rows: exercises from the import preview. Saves them and their tags.
+  const importExercises = async (rows, extraTag) => {
+    const now = Date.now();
+    const nextImported = { ...imported };
+    const nextTags = { ...tagMap };
+    for (const r of rows) {
+      const prev = nextImported[r.name];
+      const plans = [...(prev && !prev.removed ? prev.plans || [] : [])];
+      for (const pl of r.plans || []) {
+        if (!plans.some((x) => x.tag === pl.tag && x.sets === pl.sets && x.reps === pl.reps && x.notes === pl.notes)) plans.push(pl);
+      }
+      nextImported[r.name] = {
+        name: r.name,
+        category: r.category,
+        equipment: r.equipment || null,
+        primaryMuscles: r.primaryMuscles || [],
+        plans,
+        at: now,
+      };
+      const tags = [...tagsOf(nextTags, r.name)];
+      for (const t of [...(r.tags || []), extraTag].map((t) => t && cleanTag(t)).filter(Boolean)) if (!tags.includes(t)) tags.push(t);
+      if (tags.length !== tagsOf(nextTags, r.name).length) nextTags[r.name] = { tags, at: now };
+    }
+    const ok = await saveImported(nextImported);
+    setTagMap(nextTags);
+    const tagRes = await storage.set("tags", JSON.stringify(nextTags), false).catch(() => null);
+    setTagSaveError(!tagRes);
+    if (tagRes) drive.scheduleSync();
+    return ok && Boolean(tagRes);
+  };
+
+  const removeImported = async (name) => {
+    const prev = imported[name];
+    if (!prev) return;
+    await saveImported({ ...imported, [name]: { name, at: Date.now(), removed: true } });
+  };
 
   const setExerciseTags = async (name, tags) => {
     const next = { ...tagMap, [name]: { tags, at: Date.now() } };
@@ -217,7 +286,7 @@ export default function App() {
 
   const pickFromLibrary = (exercise) => {
     const type = exercise.category === "cardio" ? "cardio" : "strength";
-    setPrefill({ type, value: exercise.name, token: Date.now() });
+    setPrefill({ type, value: exercise.name, plan: exercise.plans?.[0] || null, token: Date.now() });
     setActiveTab("log");
   };
 
@@ -273,6 +342,8 @@ export default function App() {
           tagMap={tagMap}
           onSetTags={setExerciseTags}
           saveError={tagSaveError}
+          onImport={importExercises}
+          onRemoveImported={removeImported}
         />
       ) : (
       <>
@@ -323,6 +394,7 @@ export default function App() {
               sectionType="strength"
               prefill={prefill}
               tagMap={tagMap}
+              plansByName={plansByName}
               accent="#B5551F"
               accentSoft="#E0C4AC"
               title="STRENGTH"
@@ -350,6 +422,7 @@ export default function App() {
               sectionType="cardio"
               prefill={prefill}
               tagMap={tagMap}
+              plansByName={plansByName}
               accent="#1F6E64"
               accentSoft="#C3DAD5"
               title="CARDIO"
@@ -422,14 +495,28 @@ function DriveStatus() {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap }) {
+// Form values a plan fills in: sets and reps for lifts, minutes for cardio.
+function planValues(sectionType, plan) {
+  if (!plan) return {};
+  const first = (v) => (String(v || "").match(/\d+(?:\.\d+)?/) || [""])[0];
+  if (sectionType === "strength") {
+    const out = {};
+    if (first(plan.sets)) out.sets = first(plan.sets);
+    if (first(plan.reps) && !/sec|min|step|round/i.test(`${plan.reps} ${plan.unit}`)) out.reps = first(plan.reps);
+    return out;
+  }
+  const mins = `${plan.reps} ${plan.unit}`.match(/(\d+(?:\.\d+)?)\s*(?:min|minutes)\b/i);
+  return mins ? { duration: mins[1] } : {};
+}
+
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName }) {
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
 
   useEffect(() => {
     if (prefill && prefill.type === sectionType) {
       setOpen(true);
-      setVals({ [fields[0].key]: prefill.value });
+      setVals({ [fields[0].key]: prefill.value, ...planValues(sectionType, prefill.plan) });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill]);
@@ -463,6 +550,17 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               field={f}
               value={vals[f.key] || ""}
               onChange={(v) => setVals((cur) => ({ ...cur, [f.key]: v }))}
+              onPicked={(name, tag) => {
+                const plans = (plansByName || {})[name] || [];
+                const plan = plans.find((pl) => tag && pl.tag === tag) || plans[0];
+                const fill = planValues(sectionType, plan);
+                setVals((cur) => {
+                  const next = { ...cur, [f.key]: name };
+                  for (const [k, v] of Object.entries(fill)) if (!cur[k]) next[k] = v;
+                  return next;
+                });
+              }}
+              plans={(plansByName || {})[vals[f.key]] || null}
               tagMap={tagMap || {}}
               accent={accent}
             />
@@ -505,7 +603,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
 // suggestions that match the name or any of its tags.
 const SUGGEST_CAP = 8;
 
-function ExercisePicker({ field, value, onChange, tagMap, accent }) {
+function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accent }) {
   const [focused, setFocused] = useState(false);
   const [tag, setTag] = useState(null);
   const id = `pick-${field.listId}`;
@@ -548,7 +646,7 @@ function ExercisePicker({ field, value, onChange, tagMap, accent }) {
     return scored.sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1])).slice(0, SUGGEST_CAP).map(([, n]) => n);
   }, [value, field.options, tagMap]);
 
-  const choose = (n) => { onChange(n); setTag(null); };
+  const choose = (n) => { (onPicked || onChange)(n, tag); setTag(null); };
 
   return (
     <div style={styles.fieldLabel}>
@@ -621,6 +719,16 @@ function ExercisePicker({ field, value, onChange, tagMap, accent }) {
           </ul>
         )}
       </div>
+      {plans && plans.length > 0 && (
+        <div style={styles.planHint} aria-label="Plan from imported page">
+          {plans.slice(0, 3).map((pl, i) => (
+            <span key={i}>
+              {pl.tag ? <strong style={{ fontWeight: 500 }}>{pl.tag}: </strong> : "Plan: "}
+              {planText(pl)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -628,9 +736,10 @@ function ExercisePicker({ field, value, onChange, tagMap, accent }) {
 const RESULT_CAP = 120;
 
 const tagsOf = (tagMap, name) => tagMap[name]?.tags || [];
-const cleanTag = (t) => t.trim().replace(/^#+/, "").replace(/\s+/g, " ").toLowerCase().slice(0, 24);
+const cleanTag = (t) => t.trim().replace(/^#+/, "").replace(/\s+/g, " ").toLowerCase().slice(0, 48);
 
-function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveError }) {
+function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveError, onImport, onRemoveImported }) {
+  const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState(null);
@@ -669,6 +778,13 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
 
   return (
     <div style={styles.library}>
+      {importing ? (
+        <ImportPanel library={exercises} onImport={onImport} onClose={() => setImporting(false)} />
+      ) : (
+        <button onClick={() => setImporting(true)} style={styles.importOpenBtn}>
+          ↓ Import exercises from a web page
+        </button>
+      )}
       <input
         type="text"
         value={query}
@@ -733,7 +849,14 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
                   <div style={styles.libraryRow}>
                     <div style={styles.libraryRowText}>
                       <span style={styles.rowMain}>{e.name}</span>
-                      {meta && <span style={styles.libraryMeta}>{meta}</span>}
+                      {meta && <span style={styles.libraryMeta}>{meta}{e.imported ? " · imported" : ""}</span>}
+                      {e.plans?.length > 0 && (
+                        <span style={styles.libraryPlans}>
+                          {e.plans.map((pl, i) => (
+                            <span key={i}>{pl.tag ? `${pl.tag}: ` : ""}{planText(pl)}</span>
+                          ))}
+                        </span>
+                      )}
                       {tags.length > 0 && !isEditing && (
                         <span style={styles.rowTags}>
                           {tags.map((t) => (
@@ -768,6 +891,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
                       suggestions={allTags.map(([t]) => t)}
                       onChange={(next) => onSetTags(e.name, next)}
                       onDone={() => setEditing(null)}
+                      onRemove={e.imported ? () => { onRemoveImported(e.name); setEditing(null); } : null}
                     />
                   )}
                 </div>
@@ -783,7 +907,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
   );
 }
 
-function TagEditor({ name, tags, suggestions, onChange, onDone }) {
+function TagEditor({ name, tags, suggestions, onChange, onDone, onRemove }) {
   const [text, setText] = useState("");
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -845,7 +969,323 @@ function TagEditor({ name, tags, suggestions, onChange, onDone }) {
           ))}
         </div>
       )}
+      {onRemove && (
+        <button type="button" onClick={onRemove} style={styles.removeImportedBtn}>
+          Remove this imported exercise
+        </button>
+      )}
     </form>
+  );
+}
+
+function ImportPanel({ library, onImport, onClose }) {
+  const [text, setText] = useState("");
+  const [html, setHtml] = useState("");
+  const [rows, setRows] = useState(null);
+  const [checked, setChecked] = useState({});
+  const [extraTag, setExtraTag] = useState("");
+  const [status, setStatus] = useState(null); // { kind: "error"|"done"|"busy", text }
+  const [canAskClaude, setCanAskClaude] = useState(false);
+  const [imageLimits, setImageLimits] = useState(null);
+  const [shots, setShots] = useState([]); // [{ id, file, url }]
+  const abortRef = useRef(null);
+  const shotsRef = useRef(shots);
+  shotsRef.current = shots;
+
+  useEffect(() => {
+    let live = true;
+    getSample().then((s) => { if (live) setCanAskClaude(Boolean(s)); });
+    getImageLimits().then((l) => { if (live) setImageLimits(l); });
+    return () => {
+      live = false;
+      abortRef.current?.abort();
+      shotsRef.current.forEach((s) => URL.revokeObjectURL(s.url));
+    };
+  }, []);
+
+  const addShots = (files) => {
+    if (!imageLimits) return;
+    const ok = [...files].filter((f) => imageLimits.mediaTypes.includes(f.type));
+    const tooBig = ok.filter((f) => f.size > imageLimits.maxInputBytes);
+    const keep = ok.filter((f) => f.size <= imageLimits.maxInputBytes);
+    setShots((cur) => [...cur, ...keep.map((file) => ({ id: Math.random().toString(36).slice(2), file, url: URL.createObjectURL(file) }))]);
+    if (ok.length < files.length || tooBig.length) {
+      setStatus({ kind: "error", text: tooBig.length ? "Some images are too large. Try a smaller screenshot." : "Only JPEG, PNG, WebP or GIF images can be read." });
+    } else {
+      setStatus(null);
+    }
+  };
+  const removeShot = (id) => setShots((cur) => {
+    const s = cur.find((x) => x.id === id);
+    if (s) URL.revokeObjectURL(s.url);
+    return cur.filter((x) => x.id !== id);
+  });
+
+  const askClaudeShots = async () => {
+    abortRef.current?.abort();
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    setStatus({ kind: "busy", text: "Claude is reading your screenshots…" });
+    try {
+      const list = await readScreenshotsWithClaude(shots.map((s) => s.file), library, {
+        signal: ctl.signal,
+        onProgress: (done, total) => total > 1 && done < total && setStatus({ kind: "busy", text: `Claude is reading your screenshots… (${done} of ${total})` }),
+      });
+      show(list, "claude");
+    } catch (e) {
+      if (e?.code === "cancelled") return;
+      setStatus({ kind: "error", text: e?.code === "not_granted"
+        ? "Claude wasn't allowed to read the screenshots."
+        : e?.code === "rate_limited" ? "Claude is busy right now. Try again in a minute."
+        : e?.code === "image_rejected" ? "One of the images couldn't be read. Try a PNG or JPEG screenshot."
+        : "Claude couldn't read those screenshots. Try clearer or fewer screenshots." });
+    }
+  };
+
+  const show = (list, how) => {
+    if (!list.length) {
+      setRows(null);
+      setStatus({ kind: "error", text: how === "claude"
+        ? "Claude didn't find any exercises in that page."
+        : "No exercises found. Try copying just the workout part of the page" + (canAskClaude ? ", or use Read with Claude." : ".") });
+      return;
+    }
+    setRows(list.map((r) => ({ ...r, tags: [...r.tags], newTag: "" })));
+    setChecked(Object.fromEntries(list.map((r) => [r.key, r.confident])));
+    setStatus(null);
+  };
+
+  const readPage = () => show(parsePage({ html, text, library }), "rules");
+
+  const askClaude = async () => {
+    abortRef.current?.abort();
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    setStatus({ kind: "busy", text: "Claude is reading the page…" });
+    try {
+      show(await readWithClaude(text, library, { signal: ctl.signal }), "claude");
+    } catch (e) {
+      if (e?.code === "cancelled") return;
+      setStatus({ kind: "error", text: e?.code === "not_granted"
+        ? "Claude wasn't allowed to read the page. You can still use Read page."
+        : e?.code === "rate_limited" ? "Claude is busy right now. Try again in a minute."
+        : "Claude couldn't read that page. Try Read page, or copy just the workout part." });
+    }
+  };
+
+  const update = (key, patch) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  const selected = (rows || []).filter((r) => checked[r.key] && r.name.trim());
+  const likely = (rows || []).filter((r) => r.confident);
+  const maybe = (rows || []).filter((r) => !r.confident);
+
+  const doImport = async () => {
+    const list = selected.map((r) => ({
+      ...r,
+      name: r.name.trim(),
+      tags: [...r.tags, r.newTag.trim()].filter(Boolean),
+    }));
+    const ok = await onImport(list, extraTag.trim());
+    if (!ok) { setStatus({ kind: "error", text: "Couldn't save the import. Try again." }); return; }
+    const added = list.filter((r) => !r.inLibrary).length;
+    setStatus({ kind: "done", text: `Imported ${list.length} exercise${list.length === 1 ? "" : "s"}${added ? ` (${added} new)` : ""}. Tap a tag below to find them.` });
+    setRows(null);
+    setText("");
+    setHtml("");
+    shots.forEach((s) => URL.revokeObjectURL(s.url));
+    setShots([]);
+  };
+
+  const renderRow = (r) => (
+    <div key={r.key} style={{ ...styles.importRow, opacity: checked[r.key] ? 1 : 0.6 }}>
+      <input
+        type="checkbox"
+        id={`imp-${r.key}`}
+        checked={Boolean(checked[r.key])}
+        onChange={(e) => setChecked((c) => ({ ...c, [r.key]: e.target.checked }))}
+        aria-label={`Import ${r.name}`}
+        style={{ marginTop: 9 }}
+      />
+      <div style={styles.importRowBody}>
+        <div style={styles.importRowTop}>
+          <input
+            value={r.name}
+            onChange={(e) => update(r.key, { name: e.target.value })}
+            aria-label="Exercise name"
+            style={{ ...styles.input, flex: "1 1 160px", minWidth: 0, fontSize: 13, padding: "5px 7px" }}
+          />
+          {r.inLibrary ? (
+            <span style={styles.importBadge}>In library</span>
+          ) : (
+            <select
+              value={r.category}
+              onChange={(e) => update(r.key, { category: e.target.value })}
+              aria-label={`Category for ${r.name}`}
+              style={styles.importSelect}
+            >
+              {["strength", "cardio", "stretching", "plyometrics", "powerlifting", "strongman", "olympic weightlifting"].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        {r.plans.length > 0 && (
+          <div style={styles.libraryPlans}>
+            {r.plans.map((pl, i) => <span key={i}>{pl.tag ? `${pl.tag}: ` : ""}{planText(pl)}</span>)}
+          </div>
+        )}
+        <div style={styles.rowTags} aria-label={`Tags for ${r.name}`}>
+          {r.tags.map((t) => (
+            <span key={t} style={styles.editTag}>
+              #{t}
+              <button type="button" onClick={() => update(r.key, { tags: r.tags.filter((x) => x !== t) })} aria-label={`Remove tag ${t} from ${r.name}`} style={styles.editTagX}>×</button>
+            </span>
+          ))}
+          <input
+            value={r.newTag}
+            onChange={(e) => update(r.key, { newTag: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && r.newTag.trim()) {
+                e.preventDefault();
+                const t = cleanTag(r.newTag);
+                update(r.key, { tags: r.tags.includes(t) ? r.tags : [...r.tags, t], newTag: "" });
+              }
+            }}
+            placeholder="+ tag"
+            aria-label={`Add a tag to ${r.name}`}
+            style={{ ...styles.input, width: 90, fontSize: 12, padding: "2px 7px", fontFamily: "'IBM Plex Mono', monospace" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <section style={styles.importPanel} aria-label="Import exercises">
+      <div style={styles.sectionHead}>
+        <span style={styles.importTitle}>IMPORT FROM A WEB PAGE</span>
+        <button onClick={onClose} style={styles.tagDoneBtn}>Close</button>
+      </div>
+
+      {!rows && (
+        <>
+          <ol style={styles.importSteps}>
+            <li>Open the workout page, select the plan (or press Ctrl/⌘ + A for the whole page) and copy.</li>
+            <li>Paste it below, then tap <strong>Read page</strong>.</li>
+          </ol>
+          <textarea
+            id="import-paste"
+            value={text}
+            onPaste={(e) => {
+              const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+              if (files.length && imageLimits) {
+                e.preventDefault();
+                addShots(files);
+                return;
+              }
+              const h = e.clipboardData?.getData("text/html") || "";
+              setHtml(h);
+              setStatus(null);
+            }}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (!e.target.value) setHtml("");
+            }}
+            placeholder="Paste the page here"
+            aria-label="Pasted web page"
+            rows={6}
+            style={{ ...styles.input, width: "100%", resize: "vertical", fontSize: 13 }}
+          />
+          {html && <div style={styles.importNote}>Page layout kept: tables, lists and headings will be read.</div>}
+          <div style={styles.importBtnRow}>
+            <button onClick={readPage} disabled={!text.trim() && !html} style={styles.tagAddBtn}>Read page</button>
+            {canAskClaude && (
+              <button onClick={askClaude} disabled={!text.trim() || status?.kind === "busy"} style={styles.tagDoneBtn} title="For pages the built-in reader can't follow. Asks Claude to read it.">
+                Read with Claude
+              </button>
+            )}
+          </div>
+
+          {imageLimits && (
+            <div style={styles.shotBox}>
+              <div style={styles.importSteps}>
+                <strong>Or use screenshots.</strong> Add screenshots of the plan in order, top to bottom. Long screenshots are fine. Claude reads them.
+              </div>
+              <label style={styles.shotPick}>
+                + Add screenshots
+                <input
+                  type="file"
+                  accept={imageLimits.mediaTypes.join(",")}
+                  multiple
+                  onChange={(e) => { addShots(e.target.files || []); e.target.value = ""; }}
+                  style={styles.visuallyHidden}
+                  aria-label="Add screenshots"
+                />
+              </label>
+              {shots.length > 0 && (
+                <>
+                  <div style={styles.shotList}>
+                    {shots.map((s, i) => (
+                      <div key={s.id} style={styles.shotThumb}>
+                        <img src={s.url} alt={`Screenshot ${i + 1}`} style={styles.shotImg} />
+                        <span style={styles.shotNum}>{i + 1}</span>
+                        <button onClick={() => removeShot(s.id)} aria-label={`Remove screenshot ${i + 1}`} style={styles.shotX}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={styles.importBtnRow}>
+                    <button onClick={askClaudeShots} disabled={status?.kind === "busy"} style={styles.tagAddBtn}>
+                      Read {shots.length} screenshot{shots.length === 1 ? "" : "s"} with Claude
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {status && (
+        <div role={status.kind === "error" ? "alert" : "status"} style={status.kind === "error" ? styles.importError : styles.importStatus}>
+          {status.text}
+        </div>
+      )}
+
+      {rows && (
+        <>
+          <div style={styles.importSummary}>
+            {(() => {
+              const n = new Set(likely.flatMap((r) => r.tags)).size;
+              return `Found ${likely.length} exercise${likely.length === 1 ? "" : "s"}${n ? ` across ${n} tag${n === 1 ? "" : "s"}` : ""}.`;
+            })()}
+            {" "}Check the names and tags, then import.
+          </div>
+          <div style={styles.importList}>{likely.map(renderRow)}</div>
+          {maybe.length > 0 && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={styles.libraryMeta}>Maybe exercises ({maybe.length}) — not selected</summary>
+              <div style={{ ...styles.importList, marginTop: 6 }}>{maybe.map(renderRow)}</div>
+            </details>
+          )}
+          <label style={{ ...styles.importTagLabel, marginTop: 10 }}>
+            Also tag all with
+            <input
+              value={extraTag}
+              onChange={(e) => setExtraTag(e.target.value)}
+              placeholder="e.g. greek god"
+              aria-label="Tag for every imported exercise"
+              style={{ ...styles.input, flex: 1, minWidth: 0, fontSize: 12, padding: "5px 7px" }}
+            />
+          </label>
+          <div style={styles.importBtnRow}>
+            <button onClick={doImport} disabled={!selected.length} style={styles.tagAddBtn}>
+              Import {selected.length} exercise{selected.length === 1 ? "" : "s"}
+            </button>
+            <button onClick={() => { setRows(null); setStatus(null); }} style={styles.tagDoneBtn}>Back</button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -1037,6 +1477,128 @@ const styles = {
     padding: "1px 8px",
   },
   pickList: { display: "flex", flexWrap: "wrap", gap: 6 },
+  planHint: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: inkFaint,
+    marginTop: 2,
+  },
+  libraryPlans: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: ink,
+    marginTop: 2,
+    overflowWrap: "anywhere",
+  },
+  importOpenBtn: {
+    width: "100%",
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: ink,
+    background: "transparent",
+    border: `1px dashed ${inkFaint}`,
+    borderRadius: 4,
+    padding: "9px 10px",
+    marginBottom: 12,
+    textAlign: "left",
+  },
+  importPanel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    background: raised,
+    border: `1px solid ${line}`,
+    borderLeft: `3px solid ${ink}`,
+    borderRadius: 4,
+    padding: "12px 12px 14px",
+    marginBottom: 14,
+  },
+  importTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    fontSize: 17,
+    letterSpacing: "0.04em",
+  },
+  importSteps: { margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.45, display: "flex", flexDirection: "column", gap: 2 },
+  importBtnRow: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2 },
+  importSummary: { fontSize: 13, lineHeight: 1.4 },
+  importList: { display: "flex", flexDirection: "column", gap: 6 },
+  importRow: {
+    display: "flex",
+    gap: 8,
+    alignItems: "flex-start",
+    background: paper,
+    border: `1px solid ${line}`,
+    borderRadius: 4,
+    padding: "7px 8px",
+  },
+  importRowBody: { display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 },
+  importRowTop: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
+  importBadge: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 10,
+    letterSpacing: "0.06em",
+    color: teal,
+    border: `1px solid ${teal}`,
+    borderRadius: 999,
+    padding: "2px 8px",
+    flexShrink: 0,
+  },
+  importSelect: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: ink,
+    background: "#fff",
+    border: `1px solid ${line}`,
+    borderRadius: 3,
+    padding: "4px 6px",
+    flexShrink: 0,
+  },
+  importTagLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: inkFaint,
+  },
+  importStatus: { fontSize: 13, color: teal },
+  importNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
+  shotBox: { display: "flex", flexDirection: "column", gap: 8, borderTop: `1px dashed ${line}`, paddingTop: 10, marginTop: 4 },
+  shotPick: {
+    alignSelf: "flex-start",
+    position: "relative",
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: ink,
+    border: `1px solid ${ink}`,
+    borderRadius: 4,
+    padding: "7px 10px",
+    cursor: "pointer",
+  },
+  visuallyHidden: { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" },
+  shotList: { display: "flex", flexWrap: "wrap", gap: 8 },
+  shotThumb: { position: "relative", width: 64, height: 88, borderRadius: 3, overflow: "hidden", border: `1px solid ${line}`, background: paper },
+  shotImg: { width: "100%", height: "100%", objectFit: "cover", objectPosition: "top", display: "block" },
+  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: raised, background: ink, borderRadius: 2, padding: "0 4px" },
+  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: raised, fontSize: 13, lineHeight: 1, padding: 0 },
+  importError: { fontSize: 13, color: rust },
+  removeImportedBtn: {
+    alignSelf: "flex-start",
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: rust,
+    background: "none",
+    border: "none",
+    padding: 0,
+    textDecoration: "underline",
+  },
   pickItem: {
     fontFamily: "'Inter', sans-serif",
     fontSize: 13,

@@ -82,6 +82,20 @@ sign in without being added as a test user, publish the consent screen
 Drive sync is turned off inside a claude.ai artifact, whose sandbox blocks
 Google's sign-in.
 
+## Importing exercises
+
+In the Exercises tab, **Import exercises from a web page** reads a pasted page
+(`src/importParser.js`): tables, lists and headings are kept when the copy
+includes the page's HTML. Each section title becomes a tag, so a plan's
+"Day 1: Legs and Abs" tags that day's exercises, and sets, reps, %1RM, RPE
+and rest are kept as the exercise's plan, which fills in the log form. Names
+are matched to the library ignoring case, hyphens and plurals.
+
+Inside a claude.ai artifact two extra options use Claude (`src/claudeRead.js`):
+**Read with Claude** for pages the rules can't follow, and **screenshots**.
+Tall screenshots are cut into overlapping pieces first, since Claude sees each
+image at about 1.2 megapixels.
+
 ## Tests
 
 ```bash
