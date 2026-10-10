@@ -78,6 +78,8 @@ export default function App() {
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
   const [prefill, setPrefill] = useState(null);
+  const [tagMap, setTagMap] = useState({});
+  const [tagSaveError, setTagSaveError] = useState(false);
 
   const key = monthKey(cursor);
 
@@ -129,15 +131,39 @@ export default function App() {
 
   useEffect(() => { loadMonth(cursor); }, [cursor, loadMonth]);
 
-  // Re-read the month on screen when a Drive sync brings in changes to it.
+  const loadTags = useCallback(async () => {
+    try {
+      const res = await storage.get("tags", false);
+      setTagMap(res ? JSON.parse(res.value) : {});
+    } catch (e) {
+      /* keep what's on screen */
+    }
+  }, []);
+
+  useEffect(() => { loadTags(); }, [loadTags]);
+
+  // Re-read what's on screen when a Drive sync brings in changes to it.
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
   useEffect(() => {
     drive.initDriveSync();
     return drive.onMonthsChanged((keys) => {
       if (keys.includes(monthKey(cursorRef.current))) loadMonth(cursorRef.current, true);
+      if (keys.includes("tags")) loadTags();
     });
-  }, [loadMonth]);
+  }, [loadMonth, loadTags]);
+
+  const setExerciseTags = async (name, tags) => {
+    const next = { ...tagMap, [name]: { tags, at: Date.now() } };
+    setTagMap(next);
+    try {
+      const result = await storage.set("tags", JSON.stringify(next), false);
+      setTagSaveError(!result);
+      if (result) drive.scheduleSync();
+    } catch (e) {
+      setTagSaveError(true);
+    }
+  };
 
   const persist = async (next) => {
     setMonthData(next);
@@ -240,7 +266,14 @@ export default function App() {
       </div>
 
       {activeTab === "exercises" ? (
-        <ExerciseLibrary exercises={fullExercises} loading={exercisesLoading} onPick={pickFromLibrary} />
+        <ExerciseLibrary
+          exercises={fullExercises}
+          loading={exercisesLoading}
+          onPick={pickFromLibrary}
+          tagMap={tagMap}
+          onSetTags={setExerciseTags}
+          saveError={tagSaveError}
+        />
       ) : (
       <>
       <div style={styles.dowRow}>
@@ -465,24 +498,43 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
 
 const RESULT_CAP = 120;
 
-function ExerciseLibrary({ exercises, loading, onPick }) {
+const tagsOf = (tagMap, name) => tagMap[name]?.tags || [];
+const cleanTag = (t) => t.trim().replace(/^#+/, "").replace(/\s+/g, " ").toLowerCase().slice(0, 24);
+
+function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveError }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState(null);
+  const [editing, setEditing] = useState(null);
+
+  // Every tag in use, most-used first.
+  const allTags = useMemo(() => {
+    const counts = {};
+    Object.values(tagMap).forEach((v) => (v?.tags || []).forEach((t) => { counts[t] = (counts[t] || 0) + 1; }));
+    return Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b)).map((t) => [t, counts[t]]);
+  }, [tagMap]);
+
+  useEffect(() => {
+    if (tagFilter && !allTags.some(([t]) => t === tagFilter)) setTagFilter(null);
+  }, [allTags, tagFilter]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim().toLowerCase().replace(/^#/, "");
     return exercises.filter((e) => {
       const isCardio = e.category === "cardio";
       if (filter === "strength" && isCardio) return false;
       if (filter === "cardio" && !isCardio) return false;
+      const tags = tagsOf(tagMap, e.name);
+      if (tagFilter && !tags.includes(tagFilter)) return false;
       if (!q) return true;
       return (
         e.name.toLowerCase().includes(q) ||
         (e.equipment && e.equipment.toLowerCase().includes(q)) ||
-        e.primaryMuscles.some((m) => m.toLowerCase().includes(q))
+        e.primaryMuscles.some((m) => m.toLowerCase().includes(q)) ||
+        tags.some((t) => t.includes(q))
       );
     });
-  }, [exercises, query, filter]);
+  }, [exercises, query, filter, tagFilter, tagMap]);
 
   const shown = filtered.slice(0, RESULT_CAP);
 
@@ -492,8 +544,9 @@ function ExerciseLibrary({ exercises, loading, onPick }) {
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search exercises, equipment, or muscle…"
-        style={{ ...styles.input, marginBottom: 10 }}
+        placeholder="Search exercises, muscles, or your tags…"
+        aria-label="Search exercises"
+        style={{ ...styles.input, width: "100%", marginBottom: 10 }}
         autoComplete="off"
       />
       <div style={styles.filterRow}>
@@ -513,10 +566,30 @@ function ExerciseLibrary({ exercises, loading, onPick }) {
         ))}
       </div>
 
+      {allTags.length > 0 && (
+        <div style={styles.tagFilterRow} aria-label="Filter by tag">
+          <span style={styles.tagFilterLabel}>TAGS</span>
+          {allTags.map(([t, n]) => {
+            const on = tagFilter === t;
+            return (
+              <button
+                key={t}
+                onClick={() => setTagFilter(on ? null : t)}
+                aria-pressed={on}
+                style={{ ...styles.tagChip, ...(on ? styles.tagChipOn : {}) }}
+              >
+                #{t} <span style={{ opacity: 0.6 }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {saveError && <div style={{ ...styles.errorTag, marginBottom: 8 }}>Tags not saved — try again</div>}
+
       {loading ? (
         <div style={styles.loading}>Loading exercise library…</div>
       ) : filtered.length === 0 ? (
-        <div style={styles.emptyText}>No exercises match that search.</div>
+        <div style={styles.emptyText}>{tagFilter ? `No exercises tagged #${tagFilter} match.` : "No exercises match that search."}</div>
       ) : (
         <>
           <div style={styles.libraryList}>
@@ -524,19 +597,50 @@ function ExerciseLibrary({ exercises, loading, onPick }) {
               const isCardio = e.category === "cardio";
               const accent = isCardio ? "#1F6E64" : "#B5551F";
               const meta = [e.category, e.equipment, e.primaryMuscles[0]].filter(Boolean).join(" · ");
+              const tags = tagsOf(tagMap, e.name);
+              const isEditing = editing === e.name;
               return (
-                <div key={e.name} style={styles.libraryRow}>
-                  <div style={styles.libraryRowText}>
-                    <span style={styles.rowMain}>{e.name}</span>
-                    {meta && <span style={styles.libraryMeta}>{meta}</span>}
+                <div key={e.name} style={styles.libraryItem}>
+                  <div style={styles.libraryRow}>
+                    <div style={styles.libraryRowText}>
+                      <span style={styles.rowMain}>{e.name}</span>
+                      {meta && <span style={styles.libraryMeta}>{meta}</span>}
+                      {tags.length > 0 && !isEditing && (
+                        <span style={styles.rowTags}>
+                          {tags.map((t) => (
+                            <button key={t} onClick={() => setTagFilter(t)} style={styles.rowTag} title={`Show #${t}`}>#{t}</button>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                    <div style={styles.libraryBtns}>
+                      <button
+                        onClick={() => setEditing(isEditing ? null : e.name)}
+                        aria-label={`Tag ${e.name}`}
+                        aria-expanded={isEditing}
+                        title="Add or remove tags"
+                        style={{ ...styles.tagBtn, ...(isEditing || tags.length ? styles.tagBtnOn : {}) }}
+                      >
+                        #
+                      </button>
+                      <button
+                        onClick={() => onPick(e)}
+                        aria-label={`Log ${e.name}`}
+                        style={{ ...styles.libraryAddBtn, borderColor: accent, color: accent }}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => onPick(e)}
-                    aria-label={`Log ${e.name}`}
-                    style={{ ...styles.libraryAddBtn, borderColor: accent, color: accent }}
-                  >
-                    +
-                  </button>
+                  {isEditing && (
+                    <TagEditor
+                      name={e.name}
+                      tags={tags}
+                      suggestions={allTags.map(([t]) => t)}
+                      onChange={(next) => onSetTags(e.name, next)}
+                      onDone={() => setEditing(null)}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -547,6 +651,72 @@ function ExerciseLibrary({ exercises, loading, onPick }) {
         </>
       )}
     </div>
+  );
+}
+
+function TagEditor({ name, tags, suggestions, onChange, onDone }) {
+  const [text, setText] = useState("");
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const add = (raw) => {
+    const t = cleanTag(raw);
+    setText("");
+    if (!t || tags.includes(t)) return;
+    onChange([...tags, t]);
+  };
+  const remove = (t) => onChange(tags.filter((x) => x !== t));
+  const unused = suggestions.filter((t) => !tags.includes(t));
+  const listId = `tag-list-${name.replace(/[^A-Za-z0-9]/g, "-")}`;
+
+  return (
+    <form
+      style={styles.tagEditor}
+      onSubmit={(ev) => { ev.preventDefault(); add(text); }}
+    >
+      <div style={styles.rowTags}>
+        {tags.length === 0 && <span style={styles.libraryMeta}>No tags yet.</span>}
+        {tags.map((t) => (
+          <span key={t} style={styles.editTag}>
+            #{t}
+            <button type="button" onClick={() => remove(t)} aria-label={`Remove tag ${t}`} style={styles.editTagX}>×</button>
+          </span>
+        ))}
+      </div>
+      <div style={styles.tagInputRow}>
+        <input
+          ref={inputRef}
+          id={`tag-input-${listId}`}
+          value={text}
+          onChange={(ev) => {
+            const v = ev.target.value;
+            if (v.endsWith(",")) add(v.slice(0, -1));
+            else setText(v);
+          }}
+          onKeyDown={(ev) => {
+            if (ev.key === "Escape") onDone();
+            if (ev.key === "Backspace" && !text && tags.length) remove(tags[tags.length - 1]);
+          }}
+          placeholder="Add a tag, e.g. legs day"
+          aria-label={`New tag for ${name}`}
+          list={listId}
+          autoComplete="off"
+          style={{ ...styles.input, flex: 1, minWidth: 0 }}
+        />
+        <datalist id={listId}>
+          {unused.map((t) => <option key={t} value={t} />)}
+        </datalist>
+        <button type="submit" style={styles.tagAddBtn}>Add</button>
+        <button type="button" onClick={onDone} style={styles.tagDoneBtn}>Done</button>
+      </div>
+      {unused.length > 0 && (
+        <div style={styles.rowTags}>
+          {unused.slice(0, 8).map((t) => (
+            <button key={t} type="button" onClick={() => add(t)} style={styles.rowTag}>+ #{t}</button>
+          ))}
+        </div>
+      )}
+    </form>
   );
 }
 
@@ -702,15 +872,106 @@ const styles = {
     padding: "5px 12px",
   },
   libraryList: { display: "flex", flexDirection: "column", gap: 6 },
-  libraryRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+  libraryItem: {
     background: raised,
     border: `1px solid ${line}`,
     borderRadius: 4,
     padding: "9px 10px",
+  },
+  libraryRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     gap: 8,
+  },
+  libraryBtns: { display: "flex", gap: 6, flexShrink: 0 },
+  tagBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    border: `1.5px solid ${line}`,
+    background: "transparent",
+    color: inkFaint,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 13,
+    lineHeight: 1,
+  },
+  tagBtnOn: { borderColor: ink, color: ink },
+  rowTags: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 },
+  rowTag: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: ink,
+    background: paper,
+    border: `1px solid ${line}`,
+    borderRadius: 999,
+    padding: "1px 8px",
+  },
+  tagFilterRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 12 },
+  tagFilterLabel: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 10,
+    letterSpacing: "0.18em",
+    color: inkFaint,
+    marginRight: 2,
+  },
+  tagChip: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: ink,
+    background: "transparent",
+    border: `1px dashed ${inkFaint}`,
+    borderRadius: 999,
+    padding: "4px 10px",
+  },
+  tagChipOn: { background: ink, color: raised, borderStyle: "solid", borderColor: ink },
+  tagEditor: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTop: `1px dashed ${line}`,
+  },
+  tagInputRow: { display: "flex", gap: 6, alignItems: "center" },
+  editTag: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: raised,
+    background: ink,
+    borderRadius: 999,
+    padding: "2px 4px 2px 9px",
+  },
+  editTagX: {
+    background: "none",
+    border: "none",
+    color: raised,
+    fontSize: 14,
+    lineHeight: 1,
+    padding: "0 4px",
+  },
+  tagAddBtn: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: raised,
+    background: ink,
+    border: `1px solid ${ink}`,
+    borderRadius: 4,
+    padding: "7px 10px",
+    flexShrink: 0,
+  },
+  tagDoneBtn: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: ink,
+    background: "transparent",
+    border: `1px solid ${line}`,
+    borderRadius: 4,
+    padding: "7px 10px",
+    flexShrink: 0,
   },
   libraryRowText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   libraryMeta: {

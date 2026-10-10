@@ -41,16 +41,27 @@ export function mergeMonth(a = {}, b = {}, tombstones = {}) {
   return out;
 }
 
-// book: { months: { "2026-09": month, ... }, deleted: tombstones }
+// Exercise tags: { [exerciseName]: { tags: [...], at: changedAtMs } }.
+// Each exercise keeps whichever side changed its tags most recently.
+export function mergeTags(a = {}, b = {}) {
+  const out = { ...a };
+  for (const [name, v] of Object.entries(b)) {
+    if (!out[name] || (v?.at || 0) > (out[name].at || 0)) out[name] = v;
+  }
+  return out;
+}
+
+// book: { months: { "2026-09": month, ... }, deleted: tombstones, tags }
 export function mergeBooks(a = {}, b = {}) {
   const deleted = mergeTombstones(a.deleted, b.deleted);
+  const tags = mergeTags(a.tags, b.tags);
   const months = {};
   const keys = new Set([...Object.keys(a.months || {}), ...Object.keys(b.months || {})]);
   for (const k of keys) {
     const m = mergeMonth((a.months || {})[k], (b.months || {})[k], deleted);
     if (Object.keys(m).length) months[k] = m;
   }
-  return { months, deleted };
+  return { months, deleted, tags };
 }
 
 // True when two months hold the same entries (order within a day ignored).

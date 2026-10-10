@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeBooks, mergeMonth, mergeTombstones, sameMonth } from "../src/merge.js";
+import { mergeBooks, mergeMonth, mergeTags, mergeTombstones, sameMonth } from "../src/merge.js";
 
 const lift = (id, exercise = "Back Squat") => ({ id, exercise, sets: "3", reps: "5", weight: "80" });
 const run = (id) => ({ id, activity: "Run", duration: "30" });
@@ -46,4 +46,14 @@ test("sameMonth ignores entry order and empty days", () => {
   const b = { "01": { strength: [lift("2"), lift("1")], cardio: [] } };
   assert.ok(sameMonth(a, b));
   assert.ok(!sameMonth(a, {}));
+});
+
+test("tags keep the most recent change per exercise", () => {
+  const a = { "Back Squat": { tags: ["legs"], at: 5 }, "Rower": { tags: ["warmup"], at: 1 } };
+  const b = { "Back Squat": { tags: ["legs", "monday"], at: 3 }, "Rower": { tags: [], at: 2 }, "Skullcrusher": { tags: ["arms"], at: 1 } };
+  const m = mergeTags(a, b);
+  assert.deepEqual(m["Back Squat"].tags, ["legs"]);
+  assert.deepEqual(m["Rower"].tags, []);
+  assert.deepEqual(m["Skullcrusher"].tags, ["arms"]);
+  assert.deepEqual(mergeBooks({ tags: a }, { tags: b }).tags, m);
 });
