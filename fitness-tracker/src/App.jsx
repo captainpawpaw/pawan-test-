@@ -23,13 +23,30 @@ function buildGrid(d) {
   return cells;
 }
 
-// Body-weight sets count only their added weight towards volume.
-function strengthVolume(entries) {
-  return (entries || []).reduce((sum, e) => sum + (Number(e.sets) || 0) * (Number(e.reps) || 0) * (Number(e.weight) || 0), 0);
+// Body-weight sets count as body weight plus any added weight; without a
+// known body weight, only the added weight counts.
+function strengthVolume(entries, bodyweightKg = null) {
+  return (entries || []).reduce((sum, e) => {
+    const load = (Number(e.weight) || 0) + (e.bw ? Number(bodyweightKg) || 0 : 0);
+    return sum + (Number(e.sets) || 0) * (Number(e.reps) || 0) * load;
+  }, 0);
 }
 function bodyweightReps(entries) {
   return (entries || []).filter((e) => e.bw).reduce((sum, e) => sum + (Number(e.sets) || 0) * (Number(e.reps) || 0), 0);
 }
+const todayIso = () => { const d = new Date(); return `${monthKey(d)}-${pad2(d.getDate())}`; };
+const kgText = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
+
+// weights: [{ date: "YYYY-MM-DD", kg }]. The weight in force on a date: the
+// latest entry on or before it, else the earliest one.
+function bodyweightOn(weights, date) {
+  if (!weights?.length) return null;
+  const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date));
+  let found = null;
+  for (const w of sorted) if (w.date <= date) found = w;
+  return (found || sorted[0]).kg;
+}
+
 const weightLabel = (e) => (e.bw ? (Number(e.weight) ? `BW + ${e.weight}kg` : "BW") : `${e.weight || 0}kg`);
 function cardioDuration(entries) {
   return (entries || []).reduce((sum, e) => sum + (Number(e.duration) || 0), 0);
@@ -84,6 +101,7 @@ export default function App() {
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
   const [imported, setImported] = useState({});
+  const [profile, setProfile] = useState({});
 
   const key = monthKey(cursor);
 
@@ -147,6 +165,30 @@ export default function App() {
 
   useEffect(() => { loadImported(); }, [loadImported]);
 
+  const loadProfile = useCallback(async () => {
+    try {
+      const res = await storage.get("profile", false);
+      setProfile(res ? JSON.parse(res.value) : {});
+    } catch (e) {
+      /* keep what's on screen */
+    }
+  }, []);
+
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  const weights = profile.bodyweight?.weights || [];
+  const bwOnDay = useCallback((d, day) => bodyweightOn(weights, `${monthKey(d)}-${day}`), [weights]);
+
+  const saveBodyweight = async (kg) => {
+    const date = todayIso();
+    const nextWeights = [...weights.filter((w) => w.date !== date), { date, kg }].sort((a, b) => a.date.localeCompare(b.date));
+    const next = { ...profile, bodyweight: { weights: nextWeights, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+    return Boolean(res);
+  };
+
   // The built-in library plus anything imported from web pages. An imported
   // exercise that's already in the library adds its plan (sets, reps, notes).
   const fullExercises = useMemo(() => {
@@ -185,8 +227,9 @@ export default function App() {
       if (keys.includes(monthKey(cursorRef.current))) loadMonth(cursorRef.current, true);
       if (keys.includes("tags")) loadTags();
       if (keys.includes("exercises")) loadImported();
+      if (keys.includes("profile")) loadProfile();
     });
-  }, [loadMonth, loadTags, loadImported]);
+  }, [loadMonth, loadTags, loadImported, loadProfile]);
 
   const saveImported = async (next) => {
     setImported(next);
@@ -274,9 +317,9 @@ export default function App() {
 
   const maxVol = useMemo(() => {
     let m = 1;
-    Object.values(monthData).forEach((v) => { m = Math.max(m, strengthVolume(v.strength)); });
+    Object.entries(monthData).forEach(([day, v]) => { m = Math.max(m, strengthVolume(v.strength, bwOnDay(cursor, day))); });
     return m;
-  }, [monthData]);
+  }, [monthData, bwOnDay, cursor]);
   const maxDur = useMemo(() => {
     let m = 1;
     Object.values(monthData).forEach((v) => { m = Math.max(m, cardioDuration(v.cardio)); });
@@ -365,7 +408,7 @@ export default function App() {
         {grid.map((day, i) => {
           if (!day) return <div key={i} style={styles.emptyCell} />;
           const data = monthData[day] || { strength: [], cardio: [] };
-          const vol = strengthVolume(data.strength);
+          const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
           const dur = cardioDuration(data.cardio);
           const isSelected = day === selected;
           const isToday = isSameMonth(cursor) && day === todayDayNum();
@@ -426,12 +469,14 @@ export default function App() {
               entries={dayEntries.strength}
               onDelete={(id) => deleteEntry("strength", id)}
               isBodyweight={isBodyweight}
-              footer={dayEntries.strength && dayEntries.strength.length > 0
-                ? [
-                    `Volume: ${strengthVolume(dayEntries.strength).toLocaleString()} kg`,
-                    bodyweightReps(dayEntries.strength) ? `${bodyweightReps(dayEntries.strength).toLocaleString()} body-weight reps` : null,
-                  ].filter(Boolean).join(" · ")
-                : null}
+              bodyweightKg={bwOnDay(cursor, selected)}
+              footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
+                <StrengthFooter
+                  entries={dayEntries.strength}
+                  bodyweightKg={bwOnDay(cursor, selected)}
+                  onSaveBodyweight={saveBodyweight}
+                />
+              ) : null}
             />
             <Section
               className="ft-section"
@@ -525,7 +570,61 @@ function planValues(sectionType, plan) {
   return mins ? { duration: mins[1] } : {};
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight }) {
+function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const hasBw = entries.some((e) => e.bw);
+  const known = bodyweightKg != null;
+
+  const open = () => { setValue(known ? String(bodyweightKg) : ""); setError(""); setEditing(true); };
+  const save = async (ev) => {
+    ev.preventDefault();
+    const kg = Number(value);
+    if (!value || !(kg > 20 && kg < 400)) { setError("Enter your body weight in kg, e.g. 78.5"); return; }
+    const ok = await onSaveBodyweight(Math.round(kg * 10) / 10);
+    if (!ok) { setError("Couldn't save. Try again."); return; }
+    setEditing(false);
+  };
+
+  return (
+    <div style={styles.footerStack}>
+      <span>
+        Volume: {strengthVolume(entries, bodyweightKg).toLocaleString()} kg
+        {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
+      </span>
+      {hasBw && !editing && (
+        <span style={styles.bwLine}>
+          {known ? `Body weight ${kgText(bodyweightKg)} included` : "Add your body weight to count body-weight sets."}
+          <button type="button" onClick={open} style={styles.bwEditBtn}>{known ? "Change" : "Set body weight"}</button>
+        </span>
+      )}
+      {editing && (
+        <form onSubmit={save} noValidate style={styles.bwForm}>
+          <label htmlFor="bodyweight-input" style={styles.bwLabel}>Your body weight (kg)</label>
+          <input
+            id="bodyweight-input"
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            min="20"
+            value={value}
+            onChange={(e) => { setValue(e.target.value); setError(""); }}
+            placeholder="78.5"
+            autoFocus
+            style={{ ...styles.input, width: 90 }}
+          />
+          <button type="submit" style={styles.tagAddBtn}>Save</button>
+          <button type="button" onClick={() => setEditing(false)} style={styles.tagDoneBtn}>Cancel</button>
+          {error && <span role="alert" style={styles.bwError}>{error}</span>}
+          <span style={styles.bwNote}>Saved from today. Earlier workouts keep the weight you had then.</span>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
@@ -615,6 +714,13 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                 min="0"
                 autoComplete="off"
               />
+              {vals.bw && (
+                <span style={styles.bwHint}>
+                  {bodyweightKg != null
+                    ? `Counts as ${kgText(bodyweightKg)} body weight${Number(vals[f.key]) ? ` + ${vals[f.key]} kg` : ""}.`
+                    : "Set your body weight under the day's sets to count it in volume."}
+                </span>
+              )}
             </div>
           ) : (
             <label key={f.key} style={styles.fieldLabel}>
@@ -1956,6 +2062,22 @@ const styles = {
     lineHeight: 1,
     padding: "0 2px",
   },
+  footerStack: { display: "flex", flexDirection: "column", gap: 4 },
+  bwLine: { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 8px", fontWeight: 400, color: inkFaint, fontSize: 11 },
+  bwEditBtn: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: rust,
+    background: "none",
+    border: "none",
+    padding: 0,
+    textDecoration: "underline",
+  },
+  bwForm: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 4, fontWeight: 400 },
+  bwLabel: { flexBasis: "100%", fontSize: 11, color: inkFaint },
+  bwError: { flexBasis: "100%", fontSize: 11, color: rust },
+  bwNote: { flexBasis: "100%", fontSize: 11, color: inkFaint },
+  bwHint: { fontSize: 11, color: inkFaint },
   footer: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 12,

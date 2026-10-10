@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeBooks, mergeMonth, mergeTags, mergeTombstones, sameMonth } from "../src/merge.js";
+import { mergeBooks, mergeMonth, mergeProfile, mergeTags, mergeTombstones, sameMonth } from "../src/merge.js";
 
 const lift = (id, exercise = "Back Squat") => ({ id, exercise, sets: "3", reps: "5", weight: "80" });
 const run = (id) => ({ id, activity: "Run", duration: "30" });
@@ -56,4 +56,11 @@ test("tags keep the most recent change per exercise", () => {
   assert.deepEqual(m["Rower"].tags, []);
   assert.deepEqual(m["Skullcrusher"].tags, ["arms"]);
   assert.deepEqual(mergeBooks({ tags: a }, { tags: b }).tags, m);
+});
+
+test("body weight setting keeps the latest change", () => {
+  const a = { bodyweight: { weights: [{ date: "2026-10-01", kg: 80 }], at: 5 } };
+  const b = { bodyweight: { weights: [{ date: "2026-10-01", kg: 80 }, { date: "2026-10-09", kg: 79 }], at: 9 } };
+  assert.equal(mergeProfile(a, b).bodyweight.weights.length, 2);
+  assert.equal(mergeBooks({ profile: b }, { profile: a }).profile.bodyweight.at, 9);
 });
