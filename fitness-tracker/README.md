@@ -153,7 +153,9 @@ the other. Import only adds; nothing already logged is removed.
 ## Tests
 
 ```bash
-npm test
+npm test                      # unit tests
+npm install --no-save playwright
+./e2e/run-all.sh              # browser tests, with simulated outside services
 ```
 
 ## Exercise data
