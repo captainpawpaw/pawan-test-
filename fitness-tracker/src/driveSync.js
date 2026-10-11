@@ -36,6 +36,38 @@ const monthListeners = new Set();
 function setStatus(patch) {
   status = { ...status, ...patch };
   listeners.forEach((fn) => fn(status));
+  if (status.state === "needs-auth") armAutoSync();
+}
+
+/* ---------- automatic sync ---------- */
+// Google's sign-in window only opens from a tap, so when Drive is connected
+// but this visit isn't signed in yet, the next tap anywhere signs in (no
+// permission screen, just a window that closes itself) and syncs.
+let armed = false;
+function onFirstTap() {
+  if (!window.google?.accounts?.oauth2) return; // sign-in script still loading; wait for the next tap
+  disarmAutoSync();
+  if (status.state === "needs-auth" && flag.get()) connect();
+}
+function armAutoSync() {
+  if (armed || typeof window === "undefined" || !flag.get()) return;
+  armed = true;
+  window.addEventListener("click", onFirstTap, true);
+}
+function disarmAutoSync() {
+  armed = false;
+  window.removeEventListener("click", onFirstTap, true);
+}
+
+// While signed in, pull the latest when the app comes back into view, so
+// entries made on another device appear without a tap.
+let lastPull = 0;
+function onVisible() {
+  if (document.visibilityState !== "visible" || !flag.get()) return;
+  if (!tokenValid()) { if (status.state !== "connecting") setStatus({ state: "needs-auth" }); return; }
+  if (Date.now() - lastPull < 30_000) return;
+  lastPull = Date.now();
+  runSync();
 }
 export function subscribe(fn) {
   listeners.add(fn);
@@ -283,6 +315,7 @@ export function connect() {
 
 export function disconnect() {
   clearTimeout(timer);
+  disarmAutoSync();
   if (token && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(token.access, () => {});
   token = null;
   fileId = null;
@@ -316,4 +349,6 @@ export function initDriveSync() {
   if (!driveSupported()) return;
   loadGis().catch(() => {});
   if (flag.get() && status.state === "off") setStatus({ state: "needs-auth" });
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("focus", onVisible);
 }
