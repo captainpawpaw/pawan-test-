@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();

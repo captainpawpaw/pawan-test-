@@ -27,11 +27,17 @@ function buildGrid(d) {
   return cells;
 }
 
-// Body-weight sets count as body weight plus any added weight; without a
-// known body weight, only the added weight counts.
+// The weight a logged exercise counts at: the average of its min and max
+// weight when both are given, else the max. Body-weight sets add body weight
+// (when known) to that.
+function averageWeight(e) {
+  const max = Number(e.weight) || 0;
+  const min = e.minWeight === "" || e.minWeight == null ? null : Number(e.minWeight);
+  return min != null && !Number.isNaN(min) && max > 0 ? (Math.min(min, max) + max) / 2 : max;
+}
 function strengthVolume(entries, bodyweightKg = null) {
   return (entries || []).reduce((sum, e) => {
-    const load = (Number(e.weight) || 0) + (e.bw ? Number(bodyweightKg) || 0 : 0);
+    const load = averageWeight(e) + (e.bw ? Number(bodyweightKg) || 0 : 0);
     return sum + (Number(e.sets) || 0) * (Number(e.reps) || 0) * load;
   }, 0);
 }
@@ -52,6 +58,14 @@ function bodyweightOn(weights, date) {
 }
 
 const weightLabel = (e) => (e.bw ? (Number(e.weight) ? `BW + ${e.weight}kg` : "BW") : `${e.weight || 0}kg`);
+const hasMin = (e) => e.minWeight !== "" && e.minWeight != null && Number(e.weight) > 0;
+// "4×10 · 20–23.75kg", "4×10 · max 23.75kg", "3×8 · BW + 5–10kg"
+const weightRange = (e) => {
+  if (e.bw && !Number(e.weight)) return "BW";
+  if (!hasMin(e)) return `max ${weightLabel(e)}`;
+  const lo = Math.min(Number(e.minWeight), Number(e.weight));
+  return e.bw ? `BW + ${lo}–${e.weight}kg` : `${lo}–${e.weight}kg`;
+};
 function cardioDuration(entries) {
   return (entries || []).reduce((sum, e) => sum + (Number(e.duration) || 0), 0);
 }
@@ -520,6 +534,16 @@ export default function App() {
         @media (prefers-reduced-motion: reduce) {
           .ft-bar { transition: none !important; }
         }
+        /* iPhone Safari zooms in on any text box under 16px when it's tapped,
+           which leaves the page zoomed and shifted sideways. */
+        @media (max-width: 720px) {
+          input, select, textarea { font-size: 16px !important; }
+        }
+        /* The four tabs fit the narrowest phones too. */
+        @media (max-width: 370px) {
+          .ft-tabs { gap: 10px !important; }
+          .ft-tabs button { font-size: 13px !important; letter-spacing: 0.04em !important; }
+        }
       `}</style>
 
       <header style={styles.header}>
@@ -535,7 +559,7 @@ export default function App() {
       </header>
       <SyncNotice />
 
-      <div style={styles.tabRow}>
+      <div className="ft-tabs" style={styles.tabRow}>
         {[["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
           <button
             key={id}
@@ -664,12 +688,13 @@ export default function App() {
                 { key: "sets", label: "Sets", type: "number", placeholder: "3" },
                 { key: "reps", label: "Reps", type: "number", placeholder: "5" },
                 { key: "weight", label: "Max weight (kg)", type: "number", placeholder: "80", bodyweightToggle: true },
+                { key: "minWeight", label: "Min weight (kg), optional", bwLabel: "Min added weight (kg), optional", type: "number", placeholder: "60" },
               ]}
               onAdd={(vals) => addEntry("strength", vals)}
               renderRow={(e) => (
                 <>
                   <span style={styles.rowMain}>{e.exercise || "Exercise"}</span>
-                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} · {e.bw && !Number(e.weight) ? "BW" : `max ${weightLabel(e)}`}</span>
+                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} · {weightRange(e)}</span>
                 </>
               )}
               entries={dayEntries.strength}
@@ -814,7 +839,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   return (
     <div style={styles.footerStack}>
       <span>
-        Volume: {strengthVolume(entries, bodyweightKg).toLocaleString()} kg
+        Volume (sets × reps × average weight): {strengthVolume(entries, bodyweightKg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
         {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
       </span>
       {hasBw && !editing && (
@@ -883,6 +908,11 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
     if (!vals[primary]) return;
     const { bw, ...rest } = vals;
     const entry = bw ? { ...rest, bw: true } : rest;
+    // A min weight above the max is a slip: keep the two the right way round.
+    if (entry.minWeight !== undefined && entry.minWeight !== "" && entry.weight !== undefined && Number(entry.minWeight) > Number(entry.weight)) {
+      [entry.minWeight, entry.weight] = [entry.weight, entry.minWeight];
+    }
+    if (entry.minWeight === "") delete entry.minWeight;
     if (editingId) onEdit(editingId, entry);
     else onAdd(entry);
     closeForm();
@@ -925,7 +955,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           ) : f.bodyweightToggle ? (
             <div key={f.key} style={styles.fieldLabel}>
               <div style={styles.weightHead}>
-                <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? "Added weight (kg), optional" : f.label}</label>
+                <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? "Max added weight (kg), optional" : f.label}</label>
                 <div role="group" aria-label="Weight type" style={styles.unitToggle}>
                   {[[false, "kg"], [true, "Body weight"]].map(([on, label], i) => {
                     const active = Boolean(vals.bw) === on;
@@ -964,7 +994,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
             </div>
           ) : (
             <label key={f.key} style={styles.fieldLabel}>
-              {f.label}
+              {vals.bw && f.bwLabel ? f.bwLabel : f.label}
               <input
                 type={f.type}
                 placeholder={f.placeholder}

@@ -75,10 +75,10 @@ export function flattenMonths(months) {
 // "avg": the average day (food is totalled per day, then averaged over the
 // days with food logged).
 export const METRICS = {
-  weightreps: { label: "Weight & reps", unit: "kg", agg: "dual", type: "strength", form: "dual", note: "max weight on the left, reps per set on the right" },
+  weightreps: { label: "Weight & reps", unit: "kg", agg: "dual", type: "strength", form: "dual", note: "max and min weight on the left, reps per set on the right" },
   best: { label: "Best weight", unit: "kg", agg: "max", type: "strength", form: "line" },
   e1rm: { label: "Est. 1-rep max", unit: "kg", agg: "max", type: "strength", form: "line", note: "Epley: weight × (1 + reps ÷ 30)" },
-  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × weight" },
+  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × average weight (midpoint of min and max; max if no min)" },
   reps: { label: "Reps", unit: "reps", agg: "sum", type: "strength", form: "column" },
   sets: { label: "Sets", unit: "sets", agg: "sum", type: "strength", form: "column" },
   minutes: { label: "Minutes", unit: "min", agg: "sum", type: "cardio", form: "column" },
@@ -95,6 +95,17 @@ function loadOf(e, date, bwOn) {
   const added = Number(e.weight) || 0;
   return e.bw ? added + (Number(bwOn?.(date)) || 0) : added;
 }
+// The lightest weight in an entry: its min weight if given, else its max.
+function minLoadOf(e, date, bwOn) {
+  const min = e.minWeight === "" || e.minWeight == null ? null : Number(e.minWeight);
+  if (min == null || Number.isNaN(min) || !(Number(e.weight) > 0)) return loadOf(e, date, bwOn);
+  const lo = Math.min(min, Number(e.weight));
+  return e.bw ? lo + (Number(bwOn?.(date)) || 0) : lo;
+}
+// Volume counts each entry at the average of its min and max weight.
+function avgLoadOf(e, date, bwOn) {
+  return (minLoadOf(e, date, bwOn) + loadOf(e, date, bwOn)) / 2;
+}
 
 // The value one logged entry contributes to a metric (null = none).
 export function entryValue(metric, row, bwOn) {
@@ -108,7 +119,7 @@ export function entryValue(metric, row, bwOn) {
       if (!(l > 0) || !(reps > 0)) return null;
       return reps === 1 ? l : l * (1 + reps / 30);
     }
-    case "volume": { const v = sets * reps * loadOf(e, date, bwOn); return v > 0 ? v : null; }
+    case "volume": { const v = sets * reps * avgLoadOf(e, date, bwOn); return v > 0 ? v : null; }
     case "reps": { const v = sets * reps; return v > 0 ? v : null; }
     case "sets": return sets > 0 ? sets : null;
     case "minutes": { const v = Number(e.duration) || 0; return v > 0 ? v : null; }
@@ -145,13 +156,14 @@ export function bucketizeWeightReps(rows, scale, bwOn) {
   for (const r of rows) {
     if (r.type !== "strength") continue;
     const w = loadOf(r.e, r.date, bwOn);
+    const wLow = minLoadOf(r.e, r.date, bwOn);
     const reps = Number(r.e.reps) || 0;
     if (!(w > 0) && !(reps > 0)) continue;
     const start = periodStart(parseIso(r.date), scale);
     const key = start.getTime();
     let b = map.get(key);
     if (!b) { b = { start, end: nextPeriod(start, scale), wMax: null, wMin: null, rMax: null, rMin: null, days: new Set() }; map.set(key, b); }
-    if (w > 0) { b.wMax = Math.max(b.wMax ?? -Infinity, w); b.wMin = Math.min(b.wMin ?? Infinity, w); }
+    if (w > 0) { b.wMax = Math.max(b.wMax ?? -Infinity, w); b.wMin = Math.min(b.wMin ?? Infinity, wLow > 0 ? wLow : w); }
     if (reps > 0) { b.rMax = Math.max(b.rMax ?? -Infinity, reps); b.rMin = Math.min(b.rMin ?? Infinity, reps); }
     b.days.add(r.date);
   }

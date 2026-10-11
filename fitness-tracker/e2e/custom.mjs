@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -67,13 +67,13 @@ await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor(
 const strength = pa.locator('.ft-section').first();
 await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Landmine Press');
-await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('10'); await pa.getByLabel('Weight (kg)').fill('25');
+await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('10'); await pa.getByLabel('Max weight (kg)').fill('25');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 await pa.getByText('Added “Landmine Press” to your exercises.').waitFor();
 check(true, 'logging a new name adds it to your exercises');
 // logging a known exercise doesn't
 await strength.locator('button', { hasText: '+ Add' }).click();
-await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('1'); await pa.getByLabel('Reps').fill('1'); await pa.getByLabel('Weight (kg)').fill('1');
+await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('1'); await pa.getByLabel('Reps').fill('1'); await pa.getByLabel('Max weight (kg)').fill('1');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 await pa.waitForTimeout(300);
 check(!(await pa.locator('body').innerText()).includes('Added “Back Squat”'), 'known exercises are not re-added');
@@ -133,7 +133,7 @@ check(true, 'after reopening, notice says the log may be out of date');
 await pb.screenshot({ path: 'sync-notice.png' });
 // add on A; B taps anywhere and gets it
 await strength.locator('button', { hasText: '+ Add' }).click();
-await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('5'); await pa.getByLabel('Reps').fill('5'); await pa.getByLabel('Weight (kg)').fill('140');
+await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('5'); await pa.getByLabel('Reps').fill('5'); await pa.getByLabel('Max weight (kg)').fill('140');
 await pa.getByRole('button', { name: 'Log a set' }).click(); await pa.waitForTimeout(2500); await waitSynced(pa);
 await pb.getByText('SAT 10 OCT').or(pb.locator('h2, div').filter({ hasText: /^[A-Z]{3} \d+ [A-Z]{3}$/ }).first()).first().click();
 await waitSynced(pb);
@@ -142,7 +142,7 @@ check(!(await pb.locator('body').innerText()).includes('Tap anywhere to sync'), 
 check((await pb.evaluate(() => window.__prompts)).every((p) => p === ''), 'no permission screen on the automatic sign-in');
 // returning to the tab pulls changes while signed in
 await strength.locator('button', { hasText: '+ Add' }).click();
-await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('3'); await pa.getByLabel('Weight (kg)').fill('150');
+await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('3'); await pa.getByLabel('Max weight (kg)').fill('150');
 await pa.getByRole('button', { name: 'Log a set' }).click(); await pa.waitForTimeout(2500); await waitSynced(pa);
 await pb.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); window.dispatchEvent(new Event('focus')); });
 await pb.waitForTimeout(400);
