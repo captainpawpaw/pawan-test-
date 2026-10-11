@@ -178,4 +178,19 @@ export const THEME_CSS = `
   html[data-theme="krypton"] .ft-masthead { --ft-ink-faint: #9A9A9A; --ft-teal: #EF3B3B; }
   html[data-theme="gotham"] .ft-masthead { --ft-ink-faint: #B8BEC3; --ft-teal: #F2C230; }
   html[data-theme="ledger"] .ft-masthead-title, html[data-theme="gotham"] .ft-masthead-title { text-transform: uppercase; letter-spacing: 0.04em !important; }
+
+  /* Calendar sidebar and its pull tab */
+  html[data-theme="ledger"] .ft-cal-drawer { background: #FFFFFF !important; border-right: 4px double #E07A7A !important; }
+  html[data-theme="ledger"] .ft-cal-tab { background: #1D3B66 !important; color: #FFFFFF !important; border-color: #1D3B66 !important; }
+  html[data-theme="krypton"] .ft-cal-drawer {
+    background: #111111 !important; border-right: 1px solid #D31A1A !important;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.9), 4px 0 15px rgba(211, 26, 26, 0.25) !important;
+  }
+  html[data-theme="krypton"] .ft-cal-tab { background: #111111 !important; border-color: #D31A1A !important; box-shadow: 4px 0 15px rgba(211, 26, 26, 0.4) !important; }
+  html[data-theme="gotham"] .ft-cal-drawer { background: #C1C6CB !important; border-right: none !important; box-shadow: 8px 0 0 #050505 !important; }
+  html[data-theme="gotham"] .ft-cal-tab { background: #050505 !important; color: #F5F5F5 !important; border-color: #050505 !important; border-radius: 0 !important; box-shadow: none !important; }
+  html[data-theme="alpine"] .ft-cal-drawer, html[data-theme="alpine"] .ft-cal-tab {
+    background: rgba(44, 37, 89, 0.85) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-color: rgba(255, 255, 255, 0.3) !important;
+  }
 `;
