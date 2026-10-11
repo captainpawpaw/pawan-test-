@@ -84,7 +84,7 @@ await pa.getByRole('button', { name: 'Save changes' }).click();
 let t = await strength.innerText();
 check(t.includes('3×6 · max 105kg') && !t.includes('3×5 · max 100kg'), 'set updated in place');
 check(t.indexOf('Back Squat') < t.indexOf('Leg Press'), 'keeps its place in the list');
-check(t.includes('Volume: 6,690 kg'), 'volume recalculated: ' + (t.match(/Volume: [\d,]+ kg/) || [''])[0]);
+check(t.includes('Volume (sets × reps × max weight): 6,690 kg'), 'volume recalculated: ' + (t.match(/Volume \(sets × reps × max weight\): [\d,]+ kg/) || [''])[0]);
 // cancel leaves it alone
 await strength.getByRole('button', { name: 'Edit Leg Press' }).click();
 await pa.getByLabel('Reps').fill('99');

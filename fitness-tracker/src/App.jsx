@@ -824,7 +824,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   return (
     <div style={styles.footerStack}>
       <span>
-        Volume: {strengthVolume(entries, bodyweightKg).toLocaleString()} kg
+        Volume (sets × reps × max weight): {strengthVolume(entries, bodyweightKg).toLocaleString()} kg
         {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
       </span>
       {hasBw && !editing && (

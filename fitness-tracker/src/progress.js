@@ -78,7 +78,7 @@ export const METRICS = {
   weightreps: { label: "Weight & reps", unit: "kg", agg: "dual", type: "strength", form: "dual", note: "max weight on the left, reps per set on the right" },
   best: { label: "Best weight", unit: "kg", agg: "max", type: "strength", form: "line" },
   e1rm: { label: "Est. 1-rep max", unit: "kg", agg: "max", type: "strength", form: "line", note: "Epley: weight × (1 + reps ÷ 30)" },
-  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × weight" },
+  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "based on max weight: sets × reps × max weight" },
   reps: { label: "Reps", unit: "reps", agg: "sum", type: "strength", form: "column" },
   sets: { label: "Sets", unit: "sets", agg: "sum", type: "strength", form: "column" },
   minutes: { label: "Minutes", unit: "min", agg: "sum", type: "cardio", form: "column" },
