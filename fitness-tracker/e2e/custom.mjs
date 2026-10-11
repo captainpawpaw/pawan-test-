@@ -137,7 +137,7 @@ await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').
 await pa.getByRole('button', { name: 'Log a set' }).click(); await pa.waitForTimeout(2500); await waitSynced(pa);
 await pb.getByText('SAT 10 OCT').or(pb.locator('h2, div').filter({ hasText: /^[A-Z]{3} \d+ [A-Z]{3}$/ }).first()).first().click();
 await waitSynced(pb);
-check((await pb.locator('body').innerText()).includes('5×5 @ 140kg'), 'first tap anywhere syncs and shows the other device\'s entry');
+check((await pb.locator('body').innerText()).includes('5×5 · max 140kg'), 'first tap anywhere syncs and shows the other device\'s entry');
 check(!(await pb.locator('body').innerText()).includes('Tap anywhere to sync'), 'notice goes away');
 check((await pb.evaluate(() => window.__prompts)).every((p) => p === ''), 'no permission screen on the automatic sign-in');
 // returning to the tab pulls changes while signed in
@@ -147,9 +147,9 @@ await pa.getByRole('button', { name: 'Log a set' }).click(); await pa.waitForTim
 await pb.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); window.dispatchEvent(new Event('focus')); });
 await pb.waitForTimeout(400);
 await pb.evaluate(() => window.dispatchEvent(new Event('focus')));
-await pb.getByText('3×3 @ 150kg').waitFor({ timeout: 5000 }).catch(() => {});
+await pb.getByText('3×3 · max 150kg').waitFor({ timeout: 5000 }).catch(() => {});
 const bt = await pb.locator('body').innerText();
-check(bt.includes('3×3 @ 150kg'), 'returning to the app pulls new entries');
+check(bt.includes('3×3 · max 150kg'), 'returning to the app pulls new entries');
 
 // ---- names logged before this feature are added on open ----
 const C = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(C);

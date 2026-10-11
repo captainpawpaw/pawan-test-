@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import {
   DAY, SCALES, SCALE_LABEL, SCALE_SPAN_DAYS, METRICS,
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
-  metricsFor, bucketize, niceTicks, niceRange, compact, parseIso, daysOnTarget,
+  metricsFor, bucketize, bucketizeWeightReps, niceTicks, niceRange, compact, parseIso, daysOnTarget,
 } from "./progress";
 
 const ink = "#23211D";
@@ -14,6 +14,7 @@ const grid = "#E4DDCF";
 const rust = "#B5551F";
 const teal = "#1F6E64";
 const plum = "#7A3E62";
+const blue = "#3F6FA8"; // reps, beside rust weight (checked for colour-blind separation)
 const colorFor = (type) => (type === "cardio" ? teal : type === "food" ? plum : rust);
 const mono = "'IBM Plex Mono', monospace";
 const condensed = "'Barlow Condensed', sans-serif";
@@ -24,6 +25,7 @@ const PLOT_H = 220;
 const PAD = { top: 18, right: 12, bottom: 28, left: 44 };
 const SEL_KEY = "fitness-tracker:progress-selection";
 
+const fmtNum = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const fmt = (v, unit) => `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unit}`;
 
 function readSaved() {
@@ -185,7 +187,9 @@ function Chart({ rows, metric, bwOn, title, target }) {
   }, [rows]);
 
   // Initial view: weekly over the last 26 weeks, or the whole log if shorter.
-  const plotW = width - PAD.left - PAD.right;
+  const dual = m.form === "dual";
+  const padR = dual ? 40 : PAD.right; // room for the reps axis
+  const plotW = width - PAD.left - padR;
 
   // view: visible time range and the period scale it's grouped by.
   const [view, setViewRaw] = useState(() => {
@@ -206,12 +210,26 @@ function Chart({ rows, metric, bwOn, title, target }) {
 
   const span = view.end - view.start;
   const scale = view.scale;
-  const buckets = useMemo(() => bucketize(rows, metric, scale, bwOn), [rows, metric, scale, bwOn]);
+  const buckets = useMemo(
+    () => (dual ? bucketizeWeightReps(rows, scale, bwOn) : bucketize(rows, metric, scale, bwOn)),
+    [rows, metric, scale, bwOn, dual],
+  );
 
   const x = (t) => PAD.left + ((t - view.start) / span) * plotW;
   const visible = buckets.filter((b) => b.end.getTime() > view.start && b.start.getTime() < view.end);
-  const vals = visible.map((b) => b.value);
-  const yTicks = m.form === "line" && vals.length ? niceRange(Math.min(...vals), Math.max(...vals)) : niceTicks(Math.max(0, target || 0, ...vals) || 1);
+  const vals = dual ? visible.flatMap((b) => [b.wMax, b.wMin]).filter((v) => v != null) : visible.map((b) => b.value);
+  const yTicks = (m.form === "line" || dual) && vals.length ? niceRange(Math.min(...vals), Math.max(...vals)) : niceTicks(Math.max(0, target || 0, ...vals) || 1);
+  // Reps axis (right), for the weight & reps view.
+  const repVals = dual ? visible.flatMap((b) => [b.rMax, b.rMin]).filter((v) => v != null) : [];
+  // Reps are whole numbers: whole-number steps, at most about 5 of them.
+  const rTicks = (() => {
+    if (!dual) return [];
+    const top = Math.max(1, ...repVals);
+    const step = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find((st) => top / st <= 5) || 1000;
+    return Array.from({ length: Math.ceil(top / step) + 1 }, (_, i) => i * step);
+  })();
+  const rMax = rTicks[rTicks.length - 1] || 1;
+  const yR = (v) => PAD.top + PLOT_H - (v / rMax) * PLOT_H;
   const yMin = yTicks[0];
   const yMax = yTicks[yTicks.length - 1];
   const y = (v) => PAD.top + PLOT_H - ((v - yMin) / (yMax - yMin || 1)) * PLOT_H;
@@ -359,7 +377,13 @@ function Chart({ rows, metric, bwOn, title, target }) {
   return (
     <div style={s.card}>
       <div style={s.tiles}>
-        {m.agg === "avg" ? (
+        {dual ? (
+          <>
+            <Tile label="Heaviest in view" value={vals.length ? fmt(Math.max(...visible.map((b) => b.wMax ?? -Infinity)), "kg") : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            <Tile label={`Latest ${periodWord}`} value={latest?.wMax != null ? fmt(latest.wMax, "kg") : "–"} sub={latest?.rMax != null ? `up to ${fmtNum(latest.rMax)} reps` : ""} />
+            <Tile label="Most reps in a set" value={repVals.length ? fmtNum(Math.max(...repVals)) : "–"} sub="in view" />
+          </>
+        ) : m.agg === "avg" ? (
           <>
             <Tile label={scale === "day" ? "Average day in view" : `Average day, latest ${periodWord}`} value={latest ? fmt(scale === "day" ? avgInView : latest.value, m.unit) : "–"} sub={latest && scale !== "day" ? periodLabel(latest.start, scale, true) : `${foodDaysInView} day${foodDaysInView === 1 ? "" : "s"} logged`} />
             <Tile label={`Highest ${scale === "day" ? "day" : `${periodWord}'s average`}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
@@ -381,7 +405,7 @@ function Chart({ rows, metric, bwOn, title, target }) {
       <div style={s.chartHead}>
         <div style={{ minWidth: 0 }}>
           <div style={s.chartTitle}>{m.label} · {title}</div>
-          <div style={s.chartSub}>{m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : "total"}`}, {m.unit}{m.note ? ` · ${m.note}` : ""}</div>
+          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (kg) and reps per set` : <>{m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
         </div>
         <div role="group" aria-label="Time scale" style={s.scaleRow}>
           {SCALES.map((sc) => (
@@ -392,6 +416,16 @@ function Chart({ rows, metric, bwOn, title, target }) {
         </div>
       </div>
 
+      {dual && (
+        <div style={s.legend} aria-label="Legend">
+          {[["Max weight (kg, left)", rust, 1], ["Min weight", rust, 0.38], ["Max reps (right)", blue, 1], ["Min reps", blue, 0.38]].map(([label, c, o]) => (
+            <span key={label} style={s.legendItem}>
+              <span style={{ display: "inline-block", width: 16, height: 2, background: c, opacity: o }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
       <div
         ref={boxRef}
         tabIndex={0}
@@ -411,12 +445,42 @@ function Chart({ rows, metric, bwOn, title, target }) {
           </defs>
           {yTicks.map((v, i) => (
             <g key={i}>
-              <line x1={PAD.left} x2={width - PAD.right} y1={y(v)} y2={y(v)} stroke={i === 0 ? line : grid} strokeWidth="1" />
+              <line x1={PAD.left} x2={width - padR} y1={y(v)} y2={y(v)} stroke={i === 0 ? line : grid} strokeWidth="1" />
               <text x={PAD.left - 6} y={y(v)} dy="0.32em" textAnchor="end" style={s.tick}>{compact(v)}</text>
             </g>
           ))}
+          {dual && rTicks.map((v, i) => (
+            <text key={`r${i}`} x={width - padR + 6} y={yR(v)} dy="0.32em" textAnchor="start" style={s.tick}>{compact(v)}</text>
+          ))}
+          {dual && (
+            <>
+              <text x={PAD.left - 6} y={PAD.top - 8} textAnchor="end" style={s.axisTitle}>kg</text>
+              <text x={width - padR + 6} y={PAD.top - 8} textAnchor="start" style={s.axisTitle}>reps</text>
+            </>
+          )}
           <g clipPath="url(#plot-clip)">
-            {m.form === "column"
+            {dual ? (
+              <>
+                {[
+                  ["wMin", rust, y, true], ["rMin", blue, yR, true],
+                  ["wMax", rust, y, false], ["rMax", blue, yR, false],
+                ].map(([k, c, sy, faint]) => {
+                  const pts = visible.filter((b) => b[k] != null);
+                  return (
+                    <g key={k} opacity={faint ? 0.38 : 1}>
+                      <path
+                        d={pts.map((b, i) => `${i ? "L" : "M"}${x((b.start.getTime() + b.end.getTime()) / 2)},${sy(b[k])}`).join(" ")}
+                        fill="none" stroke={c} strokeWidth={faint ? 1.5 : 2} strokeLinejoin="round" strokeLinecap="round"
+                      />
+                      {pts.map((b) => {
+                        const i = visible.indexOf(b);
+                        return <circle key={i} cx={x((b.start.getTime() + b.end.getTime()) / 2)} cy={sy(b[k])} r={faint ? 3 : hover === i ? 5.5 : 4} fill={c} stroke={raised} strokeWidth="2" />;
+                      })}
+                    </g>
+                  );
+                })}
+              </>
+            ) : m.form === "column"
               ? visible.map((b, i) => {
                   const cx = x((b.start.getTime() + b.end.getTime()) / 2);
                   const top = y(b.value), base = y(0), h = Math.max(1, base - top), r = Math.min(4, colW / 2, h);
@@ -439,13 +503,13 @@ function Chart({ rows, metric, bwOn, title, target }) {
             )}
             {target && (
               <g>
-                <line x1={PAD.left} x2={width - PAD.right} y1={y(target)} y2={y(target)} stroke={ink} strokeWidth="1.5" opacity="0.7" />
+                <line x1={PAD.left} x2={width - padR} y1={y(target)} y2={y(target)} stroke={ink} strokeWidth="1.5" opacity="0.7" />
                 <text x={PAD.left + 4} y={y(target) - 5} style={s.targetLabel}>Target {compact(target)}</text>
               </g>
             )}
-            {best && hover == null && (
+            {best && hover == null && !dual && (
               <text
-                x={Math.min(width - PAD.right - 4, Math.max(PAD.left + 4, x((best.start.getTime() + best.end.getTime()) / 2)))}
+                x={Math.min(width - padR - 4, Math.max(PAD.left + 4, x((best.start.getTime() + best.end.getTime()) / 2)))}
                 y={y(best.value) - 8}
                 textAnchor={x((best.start.getTime() + best.end.getTime()) / 2) > width - 60 ? "end" : x((best.start.getTime() + best.end.getTime()) / 2) < PAD.left + 40 ? "start" : "middle"}
                 style={s.valueLabel}
@@ -456,7 +520,7 @@ function Chart({ rows, metric, bwOn, title, target }) {
           </g>
           {xTicks.map((p, i) => {
             const tx = x(p.getTime() + (nextPeriod(p, scale).getTime() - p.getTime()) / 2);
-            if (tx < PAD.left + 10 || tx > width - PAD.right - 10) return null;
+            if (tx < PAD.left + 10 || tx > width - padR - 10) return null;
             return <text key={i} x={tx} y={PAD.top + PLOT_H + 18} textAnchor="middle" style={s.tick}>{periodLabel(p, scale)}</text>;
           })}
           {!visible.length && (
@@ -469,14 +533,28 @@ function Chart({ rows, metric, bwOn, title, target }) {
             style={{
               ...s.tooltip,
               left: Math.min(width - 150, Math.max(4, x((hb.start.getTime() + hb.end.getTime()) / 2) - 70)),
-              top: Math.max(0, y(hb.value) - 58),
+              top: dual ? 4 : Math.max(0, y(hb.value) - 58),
             }}
           >
-            <span style={s.tipValue}>{fmt(hb.value, m.unit)}</span>
-            <span style={s.tipLabel}>
-              <span style={{ display: "inline-block", width: 10, height: 2, background: color, verticalAlign: "middle", marginRight: 5 }} />
-              {periodLabel(hb.start, scale, true)}
-            </span>
+            {dual ? (
+              <>
+                <span style={s.tipLabel}>{periodLabel(hb.start, scale, true)}</span>
+                {[["Max weight", hb.wMax, "kg", rust, 1], ["Min weight", hb.wMin, "kg", rust, 0.4], ["Max reps", hb.rMax, "reps", blue, 1], ["Min reps", hb.rMin, "reps", blue, 0.4]].map(([label, v, u, c, o]) => (
+                  <span key={label} style={s.tipRow}>
+                    <span style={{ display: "inline-block", width: 10, height: 2, background: c, opacity: o, verticalAlign: "middle", marginRight: 5 }} />
+                    <strong style={s.tipStrong}>{v == null ? "–" : `${fmtNum(v)} ${u}`}</strong> {label.toLowerCase()}
+                  </span>
+                ))}
+              </>
+            ) : (
+              <>
+                <span style={s.tipValue}>{fmt(hb.value, m.unit)}</span>
+                <span style={s.tipLabel}>
+                  <span style={{ display: "inline-block", width: 10, height: 2, background: color, verticalAlign: "middle", marginRight: 5 }} />
+                  {periodLabel(hb.start, scale, true)}
+                </span>
+              </>
+            )}
             <span style={s.tipLabel}>{hb.days} workout day{hb.days === 1 ? "" : "s"}</span>
           </div>
         )}
@@ -493,12 +571,26 @@ function Chart({ rows, metric, bwOn, title, target }) {
       <details style={s.tableBox}>
         <summary style={s.summary}>Table of values in view ({visible.length})</summary>
         <table style={s.table}>
-          <thead><tr><th style={s.th}>{SCALE_LABEL[scale].replace("ly", "").replace("Dai", "Day")}</th><th style={{ ...s.th, textAlign: "right" }}>{m.label} ({m.unit})</th><th style={{ ...s.th, textAlign: "right" }}>Days</th></tr></thead>
+          <thead>
+            <tr>
+              <th style={s.th}>{SCALE_LABEL[scale].replace("ly", "").replace("Dai", "Day")}</th>
+              {dual ? (
+                ["Max kg", "Min kg", "Max reps", "Min reps"].map((h) => <th key={h} style={{ ...s.th, textAlign: "right" }}>{h}</th>)
+              ) : (
+                <th style={{ ...s.th, textAlign: "right" }}>{m.label} ({m.unit})</th>
+              )}
+              <th style={{ ...s.th, textAlign: "right" }}>Days</th>
+            </tr>
+          </thead>
           <tbody>
             {[...visible].reverse().map((b, i) => (
               <tr key={i}>
                 <td style={s.td}>{periodLabel(b.start, scale, true)}</td>
-                <td style={{ ...s.td, textAlign: "right" }}>{b.value.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                {dual ? (
+                  [b.wMax, b.wMin, b.rMax, b.rMin].map((v, j) => <td key={j} style={{ ...s.td, textAlign: "right" }}>{v == null ? "–" : fmtNum(v)}</td>)
+                ) : (
+                  <td style={{ ...s.td, textAlign: "right" }}>{b.value.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                )}
                 <td style={{ ...s.td, textAlign: "right" }}>{b.days}</td>
               </tr>
             ))}
@@ -541,6 +633,11 @@ const s = {
   plotBox: { position: "relative", touchAction: "pan-y", userSelect: "none", WebkitUserSelect: "none", cursor: "grab", outlineOffset: -2 },
   tick: { fontFamily: mono, fontSize: 10, fill: inkFaint, fontVariantNumeric: "tabular-nums" },
   targetLabel: { fontFamily: mono, fontSize: 10, fontWeight: 500, fill: ink },
+  axisTitle: { fontFamily: mono, fontSize: 10, fill: inkFaint },
+  legend: { display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "0 12px", fontFamily: mono, fontSize: 10, color: inkFaint },
+  legendItem: { display: "inline-flex", alignItems: "center", gap: 6 },
+  tipRow: { fontFamily: mono, fontSize: 10, color: inkFaint, whiteSpace: "nowrap" },
+  tipStrong: { fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: ink },
   valueLabel: { fontFamily: mono, fontSize: 11, fontWeight: 500, fill: ink },
   emptyPlot: { fontFamily: "'Inter', sans-serif", fontSize: 12, fill: inkFaint },
   tooltip: { position: "absolute", pointerEvents: "none", display: "flex", flexDirection: "column", gap: 2, background: "#fff", border: `1px solid ${line}`, borderRadius: 4, boxShadow: "0 4px 14px rgba(35,33,29,0.12)", padding: "6px 9px", width: 146 },

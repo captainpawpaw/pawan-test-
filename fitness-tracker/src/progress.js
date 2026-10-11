@@ -75,6 +75,7 @@ export function flattenMonths(months) {
 // "avg": the average day (food is totalled per day, then averaged over the
 // days with food logged).
 export const METRICS = {
+  weightreps: { label: "Weight & reps", unit: "kg", agg: "dual", type: "strength", form: "dual", note: "max weight on the left, reps per set on the right" },
   best: { label: "Best weight", unit: "kg", agg: "max", type: "strength", form: "line" },
   e1rm: { label: "Est. 1-rep max", unit: "kg", agg: "max", type: "strength", form: "line", note: "Epley: weight × (1 + reps ÷ 30)" },
   volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × weight" },
@@ -126,7 +127,7 @@ export function metricsFor(rows) {
   const out = [];
   if (hasStrength) {
     // Best weight and 1RM only compare like with like: one exercise.
-    if (names.size === 1 && rows.some((r) => Number(r.e.weight) > 0 || r.e.bw)) out.push("best", "e1rm");
+    if (names.size === 1 && rows.some((r) => Number(r.e.weight) > 0 || r.e.bw)) out.push("weightreps", "best", "e1rm");
     out.push("volume", "reps", "sets");
   }
   if (hasCardio) {
@@ -134,6 +135,30 @@ export function metricsFor(rows) {
     if (rows.some((r) => Number(r.e.distance) > 0)) out.push("distance");
   }
   return out;
+}
+
+// One exercise's weight and reps per period: the heaviest and lightest
+// weight logged (body-weight sets count body weight plus added weight), and
+// the most and fewest reps per set. `value` is the max weight.
+export function bucketizeWeightReps(rows, scale, bwOn) {
+  const map = new Map();
+  for (const r of rows) {
+    if (r.type !== "strength") continue;
+    const w = loadOf(r.e, r.date, bwOn);
+    const reps = Number(r.e.reps) || 0;
+    if (!(w > 0) && !(reps > 0)) continue;
+    const start = periodStart(parseIso(r.date), scale);
+    const key = start.getTime();
+    let b = map.get(key);
+    if (!b) { b = { start, end: nextPeriod(start, scale), wMax: null, wMin: null, rMax: null, rMin: null, days: new Set() }; map.set(key, b); }
+    if (w > 0) { b.wMax = Math.max(b.wMax ?? -Infinity, w); b.wMin = Math.min(b.wMin ?? Infinity, w); }
+    if (reps > 0) { b.rMax = Math.max(b.rMax ?? -Infinity, reps); b.rMin = Math.min(b.rMin ?? Infinity, reps); }
+    b.days.add(r.date);
+  }
+  const round = (v) => (v == null ? null : Math.round(v * 10) / 10);
+  return [...map.values()]
+    .map((b) => ({ start: b.start, end: b.end, wMax: round(b.wMax), wMin: round(b.wMin), rMax: round(b.rMax), rMin: round(b.rMin), value: round(b.wMax) ?? 0, days: b.days.size }))
+    .sort((a, b) => a.start - b.start);
 }
 
 // Rows -> [{ start: Date, end: Date, value, count, days }] for one scale,

@@ -623,13 +623,13 @@ export default function App() {
                 { key: "exercise", label: "Exercise", type: "text", placeholder: "Back squat", options: strengthNames, listId: "strength-exercise-list" },
                 { key: "sets", label: "Sets", type: "number", placeholder: "3" },
                 { key: "reps", label: "Reps", type: "number", placeholder: "5" },
-                { key: "weight", label: "Weight (kg)", type: "number", placeholder: "80", bodyweightToggle: true },
+                { key: "weight", label: "Max weight (kg)", type: "number", placeholder: "80", bodyweightToggle: true },
               ]}
               onAdd={(vals) => addEntry("strength", vals)}
               renderRow={(e) => (
                 <>
                   <span style={styles.rowMain}>{e.exercise || "Exercise"}</span>
-                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} @ {weightLabel(e)}</span>
+                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} · {e.bw && !Number(e.weight) ? "BW" : `max ${weightLabel(e)}`}</span>
                 </>
               )}
               entries={dayEntries.strength}
