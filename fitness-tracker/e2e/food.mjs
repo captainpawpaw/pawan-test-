@@ -83,7 +83,9 @@ await foodRoutes(A); await foodRoutes(B);
 const foodCard = (p) => p.locator('section, div').filter({ has: p.getByText('FOOD', { exact: true }) }).last();
 const foodText = async (p) => (await p.locator('div', { has: p.getByText('FOOD', { exact: true }) }).last().innerText());
 
-await pa.goto('http://localhost:4190/'); await pa.getByText('FOOD', { exact: true }).waitFor();
+await pa.goto('http://localhost:4190/'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
+await pa.screenshot({ path: 'food-tab.png' });
+check(!(await pa.locator('body').innerText()).includes('STRENGTH'), 'food tab shows only food');
 let t = await pa.locator('body').innerText();
 check(t.includes('No food logged for this day.') && t.includes('Set daily targets'), 'food section with empty state');
 
@@ -193,6 +195,7 @@ await pb.getByLabel('Import a backup file').setInputFiles(file);
 await pb.getByText(/logged day.*Add them to this log\?/).waitFor();
 await pb.getByRole('button', { name: 'Import', exact: true }).click();
 await pb.getByText(/^Imported\./).waitFor();
+await pb.getByRole('button', { name: 'FOOD', exact: true }).click();
 t = await pb.locator('body').innerText();
 check(t.includes('1,404 kcal left'), 'import shows food on the other device without reload');
 await pb.getByLabel('Import a backup file').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });

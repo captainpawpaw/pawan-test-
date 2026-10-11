@@ -5,6 +5,7 @@ import { parsePage, nameKey, planText } from "./importParser";
 import { getSample, getImageLimits, readWithClaude, readScreenshotsWithClaude } from "./claudeRead";
 import Progress from "./Progress";
 import FoodLog from "./FoodLog";
+import { sumFood } from "./food";
 import Backup from "./Backup";
 
 /* ---------- date helpers ---------- */
@@ -368,6 +369,12 @@ export default function App() {
     Object.entries(monthData).forEach(([day, v]) => { m = Math.max(m, strengthVolume(v.strength, bwOnDay(cursor, day))); });
     return m;
   }, [monthData, bwOnDay, cursor]);
+  // Food tab calendar: bars scale to the calorie target, or the month's biggest day.
+  const maxKcal = useMemo(() => {
+    let m = Number(profile.targets?.kcal) || 1;
+    Object.values(monthData).forEach((v) => { m = Math.max(m, sumFood(v.food).kcal); });
+    return m;
+  }, [monthData, profile.targets]);
   const maxDur = useMemo(() => {
     let m = 1;
     Object.values(monthData).forEach((v) => { m = Math.max(m, cardioDuration(v.cardio)); });
@@ -420,7 +427,7 @@ export default function App() {
       </header>
 
       <div style={styles.tabRow}>
-        {[["log", "LOG"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
+        {[["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -474,8 +481,14 @@ export default function App() {
             >
               <span style={styles.dayNum}>{String(Number(day))}</span>
               <span style={styles.barTrack}>
-                <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
-                <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
+                {activeTab === "food" ? (
+                  <span className="ft-bar" style={{ ...styles.bar, width: 10, background: "#7A3E62", height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
+                ) : (
+                  <>
+                    <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
+                    <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
+                  </>
+                )}
               </span>
             </button>
           );
@@ -491,6 +504,18 @@ export default function App() {
             {saveError && <span style={styles.errorTag}>Not saved — try again</span>}
           </div>
 
+          {activeTab === "food" ? (
+            <FoodLog
+              key={`${key}-${selected}`}
+              entries={dayEntries.food || []}
+              recent={recentFoods}
+              onAdd={addFoods}
+              onDelete={(id) => deleteEntry("food", id)}
+              targets={profile.targets}
+              onSaveTargets={saveTargets}
+              saveError={saveError}
+            />
+          ) : (
           <div className="ft-sections" style={styles.sections}>
             <Section
               className="ft-section"
@@ -556,16 +581,7 @@ export default function App() {
               footer={dayEntries.cardio && dayEntries.cardio.length > 0 ? `Total time: ${cardioDuration(dayEntries.cardio)} min` : null}
             />
           </div>
-          <FoodLog
-            key={`${key}-${selected}`}
-            entries={dayEntries.food || []}
-            recent={recentFoods}
-            onAdd={addFoods}
-            onDelete={(id) => deleteEntry("food", id)}
-            targets={profile.targets}
-            onSaveTargets={saveTargets}
-            saveError={saveError}
-          />
+          )}
         </>
       )}
       </>
