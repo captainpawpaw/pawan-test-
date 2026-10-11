@@ -35,7 +35,11 @@ The session key works like a password for your Claude account. It is saved only 
 - **Right-click** anywhere on the widget for the same options, plus *Always on top*.
 - In Settings you can set the refresh interval (60 seconds by default, minimum 15), the warning level, and **Start with Windows**.
 
-To check your setup from a terminal, run `py claude_usage_widget.py --once`. It prints your current usage and exits.
+## If it doesn't work
+
+- **Nothing happens, or a window says Python wasn't found:** install [Python for Windows](https://www.python.org/downloads/windows/), tick **Add python.exe to PATH** in the installer, then try again.
+- **Double-click `check.bat`.** It prints your current usage, or the exact error, and waits until you press a key.
+- If the widget crashes, it shows the error in a pop-up and saves it to `%APPDATA%\ClaudeUsageWidget\error.log`.
 
 ## Limitations
 

@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import traceback
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -574,7 +575,37 @@ def print_once():
     return 0
 
 
-if __name__ == "__main__":
+def log_path():
+    return os.path.join(os.path.dirname(config_path()), "error.log")
+
+
+def report_crash(details):
+    """Save the error and show it, since pythonw has no console to print to."""
+    try:
+        os.makedirs(os.path.dirname(log_path()), exist_ok=True)
+        with open(log_path(), "a", encoding="utf-8") as f:
+            f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')}\n{details}\n")
+    except OSError:
+        pass
+    try:
+        messagebox.showerror(APP_NAME, f"Something went wrong:\n\n{details[-1500:]}\n\nSaved to {log_path()}")
+    except Exception:
+        print(details, file=sys.stderr)
+
+
+def main():
     if "--once" in sys.argv:
-        sys.exit(print_once())
-    Widget().run()
+        return print_once()
+    try:
+        widget = Widget()
+        widget.root.report_callback_exception = lambda *exc: report_crash(
+            "".join(traceback.format_exception(*exc)))
+        widget.run()
+    except Exception:
+        report_crash(traceback.format_exc())
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
