@@ -21,8 +21,9 @@ const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigi
 
 // entries: this day's food; recent: foods logged before (newest first);
 // onAdd(list) adds one or more entries to the day.
-export default function FoodLog({ entries, recent, onAdd, onDelete, targets, onSaveTargets, saveError }) {
+export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError }) {
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const totals = useMemo(() => sumFood(entries), [entries]);
 
   return (
@@ -48,7 +49,8 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, targets, onS
           <div style={st.empty}>No food logged for this day.</div>
         ) : (
           entries.map((e) => (
-            <div key={e.id} style={st.row}>
+            <React.Fragment key={e.id}>
+            <div style={{ ...st.row, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={st.rowName}>{e.name}</div>
                 <div style={st.rowMeta}>
@@ -57,8 +59,15 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, targets, onS
                 </div>
               </div>
               <span style={st.rowKcal}>{Math.round(e.kcal)} kcal</span>
-              <button aria-label={`Delete ${e.name}`} onClick={() => onDelete(e.id)} style={st.deleteBtn}>×</button>
+              {onEdit && (
+                <button aria-label={`Edit ${e.name}`} onClick={() => setEditingId(editingId === e.id ? null : e.id)} style={st.editBtn}>✎</button>
+              )}
+              <button aria-label={`Delete ${e.name}`} onClick={() => { if (editingId === e.id) setEditingId(null); onDelete(e.id); }} style={st.deleteBtn}>×</button>
             </div>
+            {editingId === e.id && (
+              <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); }} onCancel={() => setEditingId(null)} />
+            )}
+            </React.Fragment>
           ))
         )}
       </div>
@@ -356,6 +365,73 @@ function AmountStep({ food, onAdd, onBack }) {
   );
 }
 
+// Edit a logged food: change the amount (nutrients rescale) or, for foods
+// entered by hand, the numbers themselves. The name can always change.
+function EditFood({ entry, onSave, onCancel }) {
+  const hasPortion = entry.portion && entry.qty;
+  const portionG = hasPortion ? entry.grams / entry.qty : null;
+  const [name, setName] = useState(entry.name);
+  const [unit, setUnit] = useState(hasPortion ? "portion" : "g");
+  const [qty, setQty] = useState(String(hasPortion ? entry.qty : entry.grams || ""));
+  const [nums, setNums] = useState({ kcal: String(entry.kcal ?? ""), protein: String(entry.protein ?? ""), carbs: String(entry.carbs ?? ""), fat: String(entry.fat ?? "") });
+  const scalable = Boolean(entry.per100);
+  const grams = unit === "portion" ? (Number(qty) || 0) * portionG : Number(qty) || 0;
+  const vals = scalable ? scale(entry.per100, grams) : null;
+
+  const save = (ev) => {
+    ev.preventDefault();
+    const base = { ...entry, name: name.trim() || entry.name };
+    delete base.id;
+    if (scalable) {
+      if (!(grams > 0)) return;
+      const next = { ...base, grams: Math.round(grams * 10) / 10, ...vals };
+      if (unit === "portion") { next.qty = Number(qty); next.portion = entry.portion; } else { delete next.qty; delete next.portion; }
+      onSave(next);
+    } else {
+      onSave({ ...base, kcal: Math.round(Number(nums.kcal) || 0), protein: Number(nums.protein) || 0, carbs: Number(nums.carbs) || 0, fat: Number(nums.fat) || 0 });
+    }
+  };
+
+  return (
+    <form onSubmit={save} style={{ ...st.addBox, marginTop: -2 }} aria-label={`Edit ${entry.name}`}>
+      <label style={st.fieldLabel}>Name<input value={name} onChange={(e) => setName(e.target.value)} style={st.input} /></label>
+      {scalable ? (
+        <>
+          <div style={st.btnRow}>
+            <label style={{ ...st.fieldLabel, flex: "0 0 90px" }}>
+              Amount
+              <input type="number" inputMode="decimal" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus style={st.input} />
+            </label>
+            {hasPortion && (
+              <label style={{ ...st.fieldLabel, flex: 1, minWidth: 0 }}>
+                Unit
+                <select value={unit} onChange={(e) => { const u = e.target.value; setUnit(u); setQty(u === "g" ? String(Math.round(grams * 10) / 10) : String(Math.round((grams / portionG) * 100) / 100)); }} style={st.input}>
+                  <option value="g">grams</option>
+                  <option value="portion">{entry.portion} ({fmtG(portionG)} g)</option>
+                </select>
+              </label>
+            )}
+            {!hasPortion && <span style={{ ...st.note, alignSelf: "center", marginTop: 14 }}>grams</span>}
+          </div>
+          <div style={st.preview} aria-live="polite">
+            <strong>{vals.kcal} kcal</strong> · Protein {fmtG(vals.protein)} g · Carbs {fmtG(vals.carbs)} g · Fat {fmtG(vals.fat)} g
+          </div>
+        </>
+      ) : (
+        <div style={st.grid3}>
+          {[["kcal", "Calories"], ["protein", "Protein (g)"], ["carbs", "Carbs (g)"], ["fat", "Fat (g)"]].map(([k, label]) => (
+            <label key={k} style={st.fieldLabel}>{label}<input type="number" inputMode="decimal" step="any" min="0" value={nums[k]} onChange={(e) => setNums((n) => ({ ...n, [k]: e.target.value }))} style={st.input} /></label>
+          ))}
+        </div>
+      )}
+      <div style={st.btnRow}>
+        <button type="submit" style={st.primaryBtn}>Save changes</button>
+        <button type="button" onClick={onCancel} style={st.secondaryBtn}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 function ManualFood({ onAdd, onBack }) {
   const [v, setV] = useState({ name: "", grams: "", kcal: "", protein: "", carbs: "", fat: "" });
   const set = (k) => (e) => setV((cur) => ({ ...cur, [k]: e.target.value }));
@@ -538,6 +614,7 @@ const st = {
   rowName: { fontSize: 14, color: ink, overflowWrap: "anywhere" },
   rowMeta: { fontFamily: mono, fontSize: 11, color: inkFaint, overflowWrap: "anywhere" },
   rowKcal: { fontFamily: mono, fontSize: 13, color: ink, flexShrink: 0 },
+  editBtn: { background: "none", border: "none", color: inkFaint, fontSize: 15, lineHeight: 1, padding: "0 2px" },
   deleteBtn: { background: "none", border: "none", color: inkFaint, fontSize: 18, lineHeight: 1, padding: "0 2px" },
   addBox: { display: "flex", flexDirection: "column", gap: 10, background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: 10 },
   stack: { display: "flex", flexDirection: "column", gap: 8 },

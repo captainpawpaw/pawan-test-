@@ -27,15 +27,6 @@ function buildGrid(d) {
   return cells;
 }
 
-// Whether the calendar is collapsed to the selected day's week, kept per browser.
-const WEEK_ONLY_KEY = "fitness-tracker:calendar-week-only";
-function readWeekOnly() {
-  try { return window.localStorage.getItem(WEEK_ONLY_KEY) === "1"; } catch { return false; }
-}
-function writeWeekOnly(on) {
-  try { on ? window.localStorage.setItem(WEEK_ONLY_KEY, "1") : window.localStorage.removeItem(WEEK_ONLY_KEY); } catch { /* ignore */ }
-}
-
 // Body-weight sets count as body weight plus any added weight; without a
 // known body weight, only the added weight counts.
 function strengthVolume(entries, bodyweightKg = null) {
@@ -110,8 +101,12 @@ export default function App() {
   const [baseExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
-  const [weekOnly, setWeekOnly] = useState(readWeekOnly);
   const [prefill, setPrefill] = useState(null);
+  // The month calendar folds into a button: open while hovered (mouse), or
+  // tapped open; picking a day folds it again.
+  const [calHover, setCalHover] = useState(false);
+  const [calPinned, setCalPinned] = useState(false);
+  const calOpen = calHover || calPinned;
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
   const [imported, setImported] = useState({});
@@ -412,6 +407,21 @@ export default function App() {
     const current = monthData[selected] || { strength: [], cardio: [] };
     const updated = { ...current, [type]: [...(current[type] || []), { id: uid(), ...entry }] };
     persist({ ...monthData, [selected]: updated });
+    noteNewExercise(type, entry);
+  };
+
+  // Editing keeps the entry's place in the list but gives it a new id, and
+  // records the old id as deleted: entries sync by id, so this is how an
+  // edit reaches other devices instead of being merged away.
+  const editEntry = async (type, id, entry) => {
+    await drive.recordDeletion(id).catch(() => {});
+    const current = monthData[selected] || { strength: [], cardio: [] };
+    const updated = { ...current, [type]: (current[type] || []).map((e) => (e.id === id ? { ...entry, id: uid() } : e)) };
+    persist({ ...monthData, [selected]: updated });
+    if (type !== "food") noteNewExercise(type, entry);
+  };
+
+  function noteNewExercise(type, entry) {
     // A name that isn't in the library yet becomes one of your exercises.
     const name = (type === "cardio" ? entry.activity : entry.exercise || "").trim();
     if (name && !libraryKeys.has(nameKey(name))) {
@@ -461,12 +471,6 @@ export default function App() {
   };
 
   const grid = useMemo(() => buildGrid(cursor), [cursor]);
-  // Collapsed, the calendar shows only the row holding the selected day.
-  const weekStart = Math.floor(Math.max(0, grid.indexOf(selected)) / 7) * 7;
-  const visibleCells = weekOnly ? grid.slice(weekStart, weekStart + 7) : grid;
-  const toggleWeekOnly = () => {
-    setWeekOnly((on) => { writeWeekOnly(!on); return !on; });
-  };
 
   const maxVol = useMemo(() => {
     let m = 1;
@@ -563,48 +567,61 @@ export default function App() {
         />
       ) : (
       <>
-      <div style={styles.dowRow}>
-        {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
+      <div
+        style={styles.calWrap}
+        onPointerEnter={(e) => { if (e.pointerType === "mouse") setCalHover(true); }}
+        onPointerLeave={(e) => { if (e.pointerType === "mouse") setCalHover(false); }}
+      >
+      <button
+        type="button"
+        onClick={() => setCalPinned((p) => !p)}
+        aria-expanded={calOpen}
+        aria-controls="month-calendar"
+        style={{ ...styles.calToggle, ...(calOpen ? styles.calToggleOpen : {}) }}
+      >
+        <span style={styles.calIcon} aria-hidden="true">▦</span>
+        <span style={{ flex: 1, textAlign: "left" }}>Calendar</span>
+        <span style={styles.calHint}>{calOpen ? "Hide calendar" : "Change day"} {calOpen ? "▴" : "▾"}</span>
+      </button>
+      <div id="month-calendar" hidden={!calOpen}>
+        <div style={styles.dowRow}>
+          {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
+        </div>
+  
+        <div style={styles.grid}>
+          {grid.map((day, i) => {
+            if (!day) return <div key={i} style={styles.emptyCell} />;
+            const data = monthData[day] || { strength: [], cardio: [] };
+            const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
+            const dur = cardioDuration(data.cardio);
+            const isSelected = day === selected;
+            const isToday = isSameMonth(cursor) && day === todayDayNum();
+            return (
+              <button
+                key={i}
+                onClick={() => { setSelected(day); setCalPinned(false); setCalHover(false); }}
+                style={{
+                  ...styles.dayCell,
+                  ...(isSelected ? styles.dayCellSelected : {}),
+                  ...(isToday && !isSelected ? styles.dayCellToday : {}),
+                }}
+              >
+                <span style={styles.dayNum}>{String(Number(day))}</span>
+                <span style={styles.barTrack}>
+                  {activeTab === "food" ? (
+                    <span className="ft-bar" style={{ ...styles.bar, width: 10, background: "#7A3E62", height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
+                  ) : (
+                    <>
+                      <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
+                      <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
+                    </>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
-
-      <div style={styles.grid} data-testid="calendar-grid">
-        {visibleCells.map((day, j) => {
-          const i = weekOnly ? weekStart + j : j;
-          if (!day) return <div key={i} style={styles.emptyCell} />;
-          const data = monthData[day] || { strength: [], cardio: [] };
-          const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
-          const dur = cardioDuration(data.cardio);
-          const isSelected = day === selected;
-          const isToday = isSameMonth(cursor) && day === todayDayNum();
-          return (
-            <button
-              key={i}
-              onClick={() => setSelected(day)}
-              style={{
-                ...styles.dayCell,
-                ...(isSelected ? styles.dayCellSelected : {}),
-                ...(isToday && !isSelected ? styles.dayCellToday : {}),
-              }}
-            >
-              <span style={styles.dayNum}>{String(Number(day))}</span>
-              <span style={styles.barTrack}>
-                {activeTab === "food" ? (
-                  <span className="ft-bar" style={{ ...styles.bar, width: 10, background: "#7A3E62", height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
-                ) : (
-                  <>
-                    <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
-                    <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
-                  </>
-                )}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div style={styles.calendarToggleRow}>
-        <button onClick={toggleWeekOnly} aria-pressed={weekOnly} style={styles.calendarToggle}>
-          {weekOnly ? "Show month ▾" : "Show week ▴"}
-        </button>
       </div>
 
       {loading ? (
@@ -624,6 +641,7 @@ export default function App() {
               recent={recentFoods}
               onAdd={addFoods}
               onDelete={(id) => deleteEntry("food", id)}
+              onEdit={(id, e) => editEntry("food", id, e)}
               targets={profile.targets}
               onSaveTargets={saveTargets}
               saveError={saveError}
@@ -656,6 +674,7 @@ export default function App() {
               )}
               entries={dayEntries.strength}
               onDelete={(id) => deleteEntry("strength", id)}
+              onEdit={(id, e) => editEntry("strength", id, e)}
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
@@ -691,6 +710,7 @@ export default function App() {
               )}
               entries={dayEntries.cardio}
               onDelete={(id) => deleteEntry("cardio", id)}
+              onEdit={(id, e) => editEntry("cardio", id, e)}
               footer={dayEntries.cardio && dayEntries.cardio.length > 0 ? `Total time: ${cardioDuration(dayEntries.cardio)} min` : null}
             />
           </div>
@@ -828,11 +848,26 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
+  const [editingId, setEditingId] = useState(null); // entry being edited in the form
+
+  const startEdit = (e) => {
+    const v = {};
+    for (const f of fields) if (e[f.key] != null) v[f.key] = String(e[f.key]);
+    if (e.bw) v.bw = true;
+    setVals(v);
+    setEditingId(e.id);
+    setOpen(true);
+  };
+  const closeForm = () => { setOpen(false); setEditingId(null); setVals({}); };
+  const formRef = useRef(null);
+  useEffect(() => {
+    if (editingId) formRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [editingId]);
 
   useEffect(() => {
     if (prefill && prefill.type === sectionType) {
@@ -847,9 +882,10 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
     const primary = fields[0].key;
     if (!vals[primary]) return;
     const { bw, ...rest } = vals;
-    onAdd(bw ? { ...rest, bw: true } : rest);
-    setVals({});
-    setOpen(false);
+    const entry = bw ? { ...rest, bw: true } : rest;
+    if (editingId) onEdit(editingId, entry);
+    else onAdd(entry);
+    closeForm();
   };
 
   return (
@@ -857,7 +893,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       <div style={styles.sectionHead}>
         <span style={{ ...styles.sectionTitle, color: accent }}>{title}</span>
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => (open ? closeForm() : setOpen(true))}
           style={{ ...styles.addBtn, borderColor: accent, color: open ? "#F5F1E8" : accent, background: open ? accent : "transparent" }}
         >
           {open ? "Cancel" : "+ Add"}
@@ -865,7 +901,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       </div>
 
       {open && (
-        <form onSubmit={submit} style={styles.form}>
+        <form ref={formRef} onSubmit={submit} style={styles.form}>
           {fields.map((f) => f.options ? (
             <ExercisePicker
               key={f.key}
@@ -940,7 +976,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               />
             </label>
           ))}
-          <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{addLabel}</button>
+          {editingId && <span style={styles.editingNote}>Editing an entry. Change anything, then save.</span>}
+          <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{editingId ? "Save changes" : addLabel}</button>
         </form>
       )}
 
@@ -949,9 +986,12 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           <div style={styles.emptyText}>{emptyText}</div>
         ) : (
           entries.map((e) => (
-            <div key={e.id} style={{ ...styles.row, background: accentSoft + "40" }}>
+            <div key={e.id} style={{ ...styles.row, background: accentSoft + "40", ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}>
               {renderRow(e)}
-              <button aria-label="Delete entry" onClick={() => onDelete(e.id)} style={styles.deleteBtn}>×</button>
+              {onEdit && (
+                <button aria-label={`Edit ${e[fields[0].key] || "entry"}`} onClick={() => startEdit(e)} style={styles.editBtn}>✎</button>
+              )}
+              <button aria-label="Delete entry" onClick={() => { if (editingId === e.id) closeForm(); onDelete(e.id); }} style={styles.deleteBtn}>×</button>
             </div>
           ))
         )}
@@ -2196,6 +2236,26 @@ const styles = {
     marginTop: 10,
     textAlign: "center",
   },
+  calWrap: { marginTop: 14 },
+  calToggle: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    fontSize: 18,
+    letterSpacing: "0.02em",
+    color: ink,
+    background: raised,
+    border: `1px solid ${line}`,
+    borderRadius: 4,
+    padding: "9px 12px",
+    WebkitTapHighlightColor: "transparent",
+  },
+  calToggleOpen: { borderColor: ink },
+  calIcon: { fontSize: 16, color: inkFaint },
+  calHint: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 400, color: inkFaint, letterSpacing: 0 },
   dowRow: {
     display: "grid",
     gridTemplateColumns: "repeat(7, 1fr)",
@@ -2216,16 +2276,6 @@ const styles = {
     marginTop: 6,
   },
   emptyCell: { minHeight: 54 },
-  calendarToggleRow: { display: "flex", justifyContent: "flex-end", marginTop: 6 },
-  calendarToggle: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
-    color: inkFaint,
-    background: "none",
-    border: `1px solid ${line}`,
-    borderRadius: 3,
-    padding: "3px 8px",
-  },
   dayCell: {
     minHeight: 54,
     background: raised,
@@ -2357,6 +2407,16 @@ const styles = {
   },
   rowMain: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, fontWeight: 500, flex: 1 },
   rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
+  editBtn: {
+    background: "none",
+    border: "none",
+    color: inkFaint,
+    fontSize: 15,
+    lineHeight: 1,
+    padding: "0 4px",
+    marginLeft: 4,
+  },
+  editingNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
   deleteBtn: {
     background: "none",
     border: "none",
