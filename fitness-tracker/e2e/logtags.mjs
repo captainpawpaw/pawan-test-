@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -110,7 +110,7 @@ opts = await pa.getByRole('option').allInnerTexts();
 check(opts.some(o => o.startsWith('Skullcrusher')), 'name search still suggests exercises');
 await pa.getByLabel('Exercise').press('Enter');
 check((await pa.getByLabel('Exercise').inputValue()).startsWith('Skullcrusher'), 'Enter picks the top suggestion');
-await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8'); await pa.getByLabel('Weight (kg)').fill('30');
+await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8'); await pa.getByLabel('Max weight (kg)').fill('30');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 check((await pa.locator('body').innerText()).includes('3×8 · max 30kg'), 'logging still works');
 

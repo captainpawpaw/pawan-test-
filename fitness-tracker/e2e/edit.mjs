@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -84,7 +84,7 @@ await pa.getByRole('button', { name: 'Save changes' }).click();
 let t = await strength.innerText();
 check(t.includes('3×6 · max 105kg') && !t.includes('3×5 · max 100kg'), 'set updated in place');
 check(t.indexOf('Back Squat') < t.indexOf('Leg Press'), 'keeps its place in the list');
-check(t.includes('Volume (sets × reps × max weight): 6,690 kg'), 'volume recalculated: ' + (t.match(/Volume \(sets × reps × max weight\): [\d,]+ kg/) || [''])[0]);
+check(t.includes('Volume (sets × reps × average weight): 6,690 kg'), 'volume recalculated: ' + (t.match(/Volume \(sets × reps × average weight\): [\d,]+ kg/) || [''])[0]);
 // cancel leaves it alone
 await strength.getByRole('button', { name: 'Edit Leg Press' }).click();
 await pa.getByLabel('Reps').fill('99');
@@ -93,7 +93,7 @@ check((await strength.innerText()).includes('4×10 · max 120kg'), 'cancel keeps
 // switching to body weight while editing
 await strength.getByRole('button', { name: 'Edit Leg Press' }).click();
 await pa.getByLabel('Exercise').fill('Weighted Dip'); await pa.getByRole('button', { name: 'Body weight', exact: true }).click();
-await pa.getByLabel('Added weight (kg), optional').fill('10');
+await pa.getByLabel('Max added weight (kg), optional').fill('10');
 await pa.getByRole('button', { name: 'Save changes' }).click();
 check((await strength.innerText()).includes('Weighted Dip') && (await strength.innerText()).includes('4×10 · max BW + 10kg'), 'can change exercise and switch to body weight');
 

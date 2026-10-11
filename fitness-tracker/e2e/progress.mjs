@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -178,7 +178,7 @@ await pa.getByText(/^Table of values in view/).click();
 t = await pa.locator('table tbody').innerText();
 check(/3,600/.test(t), 'body-weight volume: 3x15x80 = 3,600 per week');
 const vt = await pa.locator('body').innerText();
-check(vt.includes('based on max weight: sets × reps × max weight') && vt.includes('(max-weight volume)'), 'volume says it is based on max weight');
+check(vt.includes('sets × reps × average weight') && vt.includes('(average-weight volume)'), 'volume says it is based on max weight');
 await pa.screenshot({ path: 'prog-volume.png' });
 await pa.locator('#progress-pick').selectOption('tag:legs');
 const tm = await pa.locator('[aria-label="Measure"] button').allTextContents();

@@ -395,7 +395,7 @@ function Chart({ rows, metric, bwOn, title, target }) {
           </>
         ) : (
           <>
-            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}${metric === "volume" ? " (max-weight volume)" : ""}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}${metric === "volume" ? " (average-weight volume)" : ""}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
             <Tile label={`Latest ${periodWord}`} value={latest ? fmt(latest.value, m.unit) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : ""} />
             <Tile label="Workout days in view" value={String(sessions)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
           </>

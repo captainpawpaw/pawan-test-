@@ -58,3 +58,13 @@ test("weight & reps keeps max and min of each per period", () => {
   const dip = bucketizeWeightReps(rows.filter((r) => r.name === "Dip"), "day", () => 80);
   assert.equal(dip[0].wMax, 90);
 });
+
+test("volume uses the average of min and max weight; min weight feeds the min line", () => {
+  const rs = flattenMonths({ "2026-10": { "06": { strength: [
+    { id: "m1", exercise: "Bench", sets: "4", reps: "10", weight: "60", minWeight: "40" },
+    { id: "m2", exercise: "Bench", sets: "2", reps: "5", weight: "70" },
+  ], cardio: [] } } });
+  assert.equal(bucketize(rs, "volume", "day")[0].value, 4 * 10 * 50 + 2 * 5 * 70);
+  const wr = bucketizeWeightReps(rs, "day")[0];
+  assert.deepEqual([wr.wMax, wr.wMin], [70, 40]);
+});
