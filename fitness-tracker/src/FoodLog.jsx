@@ -17,7 +17,7 @@ const mono = "'IBM Plex Mono', monospace";
 const sans = C.sans;
 const condensed = C.display;
 
-const SOURCE_LABEL = { usda: "USDA", "usda-online": "USDA online", off: "Open Food Facts", claude: "Claude estimate", custom: "Your entry" };
+const SOURCE_LABEL = { cofid: "UK CoFID", usda: "USDA", "usda-online": "USDA online", off: "Open Food Facts", claude: "Claude estimate", custom: "Your entry" };
 const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 })}`;
 
 // entries: this day's food; recent: foods logged before (newest first);
@@ -177,6 +177,7 @@ function AddFood({ recent, onAdd, onDone }) {
       {mode === "claude" && <ClaudeEstimate onAdd={(items) => { onAdd(items); setFlash(`Added ${items.length} item${items.length === 1 ? "" : "s"} from Claude's estimate.`); setMode("search"); }} onBack={() => setMode("search")} />}
       {mode === "scan" && <BarcodeScan onFound={pick} onBack={() => setMode("search")} />}
       <button type="button" onClick={onDone} style={{ ...st.linkBtn, alignSelf: "flex-end" }}>Done adding</button>
+      <span style={st.note}>UK foods: McCance and Widdowson’s CoFID 2021. Contains public sector information licensed under the Open Government Licence v3.0.</span>
     </div>
   );
 }
@@ -245,7 +246,7 @@ function FoodSearch({ recent, onPick, onMode }) {
           <li key={f.id}>
             <button type="button" onClick={() => onPick(f)} style={st.result}>
               <span style={st.resultName}>{f.name}</span>
-              <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g{f.group ? ` · ${f.group}` : ""}</span>
+              <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g{f.group ? ` · ${f.group}` : ""}{f.source === "cofid" ? " · UK" : f.source === "usda" ? " · US" : ""}</span>
             </button>
           </li>
         ))}
@@ -271,7 +272,7 @@ function FoodSearch({ recent, onPick, onMode }) {
       {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
 
       <ResultList items={recentHits} label={q.trim() ? "Logged before" : "Recent"} />
-      <ResultList items={local.slice(0, 15)} label="Foods (USDA)" />
+      <ResultList items={local.slice(0, 15)} label="Foods (UK CoFID and USDA)" />
       <ResultList items={usdaShown} label="More from USDA online" />
       {q.trim().length >= 2 && foods && !local.length && !recentHits.length && <span style={st.note}>No match in the built-in list.</span>}
 
@@ -316,7 +317,7 @@ function FoodSearch({ recent, onPick, onMode }) {
 
 function AmountStep({ food, onAdd, onBack }) {
   const units = useMemo(() => [{ g: 1, label: "g" }, ...(food.portions || [])], [food]);
-  const [unit, setUnit] = useState(food.portions?.length && food.source !== "usda" ? 1 : 0);
+  const [unit, setUnit] = useState(food.portions?.length && food.source !== "usda" && food.source !== "cofid" ? 1 : 0);
   const [qty, setQty] = useState(food.lastGrams && unit === 0 ? String(food.lastGrams) : unit === 0 ? "100" : "1");
   const grams = (Number(qty) || 0) * units[unit].g;
   const vals = scale(food.per100, grams);

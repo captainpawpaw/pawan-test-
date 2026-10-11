@@ -63,7 +63,7 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 
 
 let external = 0;
-await A.route('https://world.openfoodfacts.org/**', (r) => { external++; r.abort(); });
+await A.route('https://*.openfoodfacts.org/**', (r) => { external++; r.abort(); });
 await A.route('http://localhost:4190/api/usda*', (r) => { external++; r.abort(); });
 await A.addInitScript(() => {
   window.__saved = []; window.__prompts = [];

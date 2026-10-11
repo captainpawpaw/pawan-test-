@@ -120,7 +120,7 @@ check((t.match(/Back Squat/g) || []).length === 1 && !t.includes('max 100kg'), '
 await pa.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pa.getByRole('button', { name: '+ Add' }).last().click();
 await pa.getByLabel('Search foods').fill('banana raw');
-await pa.getByRole('button', { name: /^Bananas, raw/ }).first().click();
+await pa.getByRole('button', { name: /^Bananas, raw\W*\d/ }).first().click();
 await pa.getByLabel('Amount').fill('100');
 await pa.getByRole('button', { name: 'Add to day' }).click();
 await pa.getByRole('button', { name: 'Enter manually' }).click();
