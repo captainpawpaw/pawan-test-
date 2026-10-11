@@ -64,7 +64,7 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 
 await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
 const strength = pa.locator('.ft-section').first();
-const foot = async () => ((await strength.innerText()).match(/Volume \(sets × reps × average weight\): [\d,.]+ kg/) || [''])[0];
+const foot = async () => ((await strength.innerText()).match(/Volume \(sets × reps × max weight\): [\d,.]+ kg/) || [''])[0];
 async function logSet(name, sets, reps, max, min) {
   await strength.locator('button', { hasText: '+ Add' }).click();
   await pa.getByLabel('Exercise').fill(name); await pa.getByLabel('Sets').fill(sets); await pa.getByLabel('Reps').fill(reps);
@@ -80,9 +80,9 @@ await strength.locator('button', { hasText: 'Cancel' }).click();
 await logSet('Bench Press', '4', '10', '60', '40');
 let t = await strength.innerText();
 check(t.includes('4×10 · 40–60kg'), 'row shows the weight range');
-check((await foot()).endsWith(' 2,000 kg'), 'volume uses the average (4×10×50): ' + await foot());
+check((await foot()).endsWith(' 2,400 kg'), 'volume uses max weight (4×10×60): ' + await foot());
 await logSet('Back Squat', '2', '5', '100');
-check((await strength.innerText()).includes('2×5 · max 100kg') && (await foot()).endsWith(' 3,000 kg'), 'no min: counts at max weight (2,000 + 2×5×100): ' + await foot());
+check((await strength.innerText()).includes('2×5 · max 100kg') && (await foot()).endsWith(' 3,400 kg'), 'no min: counts at max weight (2,400 + 2×5×100): ' + await foot());
 await logSet('Leg Press', '1', '10', '50', '90');
 check((await strength.innerText()).includes('1×10 · 50–90kg'), 'min above max gets swapped');
 // edit keeps and changes the min
@@ -108,12 +108,13 @@ check((await strength.innerText()).includes('3×8 · BW + 5–10kg'), 'body weig
 await logSet('Bench Press', '3', '8', '70', '45');
 await pa.getByRole('button', { name: 'PROGRESS' }).click();
 await pa.locator('#progress-pick').selectOption('exercise:Bench Press');
+await pa.getByRole('button', { name: 'Weight & reps' }).click();
 await pa.getByRole('button', { name: 'Daily' }).click();
 await pa.getByText(/^Table of values in view/).click();
 const row = (await pa.locator('table tbody tr').first().innerText()).replace(/\s+/g, ' ');
 check(/70 45 10 8/.test(row), 'weight & reps min weight comes from the logged min: ' + row);
 await pa.getByRole('button', { name: 'Volume' }).click();
-check((await pa.locator('body').innerText()).includes('sets × reps × average weight'), 'progress volume says average weight');
+check((await pa.locator('body').innerText()).includes('sets × reps × max weight'), 'progress volume says max weight');
 await pa.screenshot({ path: 'min-weight-progress.png' });
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

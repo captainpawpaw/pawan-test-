@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adjustScale, bucketize, bucketizeWeightReps, flattenMonths, metricsFor, niceRange, niceTicks, periodStart, DAY } from "../src/progress.js";
+import { adjustScale, bucketize, bucketizeScore, bucketizeWeightReps, scoreSessions, flattenMonths, metricsFor, niceRange, niceTicks, periodStart, DAY } from "../src/progress.js";
 
 const months = {
   "2026-09": {
@@ -30,8 +30,8 @@ test("body-weight sets use body weight on that date", () => {
 });
 
 test("metrics offered fit the selection", () => {
-  assert.deepEqual(metricsFor(rows.filter((r) => r.name === "Back Squat")), ["weightreps", "best", "e1rm", "volume", "reps", "sets"]);
-  assert.deepEqual(metricsFor(rows.filter((r) => r.type === "strength")), ["volume", "reps", "sets"]);
+  assert.deepEqual(metricsFor(rows.filter((r) => r.name === "Back Squat")), ["score", "weightreps", "best", "e1rm", "volume", "reps", "sets"]);
+  assert.deepEqual(metricsFor(rows.filter((r) => r.type === "strength")), ["score", "volume", "reps", "sets"]);
   assert.deepEqual(metricsFor(rows.filter((r) => r.name === "Run")), ["minutes", "distance"]);
 });
 
@@ -59,12 +59,46 @@ test("weight & reps keeps max and min of each per period", () => {
   assert.equal(dip[0].wMax, 90);
 });
 
-test("volume uses the average of min and max weight; min weight feeds the min line", () => {
+test("volume uses max weight; min weight only feeds the min line", () => {
   const rs = flattenMonths({ "2026-10": { "06": { strength: [
     { id: "m1", exercise: "Bench", sets: "4", reps: "10", weight: "60", minWeight: "40" },
     { id: "m2", exercise: "Bench", sets: "2", reps: "5", weight: "70" },
   ], cardio: [] } } });
-  assert.equal(bucketize(rs, "volume", "day")[0].value, 4 * 10 * 50 + 2 * 5 * 70);
+  assert.equal(bucketize(rs, "volume", "day")[0].value, 4 * 10 * 60 + 2 * 5 * 70);
   const wr = bucketizeWeightReps(rs, "day")[0];
   assert.deepEqual([wr.wMax, wr.wMin], [70, 40]);
+});
+
+test("Ledger score: 100 at the start, half strength and half work", () => {
+  const day = (d, sets, reps, weight) => ({ [d]: { strength: [{ id: d, exercise: "Bench", sets: String(sets), reps: String(reps), weight: String(weight) }], cardio: [] } });
+  const rs = flattenMonths({ "2026-09": { ...day("01", 3, 10, 60), ...day("08", 3, 10, 60) }, "2026-10": day("06", 6, 10, 60) });
+  const ss = scoreSessions(rs);
+  assert.deepEqual(ss.map((s) => Math.round(s.score)), [100, 100, 150]); // same strength, double the work
+  const e1 = 60 * (1 + 10 / 30);
+  const heavier = flattenMonths({ "2026-09": day("01", 3, 10, 60), "2026-10": day("06", 3, 10, 66) });
+  const sc = scoreSessions(heavier)[1].score; // 10% heavier: strength +10%, work +10%
+  assert.ok(Math.abs(sc - 110) < 1e-9, String(sc));
+  assert.ok(e1 > 0);
+});
+
+test("Ledger score: warm-up pattern doesn't matter, only max weight, sets and reps", () => {
+  const a = flattenMonths({ "2026-10": { "01": { strength: [{ id: "a", exercise: "Row", sets: "4", reps: "8", weight: "50", minWeight: "25" }], cardio: [] } } });
+  const b = flattenMonths({ "2026-10": { "01": { strength: [{ id: "b", exercise: "Row", sets: "4", reps: "8", weight: "50", minWeight: "45" }], cardio: [] } } });
+  assert.deepEqual(scoreSessions(a).map((s) => s.work), scoreSessions(b).map((s) => s.work));
+});
+
+test("Ledger score: a tag averages its exercises equally", () => {
+  const rs = flattenMonths({ "2026-10": {
+    "01": { strength: [{ id: "a", exercise: "Squat", sets: "3", reps: "5", weight: "100" }, { id: "b", exercise: "Curl", sets: "3", reps: "10", weight: "10" }], cardio: [] },
+    "20": { strength: [{ id: "c", exercise: "Squat", sets: "3", reps: "5", weight: "120" }, { id: "d", exercise: "Curl", sets: "3", reps: "10", weight: "10" }], cardio: [] },
+  } });
+  const m = bucketizeScore(rs, "month");
+  assert.equal(m.length, 1);
+  // Squat: 100 then 120 (avg 110); Curl: 100, 100 -> (110 + 100) / 2
+  assert.equal(m[0].value, 105);
+  assert.equal(m[0].exercises, 2);
+});
+
+test("score is offered first for strength", () => {
+  assert.equal(metricsFor(rows.filter((r) => r.name === "Back Squat"))[0], "score");
 });

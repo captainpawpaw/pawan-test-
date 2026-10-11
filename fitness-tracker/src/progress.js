@@ -75,10 +75,11 @@ export function flattenMonths(months) {
 // "avg": the average day (food is totalled per day, then averaged over the
 // days with food logged).
 export const METRICS = {
+  score: { label: "Ledger score", unit: "pts", agg: "score", type: "strength", form: "line", note: "100 = your first two weeks · half strength (est. 1-rep max), half work (sets × reps × max weight)" },
   weightreps: { label: "Weight & reps", unit: "kg", agg: "dual", type: "strength", form: "dual", note: "max and min weight on the left, reps per set on the right" },
   best: { label: "Best weight", unit: "kg", agg: "max", type: "strength", form: "line" },
   e1rm: { label: "Est. 1-rep max", unit: "kg", agg: "max", type: "strength", form: "line", note: "Epley: weight × (1 + reps ÷ 30)" },
-  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × average weight (midpoint of min and max; max if no min)" },
+  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × max weight" },
   reps: { label: "Reps", unit: "reps", agg: "sum", type: "strength", form: "column" },
   sets: { label: "Sets", unit: "sets", agg: "sum", type: "strength", form: "column" },
   minutes: { label: "Minutes", unit: "min", agg: "sum", type: "cardio", form: "column" },
@@ -102,10 +103,7 @@ function minLoadOf(e, date, bwOn) {
   const lo = Math.min(min, Number(e.weight));
   return e.bw ? lo + (Number(bwOn?.(date)) || 0) : lo;
 }
-// Volume counts each entry at the average of its min and max weight.
-function avgLoadOf(e, date, bwOn) {
-  return (minLoadOf(e, date, bwOn) + loadOf(e, date, bwOn)) / 2;
-}
+
 
 // The value one logged entry contributes to a metric (null = none).
 export function entryValue(metric, row, bwOn) {
@@ -119,7 +117,7 @@ export function entryValue(metric, row, bwOn) {
       if (!(l > 0) || !(reps > 0)) return null;
       return reps === 1 ? l : l * (1 + reps / 30);
     }
-    case "volume": { const v = sets * reps * avgLoadOf(e, date, bwOn); return v > 0 ? v : null; }
+    case "volume": { const v = sets * reps * loadOf(e, date, bwOn); return v > 0 ? v : null; }
     case "reps": { const v = sets * reps; return v > 0 ? v : null; }
     case "sets": return sets > 0 ? sets : null;
     case "minutes": { const v = Number(e.duration) || 0; return v > 0 ? v : null; }
@@ -137,6 +135,7 @@ export function metricsFor(rows) {
   const names = new Set(rows.map((r) => r.name));
   const out = [];
   if (hasStrength) {
+    out.push("score");
     // Best weight and 1RM only compare like with like: one exercise.
     if (names.size === 1 && rows.some((r) => Number(r.e.weight) > 0 || r.e.bw)) out.push("weightreps", "best", "e1rm");
     out.push("volume", "reps", "sets");
@@ -175,6 +174,70 @@ export function bucketizeWeightReps(rows, scale, bwOn) {
 
 // Rows -> [{ start: Date, end: Date, value, count, days }] for one scale,
 // only periods that have data.
+/* ---------- Ledger score ---------- */
+// One standard number for progress, from max weight, sets and reps only, so
+// exercises with different warm-up patterns are treated alike. Each exercise
+// is measured against itself:
+//   strength = est. 1-rep max of the top set = max weight × (1 + reps ÷ 30)
+//   work     = sets × reps × max weight
+//   score    = 100 × (½ × strength ÷ baseline strength + ½ × work ÷ baseline work)
+// The baseline is the exercise's first two weeks (its sessions within 14
+// days of the first), so 112 means 12% better than when you started.
+// A session is all of one exercise's entries on one day.
+export const SCORE_BASELINE_DAYS = 14;
+
+export function scoreSessions(rows, bwOn) {
+  const byExercise = new Map();
+  for (const r of rows) {
+    if (r.type !== "strength") continue;
+    const w = loadOf(r.e, r.date, bwOn);
+    const sets = Number(r.e.sets) || 0, reps = Number(r.e.reps) || 0;
+    if (!(w > 0) || !(sets > 0) || !(reps > 0)) continue;
+    const key = r.name.trim().toLowerCase();
+    if (!byExercise.has(key)) byExercise.set(key, { name: r.name, days: new Map() });
+    const days = byExercise.get(key).days;
+    const d = days.get(r.date) || { date: r.date, strength: 0, work: 0 };
+    d.strength = Math.max(d.strength, w * (1 + reps / 30));
+    d.work += sets * reps * w;
+    days.set(r.date, d);
+  }
+  const out = [];
+  for (const { name, days } of byExercise.values()) {
+    const sessions = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+    const first = parseIso(sessions[0].date).getTime();
+    const base = sessions.filter((x) => parseIso(x.date).getTime() - first < SCORE_BASELINE_DAYS * DAY);
+    const bs = base.reduce((a, x) => a + x.strength, 0) / base.length;
+    const bw = base.reduce((a, x) => a + x.work, 0) / base.length;
+    for (const x of sessions) {
+      out.push({ name, date: x.date, score: 100 * (0.5 * (x.strength / bs) + 0.5 * (x.work / bw)), strength: x.strength, work: x.work });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Score per period: each exercise's average session score in the period,
+// then the average across exercises (so a tag or all training weighs each
+// exercise equally, however often it's done).
+export function bucketizeScore(rows, scale, bwOn) {
+  const map = new Map();
+  for (const s of scoreSessions(rows, bwOn)) {
+    const start = periodStart(parseIso(s.date), scale);
+    const key = start.getTime();
+    let b = map.get(key);
+    if (!b) { b = { start, end: nextPeriod(start, scale), ex: new Map(), days: new Set() }; map.set(key, b); }
+    const e = b.ex.get(s.name) || { sum: 0, n: 0 };
+    e.sum += s.score; e.n += 1;
+    b.ex.set(s.name, e);
+    b.days.add(s.date);
+  }
+  return [...map.values()]
+    .map((b) => {
+      const avgs = [...b.ex.values()].map((e) => e.sum / e.n);
+      return { start: b.start, end: b.end, value: Math.round((avgs.reduce((a, v) => a + v, 0) / avgs.length) * 10) / 10, days: b.days.size, exercises: avgs.length };
+    })
+    .sort((a, b) => a.start - b.start);
+}
+
 export function bucketize(rows, metric, scale, bwOn) {
   const m = METRICS[metric];
   const map = new Map();
