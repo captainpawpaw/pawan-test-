@@ -199,7 +199,7 @@ await pb.getByRole('button', { name: 'FOOD', exact: true }).click();
 t = await pb.locator('body').innerText();
 check(t.includes('1,404 kcal left'), 'import shows food on the other device without reload');
 await pb.getByLabel('Import a backup file').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
-check((await pb.locator('body').innerText()).includes("That file isn't a Training Ledger backup."), 'bad file rejected');
+check(await pb.getByText("That file isn't a Training Ledger backup.").waitFor({ timeout: 5000 }).then(() => true, () => false), 'bad file rejected');
 check(offCalls <= 3, 'Open Food Facts only called when asked: ' + offCalls);
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

@@ -102,6 +102,11 @@ export default function App() {
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
   const [prefill, setPrefill] = useState(null);
+  // The month calendar folds into a button: open while hovered (mouse), or
+  // tapped open; picking a day folds it again.
+  const [calHover, setCalHover] = useState(false);
+  const [calPinned, setCalPinned] = useState(false);
+  const calOpen = calHover || calPinned;
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
   const [imported, setImported] = useState({});
@@ -547,42 +552,61 @@ export default function App() {
         />
       ) : (
       <>
-      <div style={styles.dowRow}>
-        {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
+      <div
+        style={styles.calWrap}
+        onPointerEnter={(e) => { if (e.pointerType === "mouse") setCalHover(true); }}
+        onPointerLeave={(e) => { if (e.pointerType === "mouse") setCalHover(false); }}
+      >
+      <button
+        type="button"
+        onClick={() => setCalPinned((p) => !p)}
+        aria-expanded={calOpen}
+        aria-controls="month-calendar"
+        style={{ ...styles.calToggle, ...(calOpen ? styles.calToggleOpen : {}) }}
+      >
+        <span style={styles.calIcon} aria-hidden="true">▦</span>
+        <span style={{ flex: 1, textAlign: "left" }}>Calendar</span>
+        <span style={styles.calHint}>{calOpen ? "Hide calendar" : "Change day"} {calOpen ? "▴" : "▾"}</span>
+      </button>
+      <div id="month-calendar" hidden={!calOpen}>
+        <div style={styles.dowRow}>
+          {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
+        </div>
+  
+        <div style={styles.grid}>
+          {grid.map((day, i) => {
+            if (!day) return <div key={i} style={styles.emptyCell} />;
+            const data = monthData[day] || { strength: [], cardio: [] };
+            const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
+            const dur = cardioDuration(data.cardio);
+            const isSelected = day === selected;
+            const isToday = isSameMonth(cursor) && day === todayDayNum();
+            return (
+              <button
+                key={i}
+                onClick={() => { setSelected(day); setCalPinned(false); setCalHover(false); }}
+                style={{
+                  ...styles.dayCell,
+                  ...(isSelected ? styles.dayCellSelected : {}),
+                  ...(isToday && !isSelected ? styles.dayCellToday : {}),
+                }}
+              >
+                <span style={styles.dayNum}>{String(Number(day))}</span>
+                <span style={styles.barTrack}>
+                  {activeTab === "food" ? (
+                    <span className="ft-bar" style={{ ...styles.bar, width: 10, background: "#7A3E62", height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
+                  ) : (
+                    <>
+                      <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
+                      <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
+                    </>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
-
-      <div style={styles.grid}>
-        {grid.map((day, i) => {
-          if (!day) return <div key={i} style={styles.emptyCell} />;
-          const data = monthData[day] || { strength: [], cardio: [] };
-          const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
-          const dur = cardioDuration(data.cardio);
-          const isSelected = day === selected;
-          const isToday = isSameMonth(cursor) && day === todayDayNum();
-          return (
-            <button
-              key={i}
-              onClick={() => setSelected(day)}
-              style={{
-                ...styles.dayCell,
-                ...(isSelected ? styles.dayCellSelected : {}),
-                ...(isToday && !isSelected ? styles.dayCellToday : {}),
-              }}
-            >
-              <span style={styles.dayNum}>{String(Number(day))}</span>
-              <span style={styles.barTrack}>
-                {activeTab === "food" ? (
-                  <span className="ft-bar" style={{ ...styles.bar, width: 10, background: "#7A3E62", height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
-                ) : (
-                  <>
-                    <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
-                    <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
-                  </>
-                )}
-              </span>
-            </button>
-          );
-        })}
       </div>
 
       {loading ? (
@@ -2174,6 +2198,26 @@ const styles = {
     marginTop: 10,
     textAlign: "center",
   },
+  calWrap: { marginTop: 14 },
+  calToggle: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontWeight: 700,
+    fontSize: 18,
+    letterSpacing: "0.02em",
+    color: ink,
+    background: raised,
+    border: `1px solid ${line}`,
+    borderRadius: 4,
+    padding: "9px 12px",
+    WebkitTapHighlightColor: "transparent",
+  },
+  calToggleOpen: { borderColor: ink },
+  calIcon: { fontSize: 16, color: inkFaint },
+  calHint: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 400, color: inkFaint, letterSpacing: 0 },
   dowRow: {
     display: "grid",
     gridTemplateColumns: "repeat(7, 1fr)",
