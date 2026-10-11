@@ -5,6 +5,7 @@
 // estimate meals instead.
 
 import { getSample, getImageLimits } from "./claudeRead";
+import { measuredDensity, densityIndex, similarDensity, withSpoons } from "./spoons.js";
 
 export const NUTRIENTS = ["kcal", "protein", "carbs", "fat", "fibre", "sugar"];
 export const MACRO_LABEL = { kcal: "Calories", protein: "Protein", carbs: "Carbs", fat: "Fat", fibre: "Fibre", sugar: "Sugar" };
@@ -54,7 +55,18 @@ export function loadFoods() {
       .then((lists) => {
         const ok = lists.filter(Boolean);
         if (!ok.length) throw new Error("food lists unavailable");
-        return ok.flat();
+        // Spoons: USDA foods from their own measures, UK foods borrowing from
+        // the closest USDA food, else a typical density.
+        const all = ok.flat().map((f) => {
+          const d = measuredDensity(f.portions);
+          return d ? { ...f, density: { d, how: "measured" } } : f;
+        });
+        const idx = densityIndex(all);
+        return all.map((f) => {
+          if (f.density) return withSpoons(f, f.density);
+          const d = f.source === "cofid" ? similarDensity(idx, f.name) : null;
+          return withSpoons(f, d ? { d, how: "similar" } : null);
+        });
       })
       .catch((e) => { foodsPromise = null; throw e; });
   }
@@ -134,7 +146,7 @@ export async function searchOpenFoodFacts(query, { signal } = {}) {
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`Open Food Facts answered ${res.status}`);
   const j = await res.json();
-  const list = (j.products || []).map(fromOff).filter(Boolean);
+  const list = (j.products || []).map(fromOff).filter(Boolean).map((f) => withSpoons(f));
   offCache.set(q, list);
   return list;
 }
@@ -146,7 +158,8 @@ export async function lookupBarcode(code, { signal } = {}) {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Open Food Facts answered ${res.status}`);
   const j = await res.json();
-  return j.status === 1 || j.product ? fromOff({ ...j.product, code: clean }) : null;
+  const f = j.status === 1 || j.product ? fromOff({ ...j.product, code: clean }) : null;
+  return f ? withSpoons(f) : null;
 }
 
 /* ---------- USDA online (Cloudflare Pages Function) ---------- */
@@ -161,7 +174,7 @@ export async function searchUsdaOnline(query, { signal } = {}) {
     if (!res.ok || !type.includes("json")) { if (res.status === 404 || res.status === 503 || !type.includes("json")) usdaState = "off"; return null; }
     usdaState = "on";
     const j = await res.json();
-    return (j.foods || []).map((f) => ({ ...f, source: "usda-online", group: f.group || "USDA" }));
+    return (j.foods || []).map((f) => withSpoons({ ...f, source: "usda-online", group: f.group || "USDA" }));
   } catch (e) {
     if (e?.name === "AbortError") throw e;
     return null;

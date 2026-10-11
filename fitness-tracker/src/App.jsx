@@ -15,11 +15,12 @@ const monthKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 const todayDayNum = () => pad2(new Date().getDate());
 const isSameMonth = (d) => monthKey(d) === monthKey(new Date());
 const MONTH_NAMES = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
-const DOW = ["S","M","T","W","T","F","S"];
+// Weeks start on Monday.
+const DOW = ["M","T","W","T","F","S","S"];
 
 function buildGrid(d) {
   const year = d.getFullYear(), month = d.getMonth();
-  const firstDow = new Date(year, month, 1).getDay();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells = [];
   for (let i = 0; i < firstDow; i++) cells.push(null);
@@ -111,11 +112,41 @@ export default function App() {
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
   const [prefill, setPrefill] = useState(null);
-  // The month calendar folds into a button: open while hovered (mouse), or
-  // tapped open; picking a day folds it again.
+  // The month calendar is a sidebar that slides out from the left: open while
+  // its tab is hovered (mouse), or tapped/clicked open; picking a day tucks it
+  // away again.
   const [calHover, setCalHover] = useState(false);
   const [calPinned, setCalPinned] = useState(false);
   const calOpen = calHover || calPinned;
+  const calRef = useRef(null);
+  const calTabRef = useRef(null);
+  const calPickedAt = useRef(0);
+  // restoreFocus: after closing from the keyboard, put focus back on the tab.
+  const closeCal = useCallback((restoreFocus = false) => {
+    setCalPinned(false);
+    setCalHover(false);
+    if (restoreFocus) calTabRef.current?.focus();
+  }, []);
+  // Opened by a tap or click: it acts as a dialog, so focus moves into it and
+  // the page behind stops scrolling.
+  useEffect(() => {
+    if (!calPinned) return undefined;
+    const raf = requestAnimationFrame(() => {
+      if (!calRef.current?.contains(document.activeElement)) calRef.current?.querySelector('[aria-pressed="true"]')?.focus();
+    });
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { cancelAnimationFrame(raf); document.body.style.overflow = prev; };
+  }, [calPinned]);
+  const onCalKeyDown = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); closeCal(true); return; }
+    if (e.key !== "Tab" || !calPinned) return;
+    // Keep Tab inside the open sidebar.
+    const items = [...calRef.current.querySelectorAll("button")];
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
   const [imported, setImported] = useState({});
@@ -544,8 +575,12 @@ export default function App() {
           .ft-sections { flex-direction: row !important; }
           .ft-section { flex: 1 1 0; }
         }
+        :root { --ft-cal-w: min(340px, calc(100vw - 52px)); }
+        .ft-cal-backdrop { animation: ft-fade 0.2s ease; }
+        @keyframes ft-fade { from { opacity: 0; } }
         @media (prefers-reduced-motion: reduce) {
-          .ft-bar { transition: none !important; }
+          .ft-bar, .ft-cal-tab, .ft-cal-drawer { transition: none !important; }
+          .ft-cal-backdrop { animation: none; }
         }
         /* iPhone Safari zooms in on any text box under 16px when it's tapped,
            which leaves the page zoomed and shifted sideways. */
@@ -621,28 +656,60 @@ export default function App() {
         />
       ) : (
       <>
+      {calPinned && <div className="ft-cal-backdrop" aria-hidden="true" onClick={() => closeCal()} style={styles.calBackdrop} />}
       <div
-        style={styles.calWrap}
-        onPointerEnter={(e) => { if (e.pointerType === "mouse") setCalHover(true); }}
+        onPointerEnter={(e) => { if (e.pointerType === "mouse" && Date.now() - calPickedAt.current > 600) setCalHover(true); }}
         onPointerLeave={(e) => { if (e.pointerType === "mouse") setCalHover(false); }}
       >
       <button
+        ref={calTabRef}
         type="button"
-        onClick={() => setCalPinned((p) => !p)}
+        aria-label="Calendar"
         aria-expanded={calOpen}
         aria-controls="month-calendar"
-        className="ft-card"
-        style={{ ...styles.calToggle, ...(calOpen ? styles.calToggleOpen : {}) }}
+        onClick={() => setCalPinned((p) => !p)}
+        className="ft-cal-tab"
+        style={{ ...styles.calTab, transform: calOpen ? "translateX(var(--ft-cal-w))" : "none" }}
       >
-        <span style={styles.calIcon} aria-hidden="true">▦</span>
-        <span style={{ flex: 1, textAlign: "left" }}>Calendar</span>
-        <span style={styles.calHint}>{calOpen ? "Hide calendar" : "Change day"} {calOpen ? "▴" : "▾"}</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+        </svg>
+        <span style={styles.calTabLabel}>Calendar</span>
       </button>
-      <div id="month-calendar" hidden={!calOpen}>
+      <aside
+        id="month-calendar"
+        ref={calRef}
+        role="dialog"
+        aria-modal={calPinned ? "true" : undefined}
+        aria-labelledby="cal-title"
+        onKeyDown={onCalKeyDown}
+        className="ft-cal-drawer"
+        style={{
+          ...styles.calDrawer,
+          transform: calOpen ? "none" : "translateX(-100%)",
+          visibility: calOpen ? "visible" : "hidden",
+          // Hide only once it has slid away.
+          transition: calOpen ? "transform 0.22s ease" : "transform 0.22s ease, visibility 0s linear 0.22s",
+        }}
+      >
+        <div style={styles.calHead}>
+          <span style={styles.calEyebrow}>Calendar</span>
+          <button type="button" aria-label="Close calendar" onClick={(e) => closeCal(e.detail === 0)} style={styles.calClose}>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+            </svg>
+          </button>
+        </div>
+        <div style={styles.calMonthRow}>
+          <button type="button" aria-label="Show previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
+          <h2 id="cal-title" style={styles.calMonth}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></h2>
+          <button type="button" aria-label="Show next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
+        </div>
         <div style={styles.dowRow}>
           {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
         </div>
-  
+
         <div style={styles.grid}>
           {grid.map((day, i) => {
             if (!day) return <div key={i} style={styles.emptyCell} />;
@@ -654,7 +721,10 @@ export default function App() {
             return (
               <button
                 key={i}
-                onClick={() => { setSelected(day); setCalPinned(false); setCalHover(false); }}
+                type="button"
+                aria-pressed={isSelected}
+                aria-current={isToday ? "date" : undefined}
+                onClick={(e) => { setSelected(day); calPickedAt.current = Date.now(); closeCal(e.detail === 0); }}
                 style={{
                   ...styles.dayCell,
                   ...(isSelected ? styles.dayCellSelected : {}),
@@ -676,7 +746,17 @@ export default function App() {
             );
           })}
         </div>
-      </div>
+        <div style={styles.calLegend}>
+          {activeTab === "food" ? (
+            <span><span aria-hidden="true" style={{ ...styles.calKey, background: C.plum }} />calories</span>
+          ) : (
+            <>
+              <span><span aria-hidden="true" style={{ ...styles.calKey, background: rust }} />volume lifted</span>
+              <span><span aria-hidden="true" style={{ ...styles.calKey, background: teal }} />cardio minutes</span>
+            </>
+          )}
+        </div>
+      </aside>
       </div>
 
       {loading ? (
@@ -2367,26 +2447,57 @@ const styles = {
     marginTop: 10,
     textAlign: "center",
   },
-  calWrap: { marginTop: 14 },
-  calToggle: {
-    width: "100%",
+  calTab: {
+    position: "fixed",
+    left: 0,
+    top: "max(150px, 30vh)",
+    zIndex: 41,
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    gap: 10,
-    fontFamily: C.display,
-    fontWeight: 700,
-    fontSize: 18,
-    letterSpacing: "0.02em",
+    gap: 8,
+    width: 26,
+    padding: "10px 0",
     color: ink,
     background: raised,
     border: `1px solid ${line}`,
-    borderRadius: 4,
-    padding: "9px 12px",
+    borderLeft: "none",
+    borderRadius: "0 8px 8px 0",
+    boxShadow: "2px 2px 10px rgba(0,0,0,0.12)",
+    transition: "transform 0.22s ease",
     WebkitTapHighlightColor: "transparent",
   },
-  calToggleOpen: { borderColor: ink },
-  calIcon: { fontSize: 16, color: inkFaint },
-  calHint: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 400, color: inkFaint, letterSpacing: 0 },
+  calTabLabel: {
+    writingMode: "vertical-rl",
+    transform: "rotate(180deg)",
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    letterSpacing: "0.16em",
+    textTransform: "uppercase",
+  },
+  calDrawer: {
+    position: "fixed",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 40,
+    width: "var(--ft-cal-w)",
+    overflowY: "auto",
+    boxSizing: "border-box",
+    padding: "18px 16px 24px",
+    color: ink,
+    background: raised,
+    borderRight: `1px solid ${line}`,
+    boxShadow: "6px 0 24px rgba(0,0,0,0.18)",
+  },
+  calBackdrop: { position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.32)" },
+  calHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+  calEyebrow: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: inkFaint },
+  calClose: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
+  calMonthRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 },
+  calMonth: { margin: 0, fontFamily: C.display, fontWeight: 700, fontSize: 24, letterSpacing: "0.02em", lineHeight: 1, textTransform: "uppercase" },
+  calLegend: { display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 12, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
+  calKey: { display: "inline-block", width: 8, height: 8, borderRadius: 1, marginRight: 6, verticalAlign: "middle" },
   dowRow: {
     display: "grid",
     gridTemplateColumns: "repeat(7, 1fr)",
