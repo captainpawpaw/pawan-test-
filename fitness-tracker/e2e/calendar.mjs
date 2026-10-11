@@ -54,5 +54,44 @@ await p.locator('[data-testid="calendar-grid"] > button', { hasText: /^\s*20\s*$
 await p.getByRole('button', { name: 'Show week ▴' }).click();
 check((await days()).includes(20), 'collapses to the week of the picked day');
 
+// Scrolling the selected week up to the tabs collapses the calendar to it.
+await p.getByRole('button', { name: 'Show month ▾' }).click();
+await p.setViewportSize({ width: 420, height: 500 });
+await p.locator('[data-testid="calendar-grid"] > button', { hasText: /^\s*15\s*$/ }).click();
+const tabs = p.getByRole('button', { name: 'LOG' });
+const grid = p.getByTestId('calendar-grid');
+const dayHeader = p.getByText(/^[A-Z]{3} \d+ [A-Z]{3}$/).first();
+const cell15 = p.locator('[data-testid="calendar-grid"] > button', { hasText: /^\s*15\s*$/ });
+await p.evaluate(() => window.scrollTo(0, 0));
+const monthCells = await cells.count();
+const monthGap = (await dayHeader.boundingBox()).y - (await cell15.boundingBox()).y;
+// Scroll in small steps, like a finger, until the calendar collapses.
+let lastY = null;
+for (let y = 0; y < 1000 && await cells.count() > 7; y += 10) {
+  lastY = (await cell15.boundingBox()).y;
+  await p.mouse.wheel(0, 10); await p.waitForTimeout(30);
+}
+await p.waitForTimeout(100);
+check(await cells.count() === 7, `scrolling down collapses the month (${monthCells} cells) to one week`);
+check((await days()).includes(15), "collapsed week is the selected day's week");
+const tabBox = await tabs.boundingBox(), gridBox = await grid.boundingBox();
+check(tabBox.y >= 0 && tabBox.y < 10, 'tabs stay at the top');
+const tabBottom = await tabs.evaluate(el => el.parentElement.getBoundingClientRect().bottom);
+check(Math.abs(gridBox.y - tabBottom) < 2, 'week sits right under the tabs');
+check(Math.abs((await cell15.boundingBox()).y - lastY) < 14, 'the week does not jump when the month collapses');
+const weekGap = (await dayHeader.boundingBox()).y - (await cell15.boundingBox()).y;
+check(weekGap < monthGap - 100, `day entries move up under the week (${Math.round(monthGap)}px -> ${Math.round(weekGap)}px)`);
+await p.mouse.wheel(0, 400); await p.waitForTimeout(150);
+check(await cells.count() === 7 && Math.abs((await grid.boundingBox()).y - tabBottom) < 2, 'week stays pinned while scrolling further');
+await p.locator('[data-testid="calendar-grid"] > button', { hasText: /^\s*16\s*$/ }).click();
+check(/ 16 [A-Z]{3}$/.test((await dayHeader.innerText()).trim()), 'tapping a day in the pinned week selects it');
+for (let k = 0; k < 40 && await cells.count() === 7; k++) { await p.mouse.wheel(0, -40); await p.waitForTimeout(30); }
+check(await cells.count() >= 28, 'scrolling back up brings the month back');
+await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(100);
+check(await cells.count() >= 28 && await p.evaluate(() => window.scrollY) === 0, 'top of the page shows the whole month');
+await p.getByRole('button', { name: 'EXERCISES' }).click();
+await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(100);
+check(await p.locator('[data-testid="calendar-grid"]').count() === 0, 'no calendar on the exercises tab');
+
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
 import { storage } from "./storage";
 import * as drive from "./driveSync";
 import { parsePage, nameKey, planText } from "./importParser";
@@ -463,10 +463,69 @@ export default function App() {
   const grid = useMemo(() => buildGrid(cursor), [cursor]);
   // Collapsed, the calendar shows only the row holding the selected day.
   const weekStart = Math.floor(Math.max(0, grid.indexOf(selected)) / 7) * 7;
-  const visibleCells = weekOnly ? grid.slice(weekStart, weekStart + 7) : grid;
   const toggleWeekOnly = () => {
     setWeekOnly((on) => { writeWeekOnly(!on); return !on; });
   };
+
+  // The tabs stay pinned to the top. Scrolling the selected day's week up to
+  // them collapses the calendar to that week, pinned under the tabs, so the
+  // day's entries sit right below; scrolling back up past it brings the month
+  // back. The scroll position is adjusted each time so the week doesn't move.
+  const stickyRef = useRef(null);
+  const gridRef = useRef(null);
+  const pendingScroll = useRef(null);
+  const [barHeight, setBarHeight] = useState(0);
+  const [autoWeek, setAutoWeek] = useState(false);
+  const [minPageHeight, setMinPageHeight] = useState(null);
+  const collapsed = weekOnly || autoWeek;
+  const visibleCells = collapsed ? grid.slice(weekStart, weekStart + 7) : grid;
+
+  useEffect(() => {
+    const bar = stickyRef.current;
+    if (!bar || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setBarHeight(bar.offsetHeight));
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const update = () => {
+      const bar = stickyRef.current, gridEl = gridRef.current;
+      if (!bar || !gridEl || pendingScroll.current) return;
+      const barBottom = bar.getBoundingClientRect().bottom;
+      const gridTop = gridEl.getBoundingClientRect().top;
+      if (!collapsed) {
+        const cell = gridEl.children[weekStart];
+        if (!cell || cell.getBoundingClientRect().top >= barBottom) return;
+        // Dropping the weeks above would pull the page up by their height.
+        const target = window.scrollY - (cell.getBoundingClientRect().top - gridTop);
+        pendingScroll.current = { to: target };
+        // Keep the page tall enough to hold that scroll position.
+        setMinPageHeight(target + window.innerHeight + 1);
+        setAutoWeek(true);
+      } else if (autoWeek && gridTop > barBottom + 1) {
+        pendingScroll.current = { expandFrom: gridTop };
+        setMinPageHeight(null);
+        setAutoWeek(false);
+      }
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [collapsed, autoWeek, weekStart, activeTab]);
+
+  useLayoutEffect(() => {
+    const p = pendingScroll.current;
+    if (!p) return;
+    pendingScroll.current = null;
+    if (p.expandFrom == null) { window.scrollTo(0, p.to); return; }
+    const cell = gridRef.current?.children[weekStart];
+    if (cell) window.scrollBy(0, cell.getBoundingClientRect().top - p.expandFrom);
+  }, [autoWeek]);
 
   const maxVol = useMemo(() => {
     let m = 1;
@@ -503,10 +562,11 @@ export default function App() {
   };
 
   return (
-    <div style={styles.page}>
+    <div style={minPageHeight ? { ...styles.page, minHeight: `max(100vh, ${minPageHeight}px)` } : styles.page}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; }
+        html { scroll-padding-top: 140px; overflow-anchor: none; }
         input:focus, button:focus { outline: 2px solid #23211D; outline-offset: 1px; }
         button { cursor: pointer; }
         @media (min-width: 720px) {
@@ -531,7 +591,7 @@ export default function App() {
       </header>
       <SyncNotice />
 
-      <div style={styles.tabRow}>
+      <div ref={stickyRef} style={styles.tabRow}>
         {[["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
           <button
             key={id}
@@ -567,9 +627,13 @@ export default function App() {
         {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
       </div>
 
-      <div style={styles.grid} data-testid="calendar-grid">
+      <div
+        ref={gridRef}
+        style={collapsed ? { ...styles.grid, ...styles.gridPinned, top: barHeight } : styles.grid}
+        data-testid="calendar-grid"
+      >
         {visibleCells.map((day, j) => {
-          const i = weekOnly ? weekStart + j : j;
+          const i = collapsed ? weekStart + j : j;
           if (!day) return <div key={i} style={styles.emptyCell} />;
           const data = monthData[day] || { strength: [], cardio: [] };
           const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
@@ -601,11 +665,13 @@ export default function App() {
           );
         })}
       </div>
-      <div style={styles.calendarToggleRow}>
-        <button onClick={toggleWeekOnly} aria-pressed={weekOnly} style={styles.calendarToggle}>
-          {weekOnly ? "Show month ▾" : "Show week ▴"}
-        </button>
-      </div>
+      {!autoWeek && (
+        <div style={styles.calendarToggleRow}>
+          <button onClick={toggleWeekOnly} aria-pressed={weekOnly} style={styles.calendarToggle}>
+            {weekOnly ? "Show month ▾" : "Show week ▴"}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div style={styles.loading}>Loading ledger…</div>
@@ -1866,8 +1932,15 @@ const styles = {
   tabRow: {
     display: "flex",
     gap: 18,
-    marginTop: 18,
+    marginTop: 10,
     borderBottom: `1px solid ${line}`,
+    position: "sticky",
+    top: 0,
+    zIndex: 5,
+    marginLeft: -16,
+    marginRight: -16,
+    padding: "8px 16px 0",
+    background: paper,
   },
   tabBtn: {
     background: "none",
@@ -2214,6 +2287,15 @@ const styles = {
     gridTemplateColumns: "repeat(7, 1fr)",
     gap: 4,
     marginTop: 6,
+  },
+  gridPinned: {
+    position: "sticky",
+    zIndex: 4,
+    background: paper,
+    marginLeft: -16,
+    marginRight: -16,
+    padding: "6px 16px",
+    borderBottom: `1px solid ${line}`,
   },
   emptyCell: { minHeight: 54 },
   calendarToggleRow: { display: "flex", justifyContent: "flex-end", marginTop: 6 },
