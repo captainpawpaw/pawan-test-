@@ -520,6 +520,16 @@ export default function App() {
         @media (prefers-reduced-motion: reduce) {
           .ft-bar { transition: none !important; }
         }
+        /* iPhone Safari zooms in on any text box under 16px when it's tapped,
+           which leaves the page zoomed and shifted sideways. */
+        @media (max-width: 720px) {
+          input, select, textarea { font-size: 16px !important; }
+        }
+        /* The four tabs fit the narrowest phones too. */
+        @media (max-width: 370px) {
+          .ft-tabs { gap: 10px !important; }
+          .ft-tabs button { font-size: 13px !important; letter-spacing: 0.04em !important; }
+        }
       `}</style>
 
       <header style={styles.header}>
@@ -535,7 +545,7 @@ export default function App() {
       </header>
       <SyncNotice />
 
-      <div style={styles.tabRow}>
+      <div className="ft-tabs" style={styles.tabRow}>
         {[["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
           <button
             key={id}
