@@ -27,6 +27,15 @@ function buildGrid(d) {
   return cells;
 }
 
+// Whether the calendar is collapsed to the selected day's week, kept per browser.
+const WEEK_ONLY_KEY = "fitness-tracker:calendar-week-only";
+function readWeekOnly() {
+  try { return window.localStorage.getItem(WEEK_ONLY_KEY) === "1"; } catch { return false; }
+}
+function writeWeekOnly(on) {
+  try { on ? window.localStorage.setItem(WEEK_ONLY_KEY, "1") : window.localStorage.removeItem(WEEK_ONLY_KEY); } catch { /* ignore */ }
+}
+
 // Body-weight sets count as body weight plus any added weight; without a
 // known body weight, only the added weight counts.
 function strengthVolume(entries, bodyweightKg = null) {
@@ -101,6 +110,7 @@ export default function App() {
   const [baseExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
+  const [weekOnly, setWeekOnly] = useState(readWeekOnly);
   const [prefill, setPrefill] = useState(null);
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
@@ -451,6 +461,12 @@ export default function App() {
   };
 
   const grid = useMemo(() => buildGrid(cursor), [cursor]);
+  // Collapsed, the calendar shows only the row holding the selected day.
+  const weekStart = Math.floor(Math.max(0, grid.indexOf(selected)) / 7) * 7;
+  const visibleCells = weekOnly ? grid.slice(weekStart, weekStart + 7) : grid;
+  const toggleWeekOnly = () => {
+    setWeekOnly((on) => { writeWeekOnly(!on); return !on; });
+  };
 
   const maxVol = useMemo(() => {
     let m = 1;
@@ -551,8 +567,9 @@ export default function App() {
         {DOW.map((d, i) => <div key={i} style={styles.dowCell}>{d}</div>)}
       </div>
 
-      <div style={styles.grid}>
-        {grid.map((day, i) => {
+      <div style={styles.grid} data-testid="calendar-grid">
+        {visibleCells.map((day, j) => {
+          const i = weekOnly ? weekStart + j : j;
           if (!day) return <div key={i} style={styles.emptyCell} />;
           const data = monthData[day] || { strength: [], cardio: [] };
           const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
@@ -583,6 +600,11 @@ export default function App() {
             </button>
           );
         })}
+      </div>
+      <div style={styles.calendarToggleRow}>
+        <button onClick={toggleWeekOnly} aria-pressed={weekOnly} style={styles.calendarToggle}>
+          {weekOnly ? "Show month ▾" : "Show week ▴"}
+        </button>
       </div>
 
       {loading ? (
@@ -2194,6 +2216,16 @@ const styles = {
     marginTop: 6,
   },
   emptyCell: { minHeight: 54 },
+  calendarToggleRow: { display: "flex", justifyContent: "flex-end", marginTop: 6 },
+  calendarToggle: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: inkFaint,
+    background: "none",
+    border: `1px solid ${line}`,
+    borderRadius: 3,
+    padding: "3px 8px",
+  },
   dayCell: {
     minHeight: 54,
     background: raised,
