@@ -95,6 +95,7 @@ await pa.getByLabel('Calories per day').fill('2200'); await pa.getByLabel('Prote
 await pa.getByRole('button', { name: 'Save targets' }).click();
 t = await pa.locator('body').innerText();
 check(t.includes('2,200 kcal left') && t.includes('150 g left'), 'targets saved, meters show remaining');
+check(t.includes('0 eaten of 2,200 kcal') && t.includes('0 eaten of 150 g'), 'meters say how much is eaten');
 
 // built-in search + grams
 const addBtn = pa.getByRole('button', { name: '+ Add' }).last();
@@ -123,6 +124,11 @@ await pa.screenshot({ path: 'food-uk.png' });
 // portion unit
 await pa.getByLabel('Search foods').fill('egg whole raw fresh');
 await pa.getByRole('button', { name: /^Egg, whole, raw, fresh/ }).first().click();
+const unitOpts = await pa.getByLabel('Unit').locator('option').allTextContents();
+check(unitOpts.some(o => /^1 tbsp \((≈ )?[\d.]+ g\)$/.test(o)) && unitOpts.some(o => /^1 tsp \((≈ )?[\d.]+ g\)$/.test(o)), 'tbsp and tsp offered: ' + unitOpts.join(' | '));
+await pa.getByLabel('Unit').selectOption({ label: unitOpts.find(o => o.startsWith('1 tbsp')) });
+check(!unitOpts.find(o => o.startsWith('1 tbsp')).includes('≈') || (await pa.locator('body').innerText()).includes('Spoon weight is an estimate'), 'estimated spoon weights say so');
+await pa.screenshot({ path: 'food-spoons.png' });
 await pa.getByLabel('Unit').selectOption({ label: '1 large (50 g)' });
 await pa.getByLabel('Amount').fill('2');
 await pa.getByRole('button', { name: 'Add to day' }).click();

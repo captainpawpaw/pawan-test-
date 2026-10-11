@@ -77,23 +77,26 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
 }
 
 /* ---------- totals and targets ---------- */
+// Counts down: the big number is what's left of the target, and the bar
+// empties as you eat. Without a target it shows the total eaten.
 function Meter({ label, value, target, unit }) {
-  const pct = target ? Math.min(100, (value / target) * 100) : 0;
-  const diff = target ? Math.round(target - value) : null;
+  const left = target ? Math.round((target - value) * 10) / 10 : null;
+  const over = left != null && left < 0;
+  const pct = target ? Math.max(0, Math.min(100, (left / target) * 100)) : 0;
   return (
     <div style={st.meter}>
       <div style={st.meterTop}>
         <span style={st.meterLabel}>{label}</span>
-        <span style={st.meterValue}>
-          {fmtG(value)}{target ? <span style={st.meterOf}> / {fmtG(target)} {unit}</span> : <span style={st.meterOf}> {unit}</span>}
+        <span style={{ ...st.meterValue, ...(over ? { color: C.rust } : {}) }}>
+          {target ? <>{fmtG(Math.abs(left))}<span style={st.meterOf}> {unit} {over ? "over" : "left"}</span></> : <>{fmtG(value)}<span style={st.meterOf}> {unit}</span></>}
         </span>
       </div>
       {target ? (
         <>
-          <div style={st.track} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={target} aria-valuenow={value}>
+          <div style={st.track} role="meter" aria-label={`${label} left`} aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.max(0, left)} aria-valuetext={over ? `${fmtG(-left)} ${unit} over target` : `${fmtG(left)} ${unit} left of ${fmtG(target)}`}>
             <div style={{ ...st.fill, width: `${pct}%` }} />
           </div>
-          <span style={st.meterNote}>{diff >= 0 ? `${fmtG(diff)} ${unit} left` : `${fmtG(-diff)} ${unit} over`}</span>
+          <span style={st.meterNote}>{fmtG(value)} eaten of {fmtG(target)} {unit}</span>
         </>
       ) : null}
     </div>
@@ -346,15 +349,20 @@ function AmountStep({ food, onAdd, onBack }) {
       <div style={st.btnRow}>
         <label style={{ ...st.fieldLabel, flex: "0 0 90px" }}>
           Amount
-          <input type="number" inputMode="decimal" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus style={st.input} />
+          <input type="number" inputMode="decimal" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus style={{ ...st.input, width: "100%", boxSizing: "border-box" }} />
         </label>
         <label style={{ ...st.fieldLabel, flex: 1, minWidth: 0 }}>
           Unit
-          <select value={unit} onChange={(e) => { const u = Number(e.target.value); setUnit(u); setQty(u === 0 ? "100" : "1"); }} style={st.input}>
-            {units.map((u, i) => <option key={i} value={i}>{i === 0 ? "grams" : `${u.label} (${fmtG(u.g)} g)`}</option>)}
+          <select value={unit} onChange={(e) => { const u = Number(e.target.value); setUnit(u); setQty(u === 0 ? "100" : "1"); }} style={{ ...st.input, width: "100%", boxSizing: "border-box" }}>
+            {units.map((u, i) => <option key={i} value={i}>{i === 0 ? "grams" : `${u.label} (${u.approx ? "≈ " : ""}${fmtG(u.g)} g)`}</option>)}
           </select>
         </label>
       </div>
+      {units[unit].approx && (
+        <div style={st.note}>
+          Spoon weight is an estimate{units[unit].how === "similar" ? ", from a similar food’s measured weight" : ", from a typical density for this kind of food"}. Level spoon: 1 tbsp = 15 ml, 1 tsp = 5 ml.
+        </div>
+      )}
       <div style={st.preview} aria-live="polite">
         <strong>{vals.kcal} kcal</strong> · Protein {fmtG(vals.protein)} g · Carbs {fmtG(vals.carbs)} g · Fat {fmtG(vals.fat)} g
         <span style={st.note}>{fmtG(grams)} g</span>
@@ -402,7 +410,7 @@ function EditFood({ entry, onSave, onCancel }) {
           <div style={st.btnRow}>
             <label style={{ ...st.fieldLabel, flex: "0 0 90px" }}>
               Amount
-              <input type="number" inputMode="decimal" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus style={st.input} />
+              <input type="number" inputMode="decimal" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus style={{ ...st.input, width: "100%", boxSizing: "border-box" }} />
             </label>
             {hasPortion && (
               <label style={{ ...st.fieldLabel, flex: 1, minWidth: 0 }}>
