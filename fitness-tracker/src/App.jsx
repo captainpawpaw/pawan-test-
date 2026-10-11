@@ -7,6 +7,7 @@ import Progress from "./Progress";
 import FoodLog from "./FoodLog";
 import { sumFood } from "./food";
 import Backup from "./Backup";
+import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -195,6 +196,21 @@ export default function App() {
   }, []);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  // Theme: remembered in this browser for a quick start, and in the profile
+  // so it follows you to other devices.
+  const [theme, setTheme] = useState(savedTheme);
+  useEffect(() => {
+    const t = profile.theme?.name;
+    if (t && THEMES[t] && t !== theme) setTheme(applyTheme(t));
+  }, [profile.theme?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chooseTheme = async (name) => {
+    setTheme(applyTheme(name));
+    const next = { ...profile, theme: { name, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+  };
 
   const weights = useMemo(() => profile.bodyweight?.weights || [], [profile]);
   const bwOnDate = useCallback((date) => bodyweightOn(weights, date), [weights]);
@@ -515,11 +531,11 @@ export default function App() {
   };
 
   return (
-    <div style={styles.page}>
-      <style>{`
+    <div className="ft-page" style={styles.page}>
+      <style>{`${THEME_CSS}
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; }
-        input:focus, button:focus { outline: 2px solid #23211D; outline-offset: 1px; }
+        input:focus, button:focus { outline: 2px solid var(--ft-ink); outline-offset: 1px; }
         button { cursor: pointer; }
         @media (min-width: 720px) {
           .ft-sections { flex-direction: row !important; }
@@ -540,14 +556,14 @@ export default function App() {
         }
       `}</style>
 
-      <header style={styles.header}>
+      <header className="ft-masthead" style={styles.header}>
         <div style={styles.eyebrowRow}>
           <div style={styles.eyebrow}>TRAINING LEDGER</div>
           <DriveStatus />
         </div>
         <div style={styles.monthRow}>
           <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
-          <div style={styles.monthTitle}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></div>
+          <div className="ft-masthead-title" style={styles.monthTitle}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></div>
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
@@ -627,11 +643,11 @@ export default function App() {
                 <span style={styles.dayNum}>{String(Number(day))}</span>
                 <span style={styles.barTrack}>
                   {activeTab === "food" ? (
-                    <span className="ft-bar" style={{ ...styles.bar, width: 10, background: "#7A3E62", height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
+                    <span className="ft-bar" style={{ ...styles.bar, width: 10, background: C.plum, height: `${Math.round((sumFood(data.food).kcal / maxKcal) * 100)}%` }} />
                   ) : (
                     <>
-                      <span className="ft-bar" style={{ ...styles.bar, background: "#B5551F", height: `${Math.round((vol / maxVol) * 100)}%` }} />
-                      <span className="ft-bar" style={{ ...styles.bar, background: "#1F6E64", height: `${Math.round((dur / maxDur) * 100)}%` }} />
+                      <span className="ft-bar" style={{ ...styles.bar, background: rust, height: `${Math.round((vol / maxVol) * 100)}%` }} />
+                      <span className="ft-bar" style={{ ...styles.bar, background: teal, height: `${Math.round((dur / maxDur) * 100)}%` }} />
                     </>
                   )}
                 </span>
@@ -672,8 +688,8 @@ export default function App() {
               prefill={prefill}
               tagMap={tagMap}
               plansByName={plansByName}
-              accent="#B5551F"
-              accentSoft="#E0C4AC"
+              accent={rust}
+              accentSoft={C.rustSoft}
               title="STRENGTH"
               emptyText="No lifts logged for this day."
               addLabel="Log a set"
@@ -710,8 +726,8 @@ export default function App() {
               prefill={prefill}
               tagMap={tagMap}
               plansByName={plansByName}
-              accent="#1F6E64"
-              accentSoft="#C3DAD5"
+              accent={teal}
+              accentSoft={C.tealSoft}
               title="CARDIO"
               emptyText="No sessions logged for this day."
               addLabel="Log a session"
@@ -738,7 +754,25 @@ export default function App() {
       )}
       </>
       )}
+      <ThemePicker value={theme} onChange={chooseTheme} />
       <Backup />
+    </div>
+  );
+}
+
+function ThemePicker({ value, onChange }) {
+  return (
+    <div role="group" aria-label="Theme" style={styles.themeRow}>
+      <span style={styles.themeLabel}>Theme</span>
+      {THEME_NAMES.map((t) => (
+        <button key={t} type="button" aria-pressed={value === t} onClick={() => onChange(t)} style={{ ...styles.themeBtn, ...(value === t ? styles.themeBtnOn : {}) }}>
+          <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].vars.paper, borderColor: THEMES[t].vars.ink }}>
+            <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
+            <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
+          </span>
+          {THEMES[t].label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -918,7 +952,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
         <span style={{ ...styles.sectionTitle, color: accent }}>{title}</span>
         <button
           onClick={() => (open ? closeForm() : setOpen(true))}
-          style={{ ...styles.addBtn, borderColor: accent, color: open ? "#F5F1E8" : accent, background: open ? accent : "transparent" }}
+          style={{ ...styles.addBtn, borderColor: accent, color: open ? raised : accent, background: open ? accent : "transparent" }}
         >
           {open ? "Cancel" : "+ Add"}
         </button>
@@ -1010,7 +1044,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           <div style={styles.emptyText}>{emptyText}</div>
         ) : (
           entries.map((e) => (
-            <div key={e.id} style={{ ...styles.row, background: accentSoft + "40", ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}>
+            <div key={e.id} style={{ ...styles.row, background: `color-mix(in srgb, ${accentSoft} 25%, transparent)`, ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}>
               {renderRow(e)}
               {onEdit && (
                 <button aria-label={`Edit ${e[fields[0].key] || "entry"}`} onClick={() => startEdit(e)} style={styles.editBtn}>✎</button>
@@ -1234,14 +1268,14 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
         autoComplete="off"
       />
       <div style={styles.filterRow}>
-        {[["all", "All", ink], ["strength", "Strength", "#B5551F"], ["cardio", "Cardio", "#1F6E64"]].map(([id, label, color]) => (
+        {[["all", "All", ink], ["strength", "Strength", rust], ["cardio", "Cardio", teal]].map(([id, label, color]) => (
           <button
             key={id}
             onClick={() => setFilter(id)}
             style={{
               ...styles.filterChip,
               borderColor: color,
-              color: filter === id ? "#F5F1E8" : color,
+              color: filter === id ? raised : color,
               background: filter === id ? color : "transparent",
             }}
           >
@@ -1279,7 +1313,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
           <div style={styles.libraryList}>
             {shown.map((e) => {
               const isCardio = e.category === "cardio";
-              const accent = isCardio ? "#1F6E64" : "#B5551F";
+              const accent = isCardio ? teal : rust;
               const meta = [e.category, e.equipment, e.primaryMuscles[0]].filter(Boolean).join(" · ");
               const tags = tagsOf(tagMap, e.name);
               const isEditing = editing === e.name;
@@ -1792,13 +1826,13 @@ function ImportPanel({ library, onImport, onClose }) {
 }
 
 /* ---------- styles ---------- */
-const ink = "#23211D";
-const inkFaint = "#706B5E";
-const paper = "#EDE8DE";
-const raised = "#F5F1E8";
-const line = "#D9D2C2";
-const rust = "#B5551F";
-const teal = "#1F6E64";
+const ink = C.ink;
+const inkFaint = C.inkFaint;
+const paper = C.paper;
+const raised = C.raised;
+const line = C.line;
+const rust = C.rust;
+const teal = C.teal;
 
 const boteh = "M40 6 C16 4 2 26 8 46 C13 62 30 72 46 64 C58 58 58 44 46 40 C38 37 36 28 44 24 C52 20 60 26 60 36 C60 46 52 54 42 56";
 
@@ -1862,6 +1896,12 @@ const styles = {
     margin: "0 auto",
   },
   header: { marginBottom: 4 },
+  themeRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 28 },
+  themeLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, marginRight: 4 },
+  themeBtn: { display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: "4px 12px 4px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 999 },
+  themeBtnOn: { borderColor: ink, background: C.field, fontWeight: 600 },
+  themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
+  themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
   syncNotice: {
     fontFamily: "'IBM Plex Mono', monospace",
@@ -2079,7 +2119,7 @@ const styles = {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 11,
     color: ink,
-    background: "#fff",
+    background: C.field,
     border: `1px solid ${line}`,
     borderRadius: 3,
     padding: "4px 6px",
@@ -2142,7 +2182,7 @@ const styles = {
     margin: "2px 0 0",
     padding: 0,
     listStyle: "none",
-    background: "#fff",
+    background: C.field,
     border: `1px solid ${line}`,
     borderRadius: 3,
     boxShadow: "0 4px 14px rgba(35,33,29,0.12)",
@@ -2314,7 +2354,7 @@ const styles = {
   dayCellSelected: {
     borderColor: ink,
     borderWidth: 2,
-    background: "#fff",
+    background: C.field,
   },
   dayCellToday: {
     borderColor: inkFaint,
@@ -2360,7 +2400,7 @@ const styles = {
   errorTag: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 11,
-    color: "#B5551F",
+    color: rust,
     fontWeight: 500,
   },
   sections: { display: "flex", flexDirection: "column", gap: 16 },
@@ -2400,7 +2440,7 @@ const styles = {
     padding: "7px 8px",
     border: `1px solid ${line}`,
     borderRadius: 3,
-    background: "#fff",
+    background: C.field,
     color: ink,
   },
   submitBtn: {

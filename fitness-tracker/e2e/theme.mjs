@@ -1,0 +1,101 @@
+import { chromium } from 'playwright';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+const DIST = process.argv[2];
+// static server
+const srv = http.createServer((req, res) => {
+  let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
+  const f = path.join(DIST, p);
+  if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'Content-Type': f.endsWith('.js') ? 'text/javascript' : f.endsWith('.json') ? 'application/json' : 'text/html' });
+  fs.createReadStream(f).pipe(res);
+}).listen(4190);
+
+// fake Drive shared by both "devices"
+const drive = { files: {}, n: 0, fail401: false, calls: [] };
+const GIS = `window.google={accounts:{oauth2:{
+  initTokenClient(cfg){return{requestAccessToken(o){window.__prompts=(window.__prompts||[]).concat(o&&o.prompt);setTimeout(()=>cfg.callback({access_token:'tok',expires_in:3600,scope:'${'https://www.googleapis.com/auth/drive.appdata'}'}),20)}}},
+  hasGrantedAllScopes(){return true}, revoke(t,cb){window.__revoked=t;cb&&cb()}}}};`;
+
+async function setup(ctx) {
+  await ctx.route('https://accounts.google.com/gsi/client', r => r.fulfill({ contentType: 'text/javascript', body: GIS }));
+  await ctx.route('https://fonts.googleapis.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
+  await ctx.route('https://www.googleapis.com/**', async (r) => {
+    const req = r.request(); const u = new URL(req.url()); const m = req.method();
+    drive.calls.push(`${m} ${u.pathname}`);
+    if (req.headers()['authorization'] !== 'Bearer tok') return r.fulfill({ status: 401, body: '' });
+    if (drive.fail401) return r.fulfill({ status: 401, body: '' });
+    if (m === 'GET' && u.pathname === '/drive/v3/files') {
+      if (u.searchParams.get('spaces') !== 'appDataFolder') return r.fulfill({ status: 400, body: 'bad space' });
+      return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ files: Object.keys(drive.files).map(id => ({ id })) }) });
+    }
+    let mm;
+    if (m === 'GET' && (mm = u.pathname.match(/^\/drive\/v3\/files\/(\w+)$/))) return r.fulfill({ contentType: 'application/json', body: drive.files[mm[1]] });
+    if (m === 'PATCH' && (mm = u.pathname.match(/^\/upload\/drive\/v3\/files\/(\w+)$/))) { drive.files[mm[1]] = req.postData(); return r.fulfill({ contentType: 'application/json', body: '{}' }); }
+    if (m === 'POST' && u.pathname === '/upload/drive/v3/files') {
+      const body = req.postData(); const parts = body.split(/--tl\w+/);
+      const meta = JSON.parse(parts[1].split('\r\n\r\n')[1]);
+      if (meta.parents[0] !== 'appDataFolder') throw new Error('wrong parent');
+      const id = 'f' + (++drive.n); drive.files[id] = parts[2].split('\r\n\r\n')[1].replace(/\r\n$/, '');
+      return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ id }) });
+    }
+    r.fulfill({ status: 404, body: 'unhandled' });
+  });
+}
+const book = () => JSON.parse(Object.values(drive.files)[0] || '{"months":{}}');
+const allIds = () => Object.values(book().months).flatMap(mo => Object.values(mo).flatMap(d => [...d.strength, ...d.cardio].map(e => e.exercise || e.activity))).sort();
+const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
+const waitSynced = p => p.getByText(/^Synced /).waitFor({ timeout: 8000 });
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
+const A = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(A);
+const B = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(B);
+const pa = await A.newPage(), pb = await B.newPage();
+const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
+await A.addInitScript(() => {
+  if (localStorage.getItem('seeded')) return;
+  const pad = (n) => String(n).padStart(2, '0');
+  const months = {}; let i = 0;
+  const start = new Date(2026, 6, 6), end = new Date();
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const mk = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, day = pad(d.getDate());
+    const add = (type, e) => { months[mk] = months[mk] || {}; months[mk][day] = months[mk][day] || { strength: [], cardio: [] }; months[mk][day][type].push({ id: 's' + (i++), ...e }); };
+    const wk = Math.floor((d - start) / (7 * 864e5));
+    if (d.getDay() === 1 || d.getDay() === 4) add('strength', { exercise: 'Back Squat', sets: '4', reps: '6', weight: String(80 + wk * 2) });
+    if (d.getDay() === 6) add('cardio', { activity: 'Run', duration: '30', distance: '5' });
+  }
+  for (const [k, v] of Object.entries(months)) localStorage.setItem('fitness-tracker:month:' + k, JSON.stringify(v));
+  localStorage.setItem('seeded', '1');
+});
+const bg = (p, sel) => p.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
+await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
+check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'Classic by default');
+check(await bg(pa, 'body') === 'rgb(237, 232, 222)', 'classic paper: ' + await bg(pa, 'body'));
+check(await pa.getByRole('button', { name: 'Classic' }).getAttribute('aria-pressed') === 'true', 'picker shows Classic');
+await pa.getByRole('button', { name: 'Ledger' }).click();
+check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'ledger', 'switches to Ledger');
+check(await bg(pa, 'body') === 'rgb(253, 251, 247)', 'ledger paper #FDFBF7: ' + await bg(pa, 'body'));
+check((await pa.locator('body').evaluate(el => getComputedStyle(el).backgroundImage)).includes('repeating-linear-gradient'), 'ruled ledger lines');
+check(await bg(pa, 'header') === 'rgb(31, 69, 110)', 'blueprint masthead #1F456E: ' + await bg(pa, 'header'));
+check(await pa.locator('header').evaluate(el => getComputedStyle(el.querySelector('.ft-masthead-title')).color) === 'rgb(255, 255, 255)', 'masthead text is white');
+check(await pa.locator('.ft-section').first().locator('button', { hasText: '+ Add' }).evaluate(el => getComputedStyle(el).color) === 'rgb(226, 61, 40)', 'strength accent is Swiss red #E23D28');
+await pa.screenshot({ path: 'theme-ledger-log.png', fullPage: true });
+await pa.getByRole('button', { name: 'PROGRESS' }).click();
+await pa.getByText('Change since start').waitFor();
+const badge = pa.getByText(/\d+\+ club/);
+check(await badge.count() === 1 && await badge.evaluate(el => getComputedStyle(el).backgroundColor) === 'rgb(204, 255, 0)', 'neon milestone badge #CCFF00');
+await pa.screenshot({ path: 'theme-ledger-progress.png', fullPage: true });
+await pa.getByRole('button', { name: 'FOOD' }).click(); await pa.waitForTimeout(300);
+await pa.screenshot({ path: 'theme-ledger-food.png', fullPage: true });
+await pa.reload(); await pa.getByText('STRENGTH').waitFor();
+check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'ledger', 'theme kept after reload');
+await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
+check(book().profile?.theme?.name === 'ledger', 'theme syncs to Drive');
+await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.waitForFunction(() => document.documentElement.dataset.theme === 'ledger', null, { timeout: 5000 }).catch(() => {});
+check(await pb.evaluate(() => document.documentElement.dataset.theme) === 'ledger', 'other device picks up the theme');
+await pa.getByRole('button', { name: 'Classic' }).click();
+check(await bg(pa, 'header') === 'rgba(0, 0, 0, 0)' && await bg(pa, 'body') === 'rgb(237, 232, 222)', 'back to Classic');
+await pa.screenshot({ path: 'theme-classic-log.png', fullPage: true });
+check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
+await b.close(); srv.close();
