@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#14161a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="TV Remote" />
+    <title>TV Remote</title>
+    <link rel="icon" href="icon.svg" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="remote">
+      <header class="top">
+        <div class="tv-name">
+          <span id="status-dot" class="dot"></span>
+          <span id="tv-label">Not connected</span>
+        </div>
+        <button class="icon-btn" id="open-settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.5 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+        </button>
+      </header>
+
+      <section class="row power-row">
+        <button class="btn power" data-key="NRC_POWER-ONOFF" aria-label="Power off / standby">
+          <svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0" /></svg>
+        </button>
+        <button class="btn pill" id="power-on">Turn on</button>
+        <button class="btn pill" data-key="NRC_CHG_INPUT-ONOFF">Input</button>
+        <button class="btn pill" data-key="NRC_TV-ONOFF">TV</button>
+      </section>
+
+      <section class="dpad" aria-label="Navigation">
+        <button class="dir up" data-key="NRC_UP-ONOFF" data-repeat aria-label="Up"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></svg></button>
+        <button class="dir left" data-key="NRC_LEFT-ONOFF" data-repeat aria-label="Left"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" /></svg></button>
+        <button class="ok" data-key="NRC_ENTER-ONOFF">OK</button>
+        <button class="dir right" data-key="NRC_RIGHT-ONOFF" data-repeat aria-label="Right"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg></button>
+        <button class="dir down" data-key="NRC_DOWN-ONOFF" data-repeat aria-label="Down"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg></button>
+      </section>
+
+      <section class="row nav-row">
+        <button class="btn round" data-key="NRC_RETURN-ONOFF" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg></button>
+        <button class="btn round" data-key="NRC_HOME-ONOFF" aria-label="Home"><svg viewBox="0 0 24 24"><path d="m3 11 9-7 9 7" /><path d="M5 10v10h14V10" /></svg></button>
+        <button class="btn round" data-key="NRC_MENU-ONOFF" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+        <button class="btn round" data-key="NRC_CANCEL-ONOFF" aria-label="Exit"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+      </section>
+
+      <section class="rockers">
+        <div class="rocker">
+          <button data-key="NRC_VOLUP-ONOFF" data-repeat aria-label="Volume up">+</button>
+          <span>VOL</span>
+          <button data-key="NRC_VOLDOWN-ONOFF" data-repeat aria-label="Volume down">−</button>
+        </div>
+        <div class="middle">
+          <button class="btn round" id="mute" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z" /><path class="waves" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /><path class="cross" d="m16 9 6 6m0-6-6 6" /></svg></button>
+          <div class="volume">
+            <input type="range" id="volume" min="0" max="100" value="0" aria-label="Volume level" />
+            <output id="volume-value">–</output>
+          </div>
+        </div>
+        <div class="rocker">
+          <button data-key="NRC_CH_UP-ONOFF" aria-label="Channel up">⌃</button>
+          <span>CH</span>
+          <button data-key="NRC_CH_DOWN-ONOFF" aria-label="Channel down">⌄</button>
+        </div>
+      </section>
+
+      <section class="row media-row">
+        <button class="btn round sm" data-key="NRC_REW-ONOFF" aria-label="Rewind"><svg viewBox="0 0 24 24"><path class="fill" d="M11 6 3 12l8 6zm10 0-8 6 8 6z" /></svg></button>
+        <button class="btn round sm" data-key="NRC_PLAY-ONOFF" aria-label="Play"><svg viewBox="0 0 24 24"><path class="fill" d="M7 5v14l12-7z" /></svg></button>
+        <button class="btn round sm" data-key="NRC_PAUSE-ONOFF" aria-label="Pause"><svg viewBox="0 0 24 24"><path class="fill" d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg></button>
+        <button class="btn round sm" data-key="NRC_STOP-ONOFF" aria-label="Stop"><svg viewBox="0 0 24 24"><path class="fill" d="M6 6h12v12H6z" /></svg></button>
+        <button class="btn round sm" data-key="NRC_FF-ONOFF" aria-label="Fast forward"><svg viewBox="0 0 24 24"><path class="fill" d="m13 6 8 6-8 6zM3 6l8 6-8 6z" /></svg></button>
+      </section>
+
+      <section class="row colors">
+        <button class="color red" data-key="NRC_RED-ONOFF" aria-label="Red"></button>
+        <button class="color green" data-key="NRC_GREEN-ONOFF" aria-label="Green"></button>
+        <button class="color yellow" data-key="NRC_YELLOW-ONOFF" aria-label="Yellow"></button>
+        <button class="color blue" data-key="NRC_BLUE-ONOFF" aria-label="Blue"></button>
+      </section>
+
+      <details class="drawer">
+        <summary>Numbers &amp; more</summary>
+        <div class="numpad">
+          <button data-key="NRC_D1-ONOFF">1</button><button data-key="NRC_D2-ONOFF">2</button><button data-key="NRC_D3-ONOFF">3</button>
+          <button data-key="NRC_D4-ONOFF">4</button><button data-key="NRC_D5-ONOFF">5</button><button data-key="NRC_D6-ONOFF">6</button>
+          <button data-key="NRC_D7-ONOFF">7</button><button data-key="NRC_D8-ONOFF">8</button><button data-key="NRC_D9-ONOFF">9</button>
+          <button data-key="NRC_INFO-ONOFF" class="small">Info</button><button data-key="NRC_D0-ONOFF">0</button><button data-key="NRC_EPG-ONOFF" class="small">Guide</button>
+        </div>
+        <div class="row chips">
+          <button class="btn pill" data-key="NRC_HDMI1-ONOFF">HDMI 1</button>
+          <button class="btn pill" data-key="NRC_HDMI2-ONOFF">HDMI 2</button>
+          <button class="btn pill" data-key="NRC_HDMI3-ONOFF">HDMI 3</button>
+          <button class="btn pill" data-key="NRC_HDMI4-ONOFF">HDMI 4</button>
+          <button class="btn pill" data-key="NRC_APPS-ONOFF">Apps</button>
+          <button class="btn pill" data-key="NRC_SUBMENU-ONOFF">Options</button>
+          <button class="btn pill" data-key="NRC_STTL-ONOFF">Subtitles</button>
+          <button class="btn pill" data-key="NRC_SKIP_PREV-ONOFF">⏮ Prev</button>
+          <button class="btn pill" data-key="NRC_SKIP_NEXT-ONOFF">Next ⏭</button>
+        </div>
+      </details>
+
+      <details class="drawer" id="apps-drawer">
+        <summary>Apps</summary>
+        <div class="row chips" id="apps">
+          <button class="btn pill app" data-app="0010000200000001">Netflix</button>
+          <button class="btn pill app" data-app="0070000200180001">YouTube</button>
+          <button class="btn pill app" data-app="0010000100180001">Prime Video</button>
+        </div>
+      </details>
+    </main>
+
+    <dialog id="settings">
+      <form method="dialog" class="sheet" id="settings-form">
+        <header>
+          <h2>Your TV</h2>
+          <button class="icon-btn" value="cancel" formnovalidate aria-label="Close">✕</button>
+        </header>
+
+        <p class="hint">Phone and TV must be on the same WiFi. On the TV, turn on <b>Network → TV Remote App Settings → TV Remote</b>, and <b>Powered On by Apps</b> if you want to switch it on from here.</p>
+
+        <button type="button" class="btn wide" id="discover">Search for TVs</button>
+        <div id="found" class="found"></div>
+
+        <label>TV IP address <input id="host" inputmode="decimal" placeholder="192.168.1.50" autocomplete="off" required /></label>
+        <label>MAC address <small>(optional, for "Turn on")</small><input id="mac" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" /></label>
+        <button type="button" class="btn wide primary" id="save">Save &amp; connect</button>
+
+        <div id="pair-box" class="pair" hidden>
+          <h3>Pair with your TV</h3>
+          <p class="hint">This TV needs a one-time pairing. Tap below and enter the 4-digit PIN shown on the TV.</p>
+          <button type="button" class="btn wide" id="pair-start">Show PIN on TV</button>
+          <div class="pin-row">
+            <input id="pin" inputmode="numeric" maxlength="4" placeholder="PIN" autocomplete="one-time-code" />
+            <button type="button" class="btn primary" id="pair-finish">Pair</button>
+          </div>
+        </div>
+        <p id="settings-msg" class="msg" role="status"></p>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="alert"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

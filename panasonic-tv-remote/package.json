@@ -1,0 +1,14 @@
+{
+  "name": "panasonic-tv-remote",
+  "version": "1.0.0",
+  "description": "Control a Panasonic Viera TV over WiFi from your phone",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
