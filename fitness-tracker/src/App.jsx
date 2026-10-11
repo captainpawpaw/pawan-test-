@@ -611,6 +611,7 @@ export default function App() {
         onClick={() => setCalPinned((p) => !p)}
         aria-expanded={calOpen}
         aria-controls="month-calendar"
+        className="ft-card"
         style={{ ...styles.calToggle, ...(calOpen ? styles.calToggleOpen : {}) }}
       >
         <span style={styles.calIcon} aria-hidden="true">▦</span>
@@ -766,7 +767,7 @@ function ThemePicker({ value, onChange }) {
       <span style={styles.themeLabel}>Theme</span>
       {THEME_NAMES.map((t) => (
         <button key={t} type="button" aria-pressed={value === t} onClick={() => onChange(t)} style={{ ...styles.themeBtn, ...(value === t ? styles.themeBtnOn : {}) }}>
-          <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].vars.paper, borderColor: THEMES[t].vars.ink }}>
+          <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
             <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
             <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
           </span>
@@ -947,12 +948,12 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
   };
 
   return (
-    <div className={className} style={{ ...styles.section, borderLeftColor: accent }}>
+    <div className={`${className || ""} ft-card`} style={{ ...styles.section, borderLeftColor: accent }}>
       <div style={styles.sectionHead}>
         <span style={{ ...styles.sectionTitle, color: accent }}>{title}</span>
         <button
           onClick={() => (open ? closeForm() : setOpen(true))}
-          style={{ ...styles.addBtn, borderColor: accent, color: open ? raised : accent, background: open ? accent : "transparent" }}
+          style={{ ...styles.addBtn, borderColor: accent, color: open ? C.onFill : accent, background: open ? accent : "transparent" }}
         >
           {open ? "Cancel" : "+ Add"}
         </button>
@@ -993,7 +994,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                         type="button"
                         aria-pressed={active}
                         onClick={() => setVals((v) => ({ ...v, bw: on }))}
-                        style={{ ...styles.unitBtn, borderRadius: i === 0 ? "3px 0 0 3px" : "0 3px 3px 0", ...(active ? { background: accent, borderColor: accent, color: raised } : { borderColor: accent, color: accent }) }}
+                        style={{ ...styles.unitBtn, borderRadius: i === 0 ? "3px 0 0 3px" : "0 3px 3px 0", ...(active ? { background: accent, borderColor: accent, color: C.onFill } : { borderColor: accent, color: accent }) }}
                       >
                         {label}
                       </button>
@@ -1121,7 +1122,7 @@ function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accen
                 type="button"
                 aria-pressed={on}
                 onClick={() => setTag(on ? null : t)}
-                style={{ ...styles.rowTag, ...(on ? { background: accent, borderColor: accent, color: raised } : {}) }}
+                style={{ ...styles.rowTag, ...(on ? { background: accent, borderColor: accent, color: C.onFill } : {}) }}
               >
                 #{t}
               </button>
@@ -1275,7 +1276,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
             style={{
               ...styles.filterChip,
               borderColor: color,
-              color: filter === id ? raised : color,
+              color: filter === id ? C.onFill : color,
               background: filter === id ? color : "transparent",
             }}
           >
@@ -1318,7 +1319,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
               const tags = tagsOf(tagMap, e.name);
               const isEditing = editing === e.name;
               return (
-                <div key={e.name} style={styles.libraryItem}>
+                <div key={e.name} className="ft-card" style={styles.libraryItem}>
                   <div style={styles.libraryRow}>
                     <div style={styles.libraryRowText}>
                       <span style={styles.rowMain}>{e.name}</span>
@@ -1469,7 +1470,7 @@ function NewExerciseForm({ suggestions, onCreate, onClose }) {
     if (!r.ok) setError(r.error);
   };
   return (
-    <form onSubmit={submit} style={styles.importPanel} aria-label="New exercise">
+    <form onSubmit={submit} className="ft-card" style={styles.importPanel} aria-label="New exercise">
       <div style={styles.sectionHead}>
         <span style={styles.importTitle}>NEW EXERCISE</span>
         <button type="button" onClick={onClose} style={styles.tagDoneBtn}>Close</button>
@@ -1697,7 +1698,7 @@ function ImportPanel({ library, onImport, onClose }) {
   );
 
   return (
-    <section style={styles.importPanel} aria-label="Import exercises">
+    <section className="ft-card" style={styles.importPanel} aria-label="Import exercises">
       <div style={styles.sectionHead}>
         <span style={styles.importTitle}>IMPORT FROM A WEB PAGE</span>
         <button onClick={onClose} style={styles.tagDoneBtn}>Close</button>
@@ -1887,7 +1888,7 @@ const paisleyBg = `url("data:image/svg+xml,${encodeURIComponent(paisleySvg)}")`;
 
 const styles = {
   page: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     backgroundColor: paper,
     color: ink,
     minHeight: "100vh",
@@ -1950,7 +1951,7 @@ const styles = {
   },
   monthRow: { display: "flex", alignItems: "baseline", justifyContent: "space-between" },
   monthTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 34,
     letterSpacing: "0.02em",
@@ -1977,7 +1978,7 @@ const styles = {
     background: "none",
     border: "none",
     borderBottom: "2px solid transparent",
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 15,
     letterSpacing: "0.08em",
@@ -2085,7 +2086,7 @@ const styles = {
     marginBottom: 14,
   },
   importTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 17,
     letterSpacing: "0.04em",
@@ -2151,8 +2152,8 @@ const styles = {
   shotList: { display: "flex", flexWrap: "wrap", gap: 8 },
   shotThumb: { position: "relative", width: 64, height: 88, borderRadius: 3, overflow: "hidden", border: `1px solid ${line}`, background: paper },
   shotImg: { width: "100%", height: "100%", objectFit: "cover", objectPosition: "top", display: "block" },
-  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: raised, background: ink, borderRadius: 2, padding: "0 4px" },
-  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: raised, fontSize: 13, lineHeight: 1, padding: 0 },
+  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: C.onFill, background: ink, borderRadius: 2, padding: "0 4px" },
+  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: C.onFill, fontSize: 13, lineHeight: 1, padding: 0 },
   importError: { fontSize: 13, color: rust },
   removeImportedBtn: {
     alignSelf: "flex-start",
@@ -2165,7 +2166,7 @@ const styles = {
     textDecoration: "underline",
   },
   pickItem: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 13,
     background: raised,
     border: "1px solid",
@@ -2195,7 +2196,7 @@ const styles = {
     alignItems: "baseline",
     gap: 10,
     padding: "8px 10px",
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 14,
     color: ink,
     cursor: "pointer",
@@ -2227,7 +2228,7 @@ const styles = {
     borderRadius: 999,
     padding: "4px 10px",
   },
-  tagChipOn: { background: ink, color: raised, borderStyle: "solid", borderColor: ink },
+  tagChipOn: { background: ink, color: C.onFill, borderStyle: "solid", borderColor: ink },
   tagEditor: {
     display: "flex",
     flexDirection: "column",
@@ -2243,7 +2244,7 @@ const styles = {
     gap: 2,
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 12,
-    color: raised,
+    color: C.onFill,
     background: ink,
     borderRadius: 999,
     padding: "2px 4px 2px 9px",
@@ -2251,7 +2252,7 @@ const styles = {
   editTagX: {
     background: "none",
     border: "none",
-    color: raised,
+    color: C.onFill,
     fontSize: 14,
     lineHeight: 1,
     padding: "0 4px",
@@ -2259,7 +2260,7 @@ const styles = {
   tagAddBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 12,
-    color: raised,
+    color: C.onFill,
     background: ink,
     border: `1px solid ${ink}`,
     borderRadius: 4,
@@ -2306,7 +2307,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 18,
     letterSpacing: "0.02em",
@@ -2387,7 +2388,7 @@ const styles = {
   selectedHeader: {
     marginTop: 22,
     marginBottom: 10,
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 600,
     fontSize: 22,
     letterSpacing: "0.03em",
@@ -2413,7 +2414,7 @@ const styles = {
   },
   sectionHead: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   sectionTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 18,
     letterSpacing: "0.06em",
@@ -2435,7 +2436,7 @@ const styles = {
     gap: 3,
   },
   input: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 14,
     padding: "7px 8px",
     border: `1px solid ${line}`,
@@ -2455,7 +2456,7 @@ const styles = {
   },
   rows: { display: "flex", flexDirection: "column", gap: 6 },
   emptyText: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 13,
     color: inkFaint,
     fontStyle: "italic",
@@ -2469,7 +2470,7 @@ const styles = {
     padding: "7px 9px",
     gap: 8,
   },
-  rowMain: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, fontWeight: 500, flex: 1 },
+  rowMain: { fontFamily: C.sans, fontSize: 13.5, fontWeight: 500, flex: 1 },
   rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
   editBtn: {
     background: "none",

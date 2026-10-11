@@ -18,7 +18,7 @@ const plum = C.plum;
 const blue = C.blue; // reps, beside rust weight (checked for colour-blind separation)
 const colorFor = (type) => (type === "cardio" ? teal : type === "food" ? plum : rust);
 const mono = "'IBM Plex Mono', monospace";
-const condensed = "'Barlow Condensed', sans-serif";
+const condensed = C.display;
 
 const MIN_SPAN = 7 * DAY;
 const MAX_SPAN = 30 * 365 * DAY;
@@ -146,7 +146,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setMetric(m)}
-                style={{ ...s.chip, borderColor: color, color: on ? raised : color, background: on ? color : "transparent" }}
+                style={{ ...s.chip, borderColor: color, color: on ? C.onFill : color, background: on ? color : "transparent" }}
               >
                 {METRICS[m].label}
               </button>
@@ -384,7 +384,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
   const colW = Math.max(2, Math.min(24, periodPx * 0.7));
 
   return (
-    <div style={s.card}>
+    <div className="ft-card" style={s.card}>
       <div style={s.tiles}>
         {dual ? (
           <>
@@ -634,21 +634,21 @@ const s = {
   wrap: { display: "flex", flexDirection: "column", gap: 10, marginTop: 16 },
   empty: { marginTop: 24, fontSize: 14, color: inkFaint, lineHeight: 1.5 },
   label: { fontFamily: mono, fontSize: 11, color: inkFaint, letterSpacing: "0.06em" },
-  select: { fontFamily: "'Inter', sans-serif", fontSize: 15, padding: "8px 10px", border: `1px solid ${line}`, borderRadius: 4, background: C.field, color: ink, width: "100%" },
+  select: { fontFamily: C.sans, fontSize: 15, padding: "8px 10px", border: `1px solid ${line}`, borderRadius: 4, background: C.field, color: ink, width: "100%" },
   chips: { display: "flex", flexWrap: "wrap", gap: 6 },
   chip: { fontFamily: mono, fontSize: 12, border: "1px solid", borderRadius: 999, padding: "5px 12px" },
   card: { background: raised, border: `1px solid ${line}`, borderRadius: 4, padding: "12px 0 10px", display: "flex", flexDirection: "column", gap: 10 },
   tiles: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, padding: "0 12px" },
   tile: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   tileLabel: { fontSize: 11, color: inkFaint },
-  tileValue: { fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 20, color: ink, lineHeight: 1.15 },
+  tileValue: { fontFamily: C.sans, fontWeight: 600, fontSize: 20, color: ink, lineHeight: 1.15 },
   tileSub: { fontFamily: mono, fontSize: 10, color: inkFaint, overflowWrap: "anywhere" },
   chartHead: { display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 8, padding: "4px 12px 0", borderTop: `1px solid ${line}`, paddingTop: 10 },
   chartTitle: { fontFamily: condensed, fontWeight: 700, fontSize: 18, letterSpacing: "0.02em", color: ink, overflowWrap: "anywhere" },
   chartSub: { fontFamily: mono, fontSize: 10, color: inkFaint },
   scaleRow: { display: "inline-flex", border: `1px solid ${ink}`, borderRadius: 4, overflow: "hidden" },
   scaleBtn: { fontFamily: mono, fontSize: 11, padding: "5px 8px", border: "none", borderLeft: `1px solid ${ink}`, background: "transparent", color: ink, marginLeft: -1 },
-  scaleBtnOn: { background: ink, color: raised },
+  scaleBtnOn: { background: ink, color: C.onFill },
   plotBox: { position: "relative", touchAction: "pan-y", userSelect: "none", WebkitUserSelect: "none", cursor: "grab", outlineOffset: -2 },
   tick: { fontFamily: mono, fontSize: 10, fill: inkFaint, fontVariantNumeric: "tabular-nums" },
   targetLabel: { fontFamily: mono, fontSize: 10, fontWeight: 500, fill: ink },
@@ -656,11 +656,11 @@ const s = {
   legend: { display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "0 12px", fontFamily: mono, fontSize: 10, color: inkFaint },
   legendItem: { display: "inline-flex", alignItems: "center", gap: 6 },
   tipRow: { fontFamily: mono, fontSize: 10, color: inkFaint, whiteSpace: "nowrap" },
-  tipStrong: { fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: ink },
+  tipStrong: { fontFamily: C.sans, fontSize: 12, fontWeight: 600, color: ink },
   valueLabel: { fontFamily: mono, fontSize: 11, fontWeight: 500, fill: ink },
-  emptyPlot: { fontFamily: "'Inter', sans-serif", fontSize: 12, fill: inkFaint },
+  emptyPlot: { fontFamily: C.sans, fontSize: 12, fill: inkFaint },
   tooltip: { position: "absolute", pointerEvents: "none", display: "flex", flexDirection: "column", gap: 2, background: C.field, border: `1px solid ${line}`, borderRadius: 4, boxShadow: "0 4px 14px rgba(35,33,29,0.12)", padding: "6px 9px", width: 146 },
-  tipValue: { fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 14, color: ink },
+  tipValue: { fontFamily: C.sans, fontWeight: 600, fontSize: 14, color: ink },
   tipLabel: { fontFamily: mono, fontSize: 10, color: inkFaint },
   zoomRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 12px" },
   hint: { fontFamily: mono, fontSize: 10, color: inkFaint },

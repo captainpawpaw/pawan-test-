@@ -1,49 +1,83 @@
 // Colour themes. Components use the C.* values, which are CSS variables, so
-// switching theme only changes the variables on <html>.
+// switching theme only changes the variables on <html>. Each theme's extra
+// decoration (page background, masthead, cards) is in THEME_CSS, scoped by
+// html[data-theme].
+//
+// Roles: ink = main text; inkFaint = secondary text; paper = page and inset
+// panels; raised = cards; field = text boxes, menus, tooltips; line = borders;
+// grid = chart grid; rust = strength; teal = cardio; plum = food; blue = reps
+// beside strength weight; onFill = text on an ink or accent fill;
+// highlight = milestone badges.
+
+const SANS = "'Inter', sans-serif";
+const DISPLAY = "'Barlow Condensed', sans-serif";
 
 export const THEMES = {
   classic: {
     label: "Classic",
+    swatch: "#EDE8DE",
     vars: {
-      ink: "#23211D",
-      inkFaint: "#706B5E",
-      paper: "#EDE8DE",
-      raised: "#F5F1E8",
-      field: "#FFFFFF", // text boxes, menus, tooltips
-      line: "#D9D2C2",
-      grid: "#E4DDCF",
-      rust: "#B5551F", // strength
-      rustSoft: "#E0C4AC",
-      teal: "#1F6E64", // cardio
-      tealSoft: "#C3DAD5",
-      plum: "#7A3E62", // food
-      plumSoft: "#E6D3DD",
-      blue: "#3F6FA8", // reps, beside strength weight
-      highlight: "#E0C4AC", // milestone badges
-      highlightInk: "#23211D",
+      ink: "#23211D", inkFaint: "#706B5E", paper: "#EDE8DE", raised: "#F5F1E8", field: "#FFFFFF",
+      line: "#D9D2C2", grid: "#E4DDCF",
+      rust: "#B5551F", rustSoft: "#E0C4AC", teal: "#1F6E64", tealSoft: "#C3DAD5",
+      plum: "#7A3E62", plumSoft: "#E6D3DD", blue: "#3F6FA8",
+      onFill: "#F5F1E8", highlight: "#E0C4AC", highlightInk: "#23211D",
+      sans: SANS, display: DISPLAY,
     },
   },
-  // Vintage ledger paper, Swiss red and black, a blueprint masthead, maple
-  // for food and neon for milestones.
+  // A physical notebook: ruled lines, a double red margin, a blueprint header.
   ledger: {
     label: "Ledger",
+    swatch: "#FDFDFC",
     vars: {
-      ink: "#1A1A1A",
-      inkFaint: "#6B7280",
-      paper: "#FDFBF7",
-      raised: "#FFFFFF",
-      field: "#FFFFFF",
-      line: "#CDD6DC",
-      grid: "#E0E7EB",
-      rust: "#E23D28",
-      rustSoft: "#F7D3CD",
-      teal: "#1F456E",
-      tealSoft: "#CBD7E4",
-      plum: "#8A6436", // maple, darkened so text on paper stays readable
-      plumSoft: "#D4B895",
-      blue: "#1F456E",
-      highlight: "#CCFF00",
-      highlightInk: "#1A1A1A",
+      ink: "#1A1A1A", inkFaint: "#5F6670", paper: "#FDFDFC", raised: "#FFFFFF", field: "#FFFFFF",
+      line: "#DCDCDC", grid: "#E6E8EB",
+      rust: "#D34836", rustSoft: "#F5D0CA", teal: "#1D3B66", tealSoft: "#CBD5E3",
+      plum: "#8A6436", plumSoft: "#D4B895", blue: "#1D3B66",
+      onFill: "#FFFFFF", highlight: "#CCFF00", highlightInk: "#1A1A1A",
+      sans: "'Courier New', Courier, monospace", display: DISPLAY,
+    },
+  },
+  // Deep black, embossed panels, crimson accents.
+  krypton: {
+    label: "Krypton",
+    swatch: "#111111",
+    dark: true,
+    vars: {
+      ink: "#F0F0F0", inkFaint: "#9A9A9A", paper: "#050505", raised: "#111111", field: "#1A1A1A",
+      line: "#2D2D2D", grid: "#222222",
+      // #D31A1A is the crimson; text-sized red needs this lighter shade on black.
+      rust: "#EF3B3B", rustSoft: "#4A1414", teal: "#8FB3D9", tealSoft: "#1C2A3A",
+      plum: "#D29BD0", plumSoft: "#3A2238", blue: "#8FB3D9",
+      onFill: "#0B0B0B", highlight: "#D31A1A", highlightInk: "#FFFFFF",
+      sans: "'Segoe UI', system-ui, sans-serif", display: DISPLAY,
+    },
+  },
+  // Stark slate, black slabs, hard shadows.
+  gotham: {
+    label: "Gotham Swarm",
+    swatch: "#8F969B",
+    vars: {
+      ink: "#050505", inkFaint: "#262A2E", paper: "#A9AFB4", raised: "#C1C6CB", field: "#E4E7EA",
+      line: "#5F666B", grid: "#A9AFB4",
+      rust: "#050505", rustSoft: "#8F969B", teal: "#2F4A63", tealSoft: "#9FB0BF",
+      plum: "#5A3A28", plumSoft: "#B8A898", blue: "#2F4A63",
+      onFill: "#F5F5F5", highlight: "#F2C230", highlightInk: "#050505",
+      sans: "'Helvetica Neue', Helvetica, Arial, sans-serif", display: DISPLAY,
+    },
+  },
+  // Frosted glass over a mountain-sunset sky.
+  alpine: {
+    label: "Alpine Sunset",
+    swatch: "linear-gradient(135deg, #2351D4 0%, #9253C6 45%, #F089B6 100%)",
+    dark: true,
+    vars: {
+      ink: "#FFFFFF", inkFaint: "rgba(255, 255, 255, 0.82)", paper: "rgba(255, 255, 255, 0.10)", raised: "rgba(44, 37, 89, 0.4)",
+      field: "rgba(36, 28, 84, 0.85)", line: "rgba(255, 255, 255, 0.3)", grid: "rgba(255, 255, 255, 0.18)",
+      rust: "#FFD166", rustSoft: "rgba(255, 209, 102, 0.35)", teal: "#8BE9FD", tealSoft: "rgba(139, 233, 253, 0.3)",
+      plum: "#FFC2E2", plumSoft: "rgba(255, 194, 226, 0.35)", blue: "#8BE9FD",
+      onFill: "#2C2559", highlight: "#FFFFFF", highlightInk: "#5B2A86",
+      sans: SANS, display: DISPLAY,
     },
   },
 };
@@ -67,35 +101,81 @@ export function applyTheme(name) {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(THEMES[t].vars)) root.style.setProperty(`--ft-${kebab(k)}`, v);
   root.dataset.theme = t;
+  root.style.colorScheme = THEMES[t].dark ? "dark" : "light";
   try { localStorage.setItem(KEY, t); } catch { /* private mode */ }
   return t;
 }
 
-// Theme-specific decoration, scoped by html[data-theme].
+// Card borders: the left edge keeps its accent colour, so only the other
+// three sides are restyled.
+const sides = (c) => `border-top-color: ${c} !important; border-right-color: ${c} !important; border-bottom-color: ${c} !important;`;
+
 export const THEME_CSS = `
-  body { background: var(--ft-paper); }
+  body { background: var(--ft-paper); font-family: var(--ft-sans); }
+  html[data-theme="krypton"] .ft-page, html[data-theme="gotham"] .ft-page,
+  html[data-theme="alpine"] .ft-page, html[data-theme="ledger"] .ft-page { background: transparent !important; }
+
+  /* Ledger */
   html[data-theme="ledger"] body {
-    background-color: var(--ft-paper);
-    background-image: repeating-linear-gradient(to bottom, transparent 0 31px, #E0E7EB 31px 32px);
+    background-color: #FDFDFC;
+    background-image: repeating-linear-gradient(transparent, transparent 27px, #E6E8EB 28px);
   }
-  html[data-theme="ledger"] .ft-page {
-    background-color: transparent !important;
-    background-image: linear-gradient(90deg, transparent 0 7px, #E23D28 7px 8px, transparent 8px 10px, #E23D28 10px 11px, transparent 11px);
+  html[data-theme="ledger"] .ft-page { border-left: 4px double #E07A7A; padding-left: 20px !important; }
+  html[data-theme="ledger"] .ft-masthead { color: #FFFFFF; background: #1D3B66; border-radius: 4px; padding: 12px 14px 14px; }
+  html[data-theme="ledger"] .ft-card { background: #FFFFFF !important; ${sides("#DCDCDC")} border-radius: 6px !important; }
+
+  /* Krypton */
+  html[data-theme="krypton"] { background: #050505; }
+  html[data-theme="krypton"] body { background: radial-gradient(circle at center, #1A1A1A 0%, #050505 100%); min-height: 100vh; }
+  html[data-theme="krypton"] .ft-masthead {
+    background: #050505; border-bottom: 2px solid #D31A1A; box-shadow: 0 4px 15px rgba(211, 26, 26, 0.4);
+    border-radius: 4px; padding: 12px 14px 14px;
   }
-  html[data-theme="ledger"] .ft-masthead {
-    --ft-ink: #FFFFFF;
-    --ft-ink-faint: #C9D8EA;
-    --ft-line: rgba(255, 255, 255, 0.45);
-    --ft-rust: #FFB3A8;
-    --ft-teal: #CCFF00;
-    color: #FFFFFF;
-    background-color: #1F456E;
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
-    background-size: 20px 20px;
-    border-radius: 6px;
-    padding: 12px 14px 14px;
+  html[data-theme="krypton"] .ft-card {
+    background: #111111 !important; ${sides("#2D2D2D")} border-radius: 12px !important;
+    box-shadow: inset 2px 2px 4px rgba(255, 255, 255, 0.05), 8px 8px 20px rgba(0, 0, 0, 0.9);
   }
-  html[data-theme="ledger"] .ft-masthead-title { text-transform: uppercase; letter-spacing: 0.04em !important; }
+
+  /* Gotham Swarm */
+  html[data-theme="gotham"] body {
+    background-color: #8F969B;
+    background-image: radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.6) 120%);
+    min-height: 100vh;
+  }
+  html[data-theme="gotham"] { background: #5C6166; }
+  html[data-theme="gotham"] .ft-masthead {
+    background: #050505; clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+    padding: 12px 30px 14px 14px;
+  }
+  html[data-theme="gotham"] .ft-card {
+    background: #C1C6CB !important; border-top: none !important; border-right: none !important; border-bottom: none !important;
+    border-radius: 0 !important; box-shadow: 8px 8px 0 #050505; text-transform: uppercase; font-weight: 700;
+  }
+  html[data-theme="gotham"] .ft-card input, html[data-theme="gotham"] .ft-card textarea,
+  html[data-theme="gotham"] .ft-card select { text-transform: none; font-weight: 400; }
+
+  /* Alpine Sunset */
+  html[data-theme="alpine"] body {
+    background: linear-gradient(135deg, #2351D4 0%, #9253C6 40%, #F089B6 100%);
+    min-height: 100vh;
+  }
+  html[data-theme="alpine"] { background: #F089B6; }
+  html[data-theme="alpine"] .ft-masthead {
+    background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.3); padding: 12px 14px 14px;
+  }
+  html[data-theme="alpine"] .ft-card {
+    background: rgba(44, 37, 89, 0.4) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    ${sides("rgba(255, 255, 255, 0.2)")} border-radius: 16px !important; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  }
+  html[data-theme="alpine"] option, html[data-theme="alpine"] optgroup { color: #1A1A1A; background: #FFFFFF; }
+
+  /* Dark mastheads: light text inside */
+  html[data-theme="ledger"] .ft-masthead, html[data-theme="krypton"] .ft-masthead, html[data-theme="gotham"] .ft-masthead {
+    --ft-ink: #F5F5F5; --ft-ink-faint: #C9D2DC; --ft-line: rgba(255, 255, 255, 0.45);
+    --ft-rust: #FF9A8C; --ft-teal: #CCFF00; color: #F5F5F5;
+  }
+  html[data-theme="krypton"] .ft-masthead { --ft-ink-faint: #9A9A9A; --ft-teal: #EF3B3B; }
+  html[data-theme="gotham"] .ft-masthead { --ft-ink-faint: #B8BEC3; --ft-teal: #F2C230; }
+  html[data-theme="ledger"] .ft-masthead-title, html[data-theme="gotham"] .ft-masthead-title { text-transform: uppercase; letter-spacing: 0.04em !important; }
 `;

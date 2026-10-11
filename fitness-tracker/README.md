@@ -98,10 +98,16 @@ image at about 1.2 megapixels.
 
 ## Themes
 
-Two looks, picked at the bottom of the page: **Classic** (warm paper) and
-**Ledger** (vintage ledger paper with ruled lines and a red margin, Swiss red
-and black, a blueprint masthead, maple for food and neon milestone badges).
-Colours live in `src/theme.js` as CSS variables; the choice is kept in the
+Five looks, picked at the bottom of the page:
+
+- **Classic**: warm paper.
+- **Ledger**: a notebook with ruled lines, a double red margin and a blueprint header.
+- **Krypton**: deep black embossed panels with crimson accents.
+- **Gotham Swarm**: stark slate slabs with hard black shadows.
+- **Alpine Sunset**: frosted glass over a blue-purple-pink sky.
+
+Colours and fonts live in `src/theme.js` as CSS variables, with each theme's
+page, header and card styling in `THEME_CSS`. The choice is kept in the
 profile, so it syncs through Google Drive.
 
 ## Progress

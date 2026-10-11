@@ -126,7 +126,7 @@ const st = {
   body: { display: "flex", flexDirection: "column", gap: 10, marginTop: 10 },
   p: { margin: 0, fontSize: 13, lineHeight: 1.5, color: ink, maxWidth: "62ch" },
   row: { display: "flex", flexWrap: "wrap", gap: 8 },
-  primary: { fontFamily: mono, fontSize: 12, color: raised, background: ink, border: `1px solid ${ink}`, borderRadius: 3, padding: "7px 12px" },
+  primary: { fontFamily: mono, fontSize: 12, color: C.onFill, background: ink, border: `1px solid ${ink}`, borderRadius: 3, padding: "7px 12px" },
   secondary: { fontFamily: mono, fontSize: 12, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 3, padding: "7px 12px" },
   fileBtn: { position: "relative", fontFamily: mono, fontSize: 12, color: ink, border: `1px solid ${ink}`, borderRadius: 3, padding: "7px 12px", cursor: "pointer" },
   hidden: { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" },
