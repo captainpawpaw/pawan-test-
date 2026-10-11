@@ -15,11 +15,12 @@ const monthKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 const todayDayNum = () => pad2(new Date().getDate());
 const isSameMonth = (d) => monthKey(d) === monthKey(new Date());
 const MONTH_NAMES = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
-const DOW = ["S","M","T","W","T","F","S"];
+// Weeks start on Monday.
+const DOW = ["M","T","W","T","F","S","S"];
 
 function buildGrid(d) {
   const year = d.getFullYear(), month = d.getMonth();
-  const firstDow = new Date(year, month, 1).getDay();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells = [];
   for (let i = 0; i < firstDow; i++) cells.push(null);

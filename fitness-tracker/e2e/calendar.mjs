@@ -120,6 +120,14 @@ const pm = await M.newPage(); pm.on('pageerror', (e) => errs.push(e.message));
 await pm.goto('http://localhost:4190/'); await pm.getByText('STRENGTH').waitFor();
 check(!(await drawer(pm).isVisible()), 'phone: tucked away at first');
 await tab(pm).tap(); await settled(pm);
+const dows = await drawer(pm).evaluate(el => [...el.querySelectorAll('div')].find(d => d.children.length === 7 && d.textContent.length === 7)?.textContent);
+const firstDay = await drawer(pm).getByRole('button', { name: /^1$/ }).first().boundingBox();
+const colW = (await drawer(pm).boundingBox()).width;
+check(dows === 'MTWTFSS', 'week starts on Monday: ' + dows);
+// 1 Oct 2026 is a Thursday: fourth column
+check(firstDay.x > colW * 0.4 && firstDay.x < colW * 0.6, '1 Oct sits under Thursday ' + JSON.stringify(firstDay));
+await pm.touchscreen.tap(385, 600); await shut(pm);
+await tab(pm).tap(); await settled(pm);
 db = await drawer(pm).boundingBox();
 const tb2 = await tab(pm).boundingBox();
 check(await drawer(pm).isVisible() && db.x <= 1 && db.width < 390 - 40 && Math.abs(tb2.x - (db.x + db.width)) <= 2, 'phone: tap slides it out, tab rides on its edge ' + JSON.stringify({ db, tb2 }));
