@@ -204,6 +204,9 @@ export default function App() {
     const t = profile.theme?.name;
     if (t && THEMES[t] && t !== theme) setTheme(applyTheme(t));
   }, [profile.theme?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef(null);
+  const closeMenu = useCallback(() => { setMenuOpen(false); menuBtnRef.current?.focus(); }, []);
   const chooseTheme = async (name) => {
     setTheme(applyTheme(name));
     const next = { ...profile, theme: { name, at: Date.now() } };
@@ -559,7 +562,23 @@ export default function App() {
       <header className="ft-masthead" style={styles.header}>
         <div style={styles.eyebrowRow}>
           <div style={styles.eyebrow}>TRAINING LEDGER</div>
-          <DriveStatus />
+          <div style={styles.headerRight}>
+            <DriveStatus />
+            <button
+              ref={menuBtnRef}
+              type="button"
+              aria-label="Menu"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-controls="app-menu"
+              onClick={() => setMenuOpen((o) => !o)}
+              style={styles.menuBtn}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div style={styles.monthRow}>
           <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
@@ -567,6 +586,7 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
 
       <div className="ft-tabs" style={styles.tabRow}>
@@ -755,25 +775,68 @@ export default function App() {
       )}
       </>
       )}
-      <ThemePicker value={theme} onChange={chooseTheme} />
       <Backup />
     </div>
   );
 }
 
-function ThemePicker({ value, onChange }) {
+// The ☰ menu under the header. It sits outside the header so the header's
+// theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
+function AppMenu({ theme, onTheme, onClose, buttonRef }) {
+  const ref = useRef(null);
+  // Drop down from just under the ☰ button, right-aligned with it.
+  const [pos, setPos] = useState(null);
+  React.useLayoutEffect(() => {
+    const place = () => {
+      const host = ref.current?.offsetParent, btn = buttonRef.current;
+      if (!host || !btn) return;
+      const h = host.getBoundingClientRect(), r = btn.getBoundingClientRect();
+      setPos({ top: r.bottom - h.top + 6, right: Math.max(8, h.right - r.right) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [buttonRef]);
+  useEffect(() => {
+    if (pos) ref.current?.querySelector('[aria-checked="true"]')?.focus();
+  }, [Boolean(pos)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const away = (e) => {
+      if (!ref.current?.contains(e.target) && !buttonRef.current?.contains(e.target)) onClose();
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [onClose, buttonRef]);
+  const onKeyDown = (e) => {
+    const items = [...ref.current.querySelectorAll('[role="menuitemradio"]')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "Tab") onClose();
+  };
   return (
-    <div role="group" aria-label="Theme" style={styles.themeRow}>
-      <span style={styles.themeLabel}>Theme</span>
-      {THEME_NAMES.map((t) => (
-        <button key={t} type="button" aria-pressed={value === t} onClick={() => onChange(t)} style={{ ...styles.themeBtn, ...(value === t ? styles.themeBtnOn : {}) }}>
-          <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
-            <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
-            <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
-          </span>
-          {THEMES[t].label}
-        </button>
-      ))}
+    <div id="app-menu" ref={ref} role="menu" aria-label="Menu" onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
+      <div style={styles.menuHeading} id="menu-theme-heading">Theme</div>
+      <div role="group" aria-labelledby="menu-theme-heading">
+        {THEME_NAMES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="menuitemradio"
+            aria-checked={theme === t}
+            onClick={() => onTheme(t)}
+            style={{ ...styles.menuItem, ...(theme === t ? styles.menuItemOn : {}) }}
+          >
+            <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
+              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
+              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
+            </span>
+            <span style={{ flex: 1 }}>{THEMES[t].label}</span>
+            {theme === t && <span aria-hidden="true">✓</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1893,14 +1956,17 @@ const styles = {
     color: ink,
     minHeight: "100vh",
     padding: "20px 16px 40px",
+    position: "relative",
     maxWidth: 640,
     margin: "0 auto",
   },
   header: { marginBottom: 4 },
-  themeRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 28 },
-  themeLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, marginRight: 4 },
-  themeBtn: { display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: "4px 12px 4px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 999 },
-  themeBtnOn: { borderColor: ink, background: C.field, fontWeight: 600 },
+  headerRight: { display: "flex", alignItems: "flex-start", gap: 8, marginLeft: "auto" },
+  menuBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, flex: "none", color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
+  menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 230, display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
+  menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
+  menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
+  menuItemOn: { fontWeight: 600, background: paper },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
