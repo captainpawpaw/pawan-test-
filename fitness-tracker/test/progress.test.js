@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adjustScale, bucketize, flattenMonths, metricsFor, niceRange, niceTicks, periodStart, DAY } from "../src/progress.js";
+import { adjustScale, bucketize, bucketizeWeightReps, flattenMonths, metricsFor, niceRange, niceTicks, periodStart, DAY } from "../src/progress.js";
 
 const months = {
   "2026-09": {
@@ -30,7 +30,7 @@ test("body-weight sets use body weight on that date", () => {
 });
 
 test("metrics offered fit the selection", () => {
-  assert.deepEqual(metricsFor(rows.filter((r) => r.name === "Back Squat")), ["best", "e1rm", "volume", "reps", "sets"]);
+  assert.deepEqual(metricsFor(rows.filter((r) => r.name === "Back Squat")), ["weightreps", "best", "e1rm", "volume", "reps", "sets"]);
   assert.deepEqual(metricsFor(rows.filter((r) => r.type === "strength")), ["volume", "reps", "sets"]);
   assert.deepEqual(metricsFor(rows.filter((r) => r.name === "Run")), ["minutes", "distance"]);
 });
@@ -49,4 +49,12 @@ test("axis ticks are round", () => {
   assert.deepEqual(niceTicks(21792), [0, 10000, 20000, 30000]);
   const r = niceRange(60, 121);
   assert.ok(r[0] <= 60 && r[0] > 0 && r[r.length - 1] >= 121, String(r));
+});
+
+test("weight & reps keeps max and min of each per period", () => {
+  const squat = rows.filter((r) => r.name === "Back Squat");
+  const wk = bucketizeWeightReps(squat, "week");
+  assert.deepEqual(wk.map((b) => [b.wMax, b.wMin, b.rMax, b.rMin]), [[110, 100, 6, 5], [105, 105, 5, 5]]);
+  const dip = bucketizeWeightReps(rows.filter((r) => r.name === "Dip"), "day", () => 80);
+  assert.equal(dip[0].wMax, 90);
 });

@@ -112,7 +112,7 @@ await pa.getByLabel('Exercise').press('Enter');
 check((await pa.getByLabel('Exercise').inputValue()).startsWith('Skullcrusher'), 'Enter picks the top suggestion');
 await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8'); await pa.getByLabel('Weight (kg)').fill('30');
 await pa.getByRole('button', { name: 'Log a set' }).click();
-check((await pa.locator('body').innerText()).includes('3×8 @ 30kg'), 'logging still works');
+check((await pa.locator('body').innerText()).includes('3×8 · max 30kg'), 'logging still works');
 
 // cardio form
 await pa.locator('.ft-section').last().locator('button', { hasText: '+ Add' }).click();

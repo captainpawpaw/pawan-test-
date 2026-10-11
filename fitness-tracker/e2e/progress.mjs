@@ -74,7 +74,7 @@ await A.addInitScript(() => {
     const add = (type, e) => { months[mk] = months[mk] || {}; months[mk][day] = months[mk][day] || { strength: [], cardio: [] }; months[mk][day][type].push({ id: 's' + (i++), ...e }); };
     const wk = Math.floor((d - start) / (7 * 864e5));
     if (d.getDay() === 1 || d.getDay() === 4) {
-      add('strength', { exercise: 'Back Squat', sets: '4', reps: '6', weight: String(60 + wk) });
+      add('strength', { exercise: 'Back Squat', sets: '4', reps: d.getDay() === 1 ? '6' : '10', weight: String(d.getDay() === 1 ? 60 + wk : 50 + wk) });
       add('strength', { exercise: 'Leg Press', sets: '3', reps: '12', weight: String(100 + wk * 2) });
     }
     if (d.getDay() === 2) add('strength', { exercise: 'Deficit Push Up', sets: '3', reps: '15', bw: true });
@@ -95,7 +95,23 @@ check(await pa.locator('#progress-pick').inputValue() === 'exercise:Back Squat',
 const opts = await pa.locator('#progress-pick option').allTextContents();
 check(opts.includes('#legs (248)') && opts.some(o => o.startsWith('Run (')), 'tags and exercises offered: ' + opts.slice(0, 4).join(' | '));
 const metrics = await pa.locator('[aria-label="Measure"] button').allTextContents();
-check(metrics.join(',') === 'Best weight,Est. 1-rep max,Volume,Reps,Sets', 'exercise metrics: ' + metrics.join(','));
+check(metrics.join(',') === 'Weight & reps,Best weight,Est. 1-rep max,Volume,Reps,Sets', 'exercise metrics: ' + metrics.join(','));
+// weight & reps (default): two axes, four lines, legend, readout, table
+let wt = await pa.locator('body').innerText();
+check(wt.includes('Max weight (kg, left)') && wt.includes('Min weight') && wt.includes('Max reps (right)') && wt.includes('Min reps'), 'legend names all four lines');
+const svgText = await pa.locator('svg text').allTextContents();
+check(svgText.includes('kg') && svgText.includes('reps'), 'left kg axis and right reps axis');
+check((await pa.locator('svg g[opacity="0.38"]').count()) === 2 && (await pa.locator('svg g[opacity="1"] path').count()) === 2, 'two solid max lines and two faint min lines');
+check(/Heaviest in view\n\d+ kg/.test(wt) && /Most reps in a set\n\d+/.test(wt), 'weight & reps tiles');
+const bx = await pa.locator('[role="img"]').boundingBox();
+await pa.mouse.click(bx.x + bx.width - 60, bx.y + 120);
+const tipDual = (await pa.locator('[role="status"]').allInnerTexts()).join(' ');
+check(/kg max weight/.test(tipDual) && /kg min weight/.test(tipDual) && /reps max reps/.test(tipDual) && /reps min reps/.test(tipDual), 'tap shows all four values: ' + tipDual.replace(/\n/g, ' ').slice(0, 120));
+await pa.screenshot({ path: 'prog-weightreps.png' });
+await pa.getByText(/^Table of values in view/).click();
+check((await pa.locator('table thead').innerText()).replace(/\s+/g, ' ').includes('Max kg Min kg Max reps Min reps'), 'table has the four columns');
+await pa.getByText(/^Table of values in view/).click();
+await pa.getByRole('button', { name: 'Best weight' }).click();
 check(await scaleOn() === 'Weekly', 'starts weekly');
 let t = await pa.locator('body').innerText();
 check(/Best week in view\n\d+ kg/.test(t), 'stat tiles shown');
