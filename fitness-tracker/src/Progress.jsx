@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import {
   DAY, SCALES, SCALE_LABEL, SCALE_SPAN_DAYS, METRICS,
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
-  metricsFor, bucketize, bucketizeWeightReps, niceTicks, niceRange, compact, parseIso, daysOnTarget,
+  metricsFor, bucketize, bucketizeWeightReps, bucketizeScore, niceTicks, niceRange, compact, parseIso, daysOnTarget,
 } from "./progress";
 
 const ink = "#23211D";
@@ -66,6 +66,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
     if (selection?.kind === "exercise" && exercises.some(([n]) => n === selection.value)) return selection;
     if (selection?.kind === "tag" && tags.some(([t]) => t === selection.value)) return selection;
     if (selection?.kind === "food" && foodDays) return selection;
+    if (selection?.kind === "all" && exercises.length) return selection;
     if (exercises.length) return { kind: "exercise", value: exercises[0][0] };
     return foodDays ? { kind: "food", value: "all" } : null;
   }, [selection, exercises, tags, foodDays]);
@@ -74,6 +75,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
     if (!sel) return [];
     if (sel.kind === "food") return rows.filter((r) => r.type === "food");
     if (sel.kind === "exercise") return rows.filter((r) => r.name === sel.value && r.type !== "food");
+    if (sel.kind === "all") return rows.filter((r) => r.type === "strength");
     const names = new Set(Object.entries(tagMap).filter(([, v]) => (v?.tags || []).includes(sel.value)).map(([n]) => n));
     return rows.filter((r) => names.has(r.name) && r.type !== "food");
   }, [sel, rows, tagMap]);
@@ -115,6 +117,11 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
             <option value="food:all">Calories & macros ({foodDays} day{foodDays === 1 ? "" : "s"})</option>
           </optgroup>
         )}
+        {exercises.length > 0 && (
+          <optgroup label="Overall">
+            <option value="all:strength">All exercises</option>
+          </optgroup>
+        )}
         {tags.length > 0 && (
           <optgroup label="Tags">
             {tags.map(([t, n]) => <option key={`t-${t}`} value={`tag:${t}`}>#{t} ({n})</option>)}
@@ -153,8 +160,9 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
           rows={selRows}
           metric={activeMetric}
           bwOn={bwOn}
-          target={METRICS[activeMetric].target ? Number(targets?.[METRICS[activeMetric].target]) || null : null}
-          title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.value}
+          target={activeMetric === "score" ? 100 : METRICS[activeMetric].target ? Number(targets?.[METRICS[activeMetric].target]) || null : null}
+          targetLabel={activeMetric === "score" ? "Start = 100" : null}
+          title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.kind === "all" ? "All exercises" : sel.value}
         />
       )}
     </div>
@@ -162,7 +170,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
 }
 
 /* ---------- chart ---------- */
-function Chart({ rows, metric, bwOn, title, target }) {
+function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
   const m = METRICS[metric];
   const color = colorFor(m.type);
   const boxRef = useRef(null);
@@ -211,14 +219,14 @@ function Chart({ rows, metric, bwOn, title, target }) {
   const span = view.end - view.start;
   const scale = view.scale;
   const buckets = useMemo(
-    () => (dual ? bucketizeWeightReps(rows, scale, bwOn) : bucketize(rows, metric, scale, bwOn)),
+    () => (dual ? bucketizeWeightReps(rows, scale, bwOn) : metric === "score" ? bucketizeScore(rows, scale, bwOn) : bucketize(rows, metric, scale, bwOn)),
     [rows, metric, scale, bwOn, dual],
   );
 
   const x = (t) => PAD.left + ((t - view.start) / span) * plotW;
   const visible = buckets.filter((b) => b.end.getTime() > view.start && b.start.getTime() < view.end);
   const vals = dual ? visible.flatMap((b) => [b.wMax, b.wMin]).filter((v) => v != null) : visible.map((b) => b.value);
-  const yTicks = (m.form === "line" || dual) && vals.length ? niceRange(Math.min(...vals), Math.max(...vals)) : niceTicks(Math.max(0, target || 0, ...vals) || 1);
+  const yTicks = (m.form === "line" || dual) && vals.length ? niceRange(Math.min(...vals, target ?? Infinity), Math.max(...vals, target ?? -Infinity)) : niceTicks(Math.max(0, target || 0, ...vals) || 1);
   // Reps axis (right), for the weight & reps view.
   const repVals = dual ? visible.flatMap((b) => [b.rMax, b.rMin]).filter((v) => v != null) : [];
   // Reps are whole numbers: whole-number steps, at most about 5 of them.
@@ -383,6 +391,12 @@ function Chart({ rows, metric, bwOn, title, target }) {
             <Tile label={`Latest ${periodWord}`} value={latest?.wMax != null ? fmt(latest.wMax, "kg") : "–"} sub={latest?.rMax != null ? `up to ${fmtNum(latest.rMax)} reps` : ""} />
             <Tile label="Most reps in a set" value={repVals.length ? fmtNum(Math.max(...repVals)) : "–"} sub="in view" />
           </>
+        ) : metric === "score" ? (
+          <>
+            <Tile label={`Latest ${periodWord}`} value={latest ? fmtNum(latest.value) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : "No data in view"} />
+            <Tile label="Change since start" value={latest ? `${latest.value >= 100 ? "+" : "−"}${fmtNum(Math.abs(latest.value - 100))}%` : "–"} sub="start = your first two weeks = 100" />
+            <Tile label={`Best ${periodWord} in view`} value={best ? fmtNum(best.value) : "–"} sub={best ? periodLabel(best.start, scale, true) : ""} />
+          </>
         ) : m.agg === "avg" ? (
           <>
             <Tile label={scale === "day" ? "Average day in view" : `Average day, latest ${periodWord}`} value={latest ? fmt(scale === "day" ? avgInView : latest.value, m.unit) : "–"} sub={latest && scale !== "day" ? periodLabel(latest.start, scale, true) : `${foodDaysInView} day${foodDaysInView === 1 ? "" : "s"} logged`} />
@@ -395,7 +409,7 @@ function Chart({ rows, metric, bwOn, title, target }) {
           </>
         ) : (
           <>
-            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}${metric === "volume" ? " (average-weight volume)" : ""}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}${metric === "volume" ? " (max-weight volume)" : ""}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
             <Tile label={`Latest ${periodWord}`} value={latest ? fmt(latest.value, m.unit) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : ""} />
             <Tile label="Workout days in view" value={String(sessions)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
           </>
@@ -405,7 +419,7 @@ function Chart({ rows, metric, bwOn, title, target }) {
       <div style={s.chartHead}>
         <div style={{ minWidth: 0 }}>
           <div style={s.chartTitle}>{m.label} · {title}</div>
-          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (kg) and reps per set` : <>{m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
+          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (kg) and reps per set` : <>{m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
         </div>
         <div role="group" aria-label="Time scale" style={s.scaleRow}>
           {SCALES.map((sc) => (
@@ -504,7 +518,7 @@ function Chart({ rows, metric, bwOn, title, target }) {
             {target && (
               <g>
                 <line x1={PAD.left} x2={width - padR} y1={y(target)} y2={y(target)} stroke={ink} strokeWidth="1.5" opacity="0.7" />
-                <text x={PAD.left + 4} y={y(target) - 5} style={s.targetLabel}>Target {compact(target)}</text>
+                <text x={PAD.left + 4} y={y(target) - 5} style={s.targetLabel}>{targetLabel || `Target ${compact(target)}`}</text>
               </g>
             )}
             {best && hover == null && !dual && (

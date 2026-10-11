@@ -98,9 +98,18 @@ image at about 1.2 megapixels.
 
 ## Progress
 
-The Progress tab charts one exercise or one tag at a time: best weight,
-estimated 1-rep max (Epley), volume, reps or sets for lifts, and minutes or
-distance for cardio. Drag to move through time; pinch (or ctrl + scroll on a
+The Progress tab charts one exercise, one tag or all exercises: the Ledger
+score, weight & reps, best weight, estimated 1-rep max (Epley), volume
+(sets × reps × max weight), reps or sets for lifts, and minutes or distance
+for cardio.
+
+The **Ledger score** is one standard progress number that ignores warm-up
+patterns, using only max weight, sets and reps. Each exercise starts at 100,
+the average of its first two weeks. A session scores
+100 × (½ × strength ÷ starting strength + ½ × work ÷ starting work), where
+strength is max weight × (1 + reps ÷ 30) and work is sets × reps × max weight.
+A tag, or all exercises, averages its exercises' scores, so each exercise
+counts equally. Drag to move through time; pinch (or ctrl + scroll on a
 trackpad, or the − / + buttons) to zoom. The chart groups values by day, week,
 month or year to suit the zoom, or jump straight to one with the scale buttons.
 Data logic lives in `src/progress.js`, the chart in `src/Progress.jsx`.

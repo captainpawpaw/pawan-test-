@@ -95,8 +95,21 @@ check(await pa.locator('#progress-pick').inputValue() === 'exercise:Back Squat',
 const opts = await pa.locator('#progress-pick option').allTextContents();
 check(opts.includes('#legs (248)') && opts.some(o => o.startsWith('Run (')), 'tags and exercises offered: ' + opts.slice(0, 4).join(' | '));
 const metrics = await pa.locator('[aria-label="Measure"] button').allTextContents();
-check(metrics.join(',') === 'Weight & reps,Best weight,Est. 1-rep max,Volume,Reps,Sets', 'exercise metrics: ' + metrics.join(','));
-// weight & reps (default): two axes, four lines, legend, readout, table
+check(metrics.join(',') === 'Ledger score,Weight & reps,Best weight,Est. 1-rep max,Volume,Reps,Sets', 'exercise metrics: ' + metrics.join(','));
+// Ledger score (default): starts at 100, rises with the weights, says how it works
+let st = await pa.locator('body').innerText();
+check(st.includes('100 = your first two weeks') && st.includes('half strength (est. 1-rep max), half work (sets × reps × max weight)'), 'score explains itself');
+check((await pa.locator('svg text').allTextContents()).includes('Start = 100'), 'start line at 100');
+const chg = (st.match(/Change since start\n([+−][\d.,]+)%/) || [])[1];
+check(chg && chg.startsWith('+') && parseFloat(chg.slice(1)) > 10, 'rising weights give a rising score: ' + chg);
+await pa.screenshot({ path: 'prog-score.png' });
+await pa.locator('#progress-pick').selectOption('all:strength');
+st = await pa.locator('body').innerText();
+check(st.includes('Ledger score · All exercises') && /Change since start\n\+/.test(st), 'All exercises shows an overall score');
+await pa.screenshot({ path: 'prog-score-all.png' });
+await pa.locator('#progress-pick').selectOption('exercise:Back Squat');
+await pa.getByRole('button', { name: 'Weight & reps' }).click();
+// weight & reps: two axes, four lines, legend, readout, table
 let wt = await pa.locator('body').innerText();
 check(wt.includes('Max weight (kg, left)') && wt.includes('Min weight') && wt.includes('Max reps (right)') && wt.includes('Min reps'), 'legend names all four lines');
 const svgText = await pa.locator('svg text').allTextContents();
@@ -178,11 +191,11 @@ await pa.getByText(/^Table of values in view/).click();
 t = await pa.locator('table tbody').innerText();
 check(/3,600/.test(t), 'body-weight volume: 3x15x80 = 3,600 per week');
 const vt = await pa.locator('body').innerText();
-check(vt.includes('sets × reps × average weight') && vt.includes('(average-weight volume)'), 'volume says it is based on max weight');
+check(vt.includes('sets × reps × max weight') && vt.includes('(max-weight volume)'), 'volume says it is based on max weight');
 await pa.screenshot({ path: 'prog-volume.png' });
 await pa.locator('#progress-pick').selectOption('tag:legs');
 const tm = await pa.locator('[aria-label="Measure"] button').allTextContents();
-check(tm.join(',') === 'Volume,Reps,Sets', 'tag metrics (no best weight across exercises): ' + tm.join(','));
+check(tm.join(',') === 'Ledger score,Volume,Reps,Sets', 'tag metrics (no best weight across exercises): ' + tm.join(','));
 await pa.screenshot({ path: 'prog-tag.png' });
 await pa.locator('#progress-pick').selectOption('exercise:Run');
 check((await pa.locator('[aria-label="Measure"] button').allTextContents()).join(',') === 'Minutes,Distance', 'cardio metrics');

@@ -27,17 +27,11 @@ function buildGrid(d) {
   return cells;
 }
 
-// The weight a logged exercise counts at: the average of its min and max
-// weight when both are given, else the max. Body-weight sets add body weight
-// (when known) to that.
-function averageWeight(e) {
-  const max = Number(e.weight) || 0;
-  const min = e.minWeight === "" || e.minWeight == null ? null : Number(e.minWeight);
-  return min != null && !Number.isNaN(min) && max > 0 ? (Math.min(min, max) + max) / 2 : max;
-}
+// Volume counts each logged exercise at its max weight. Body-weight sets add
+// body weight (when known) to that.
 function strengthVolume(entries, bodyweightKg = null) {
   return (entries || []).reduce((sum, e) => {
-    const load = averageWeight(e) + (e.bw ? Number(bodyweightKg) || 0 : 0);
+    const load = (Number(e.weight) || 0) + (e.bw ? Number(bodyweightKg) || 0 : 0);
     return sum + (Number(e.sets) || 0) * (Number(e.reps) || 0) * load;
   }, 0);
 }
@@ -839,7 +833,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   return (
     <div style={styles.footerStack}>
       <span>
-        Volume (sets × reps × average weight): {strengthVolume(entries, bodyweightKg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+        Volume (sets × reps × max weight): {strengthVolume(entries, bodyweightKg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
         {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
       </span>
       {hasBw && !editing && (
