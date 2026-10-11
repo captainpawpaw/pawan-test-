@@ -407,6 +407,21 @@ export default function App() {
     const current = monthData[selected] || { strength: [], cardio: [] };
     const updated = { ...current, [type]: [...(current[type] || []), { id: uid(), ...entry }] };
     persist({ ...monthData, [selected]: updated });
+    noteNewExercise(type, entry);
+  };
+
+  // Editing keeps the entry's place in the list but gives it a new id, and
+  // records the old id as deleted: entries sync by id, so this is how an
+  // edit reaches other devices instead of being merged away.
+  const editEntry = async (type, id, entry) => {
+    await drive.recordDeletion(id).catch(() => {});
+    const current = monthData[selected] || { strength: [], cardio: [] };
+    const updated = { ...current, [type]: (current[type] || []).map((e) => (e.id === id ? { ...entry, id: uid() } : e)) };
+    persist({ ...monthData, [selected]: updated });
+    if (type !== "food") noteNewExercise(type, entry);
+  };
+
+  function noteNewExercise(type, entry) {
     // A name that isn't in the library yet becomes one of your exercises.
     const name = (type === "cardio" ? entry.activity : entry.exercise || "").trim();
     if (name && !libraryKeys.has(nameKey(name))) {
@@ -626,6 +641,7 @@ export default function App() {
               recent={recentFoods}
               onAdd={addFoods}
               onDelete={(id) => deleteEntry("food", id)}
+              onEdit={(id, e) => editEntry("food", id, e)}
               targets={profile.targets}
               onSaveTargets={saveTargets}
               saveError={saveError}
@@ -658,6 +674,7 @@ export default function App() {
               )}
               entries={dayEntries.strength}
               onDelete={(id) => deleteEntry("strength", id)}
+              onEdit={(id, e) => editEntry("strength", id, e)}
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
@@ -693,6 +710,7 @@ export default function App() {
               )}
               entries={dayEntries.cardio}
               onDelete={(id) => deleteEntry("cardio", id)}
+              onEdit={(id, e) => editEntry("cardio", id, e)}
               footer={dayEntries.cardio && dayEntries.cardio.length > 0 ? `Total time: ${cardioDuration(dayEntries.cardio)} min` : null}
             />
           </div>
@@ -830,11 +848,26 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
+  const [editingId, setEditingId] = useState(null); // entry being edited in the form
+
+  const startEdit = (e) => {
+    const v = {};
+    for (const f of fields) if (e[f.key] != null) v[f.key] = String(e[f.key]);
+    if (e.bw) v.bw = true;
+    setVals(v);
+    setEditingId(e.id);
+    setOpen(true);
+  };
+  const closeForm = () => { setOpen(false); setEditingId(null); setVals({}); };
+  const formRef = useRef(null);
+  useEffect(() => {
+    if (editingId) formRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [editingId]);
 
   useEffect(() => {
     if (prefill && prefill.type === sectionType) {
@@ -849,9 +882,10 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
     const primary = fields[0].key;
     if (!vals[primary]) return;
     const { bw, ...rest } = vals;
-    onAdd(bw ? { ...rest, bw: true } : rest);
-    setVals({});
-    setOpen(false);
+    const entry = bw ? { ...rest, bw: true } : rest;
+    if (editingId) onEdit(editingId, entry);
+    else onAdd(entry);
+    closeForm();
   };
 
   return (
@@ -859,7 +893,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       <div style={styles.sectionHead}>
         <span style={{ ...styles.sectionTitle, color: accent }}>{title}</span>
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => (open ? closeForm() : setOpen(true))}
           style={{ ...styles.addBtn, borderColor: accent, color: open ? "#F5F1E8" : accent, background: open ? accent : "transparent" }}
         >
           {open ? "Cancel" : "+ Add"}
@@ -867,7 +901,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       </div>
 
       {open && (
-        <form onSubmit={submit} style={styles.form}>
+        <form ref={formRef} onSubmit={submit} style={styles.form}>
           {fields.map((f) => f.options ? (
             <ExercisePicker
               key={f.key}
@@ -942,7 +976,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               />
             </label>
           ))}
-          <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{addLabel}</button>
+          {editingId && <span style={styles.editingNote}>Editing an entry. Change anything, then save.</span>}
+          <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{editingId ? "Save changes" : addLabel}</button>
         </form>
       )}
 
@@ -951,9 +986,12 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           <div style={styles.emptyText}>{emptyText}</div>
         ) : (
           entries.map((e) => (
-            <div key={e.id} style={{ ...styles.row, background: accentSoft + "40" }}>
+            <div key={e.id} style={{ ...styles.row, background: accentSoft + "40", ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}>
               {renderRow(e)}
-              <button aria-label="Delete entry" onClick={() => onDelete(e.id)} style={styles.deleteBtn}>×</button>
+              {onEdit && (
+                <button aria-label={`Edit ${e[fields[0].key] || "entry"}`} onClick={() => startEdit(e)} style={styles.editBtn}>✎</button>
+              )}
+              <button aria-label="Delete entry" onClick={() => { if (editingId === e.id) closeForm(); onDelete(e.id); }} style={styles.deleteBtn}>×</button>
             </div>
           ))
         )}
@@ -2369,6 +2407,16 @@ const styles = {
   },
   rowMain: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, fontWeight: 500, flex: 1 },
   rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
+  editBtn: {
+    background: "none",
+    border: "none",
+    color: inkFaint,
+    fontSize: 15,
+    lineHeight: 1,
+    padding: "0 4px",
+    marginLeft: 4,
+  },
+  editingNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
   deleteBtn: {
     background: "none",
     border: "none",
