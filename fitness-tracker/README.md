@@ -98,10 +98,16 @@ image at about 1.2 megapixels.
 
 ## Themes
 
-Two looks, picked at the bottom of the page: **Classic** (warm paper) and
-**Ledger** (vintage ledger paper with ruled lines and a red margin, Swiss red
-and black, a blueprint masthead, maple for food and neon milestone badges).
-Colours live in `src/theme.js` as CSS variables; the choice is kept in the
+Five looks, picked at the bottom of the page:
+
+- **Classic**: warm paper.
+- **Ledger**: a notebook with ruled lines, a double red margin and a blueprint header.
+- **Krypton**: deep black embossed panels with crimson accents.
+- **Gotham Swarm**: stark slate slabs with hard black shadows.
+- **Alpine Sunset**: frosted glass over a blue-purple-pink sky.
+
+Colours and fonts live in `src/theme.js` as CSS variables, with each theme's
+page, header and card styling in `THEME_CSS`. The choice is kept in the
 profile, so it syncs through Google Drive.
 
 ## Progress
@@ -134,9 +140,10 @@ Where the data comes from:
 
 | Source | Where it works | What it covers |
 |---|---|---|
-| Built-in list (`public/foods.json`) | Everywhere, offline | ~8,250 everyday foods with portions, from the USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Rebuild with `node scripts/build-foods.mjs ABBREV.txt FOOD_DES.txt`. |
+| UK list (`public/foods-uk.json`) | Everywhere, offline | ~2,850 UK foods and recipes from McCance and Widdowson's Composition of Foods Integrated Dataset (CoFID) 2021, listed first in searches. Contains public sector information licensed under the Open Government Licence v3.0. Rebuild with `python3 scripts/build-foods-uk.py CoFID.xlsx` (file from [GOV.UK](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid)). |
+| US list (`public/foods.json`) | Everywhere, offline | ~8,250 everyday foods with portions, from the USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Rebuild with `node scripts/build-foods.mjs ABBREV.txt FOOD_DES.txt`. |
 | Claude estimates | claude.ai artifact | Describe a meal, or add a photo; results are marked as estimates. |
-| Open Food Facts | Website (e.g. Cloudflare Pages) | Branded products, barcode lookup and camera scanning. Data © Open Food Facts contributors, ODbL. |
+| Open Food Facts (UK site) | Website (e.g. Cloudflare Pages) | UK branded products first, barcode lookup and camera scanning. Data © Open Food Facts contributors, ODbL. |
 | USDA FoodData Central online | Website with the Pages Function and a key | More foods and US branded products, through `functions/api/usda.js`. |
 
 ## Deploy on Cloudflare Pages

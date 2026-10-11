@@ -1,4 +1,4 @@
-// Food lookup: the built-in USDA list, and, where the app runs as a normal
+// Food lookup: the built-in UK (CoFID) and USDA lists, and, where the app runs as a normal
 // website, Open Food Facts (branded products, barcodes) and USDA FoodData
 // Central online (through the /api/usda Cloudflare Pages Function). Inside a
 // claude.ai artifact those online sources are blocked, and Claude can
@@ -27,21 +27,35 @@ export function sumFood(entries) {
   return out;
 }
 
-/* ---------- built-in list ---------- */
+/* ---------- built-in lists ---------- */
+// Two lists ship with the app: CoFID (McCance and Widdowson, the UK national
+// food composition data) and USDA SR28. UK foods come first in a search.
+const LISTS = [
+  { file: "foods-uk.json", source: "cofid" },
+  { file: "foods.json", source: "usda" },
+];
 let foodsPromise = null;
 export function loadFoods() {
   if (!foodsPromise) {
-    foodsPromise = fetch(`${import.meta.env.BASE_URL}foods.json`)
-      .then((r) => { if (!r.ok) throw new Error("foods.json " + r.status); return r.json(); })
-      .then((j) => j.foods.map(([name, group, kcal, protein, carbs, fat, fibre, sugar, portions], i) => ({
-        id: `usda:${i}`,
-        name,
-        group,
-        source: "usda",
-        per100: { kcal, protein, carbs, fat, fibre, sugar },
-        portions: (portions || []).map(([g, label]) => ({ g, label })),
-        lower: name.toLowerCase(),
-      })))
+    foodsPromise = Promise.all(LISTS.map(({ file, source }) =>
+      fetch(`${import.meta.env.BASE_URL}${file}`)
+        .then((r) => { if (!r.ok) throw new Error(`${file} ${r.status}`); return r.json(); })
+        .then((j) => j.foods.map(([name, group, kcal, protein, carbs, fat, fibre, sugar, portions], i) => ({
+          id: `${source}:${i}`,
+          name,
+          group,
+          source,
+          per100: { kcal, protein, carbs, fat, fibre, sugar },
+          portions: (portions || []).map(([g, label]) => ({ g, label })),
+          lower: name.toLowerCase(),
+        })))
+        // One list failing to load still leaves the other.
+        .catch(() => null)))
+      .then((lists) => {
+        const ok = lists.filter(Boolean);
+        if (!ok.length) throw new Error("food lists unavailable");
+        return ok.flat();
+      })
       .catch((e) => { foodsPromise = null; throw e; });
   }
   return foodsPromise;
@@ -68,6 +82,7 @@ export function searchFoods(list, query, limit = 25) {
     if (PROCESSED.test(f.lower)) score += 2;
     if (DELI_GROUPS.has(f.group)) score += 3; // "Chicken breast, oven-roasted, sliced" is deli meat
     score += f.lower.length / 30;
+    if (f.source === "cofid") score -= 1.5; // prefer UK data
     res.push([score, f]);
   }
   return res.sort((a, b) => a[0] - b[0]).slice(0, limit).map(([, f]) => f);
@@ -78,7 +93,8 @@ export function searchFoods(list, query, limit = 25) {
 export const onlineLookupsAllowed = () => typeof window !== "undefined" && !window.claude;
 
 /* ---------- Open Food Facts ---------- */
-const OFF = "https://world.openfoodfacts.org";
+// The UK site searches UK products; barcodes from anywhere still resolve.
+const OFF = "https://uk.openfoodfacts.org";
 const OFF_FIELDS = "code,product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,quantity";
 
 function fromOff(p) {

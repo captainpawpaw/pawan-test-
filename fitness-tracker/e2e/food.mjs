@@ -64,7 +64,7 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 
 let offCalls = 0, usdaCalls = 0;
 async function foodRoutes(ctx) {
-  await ctx.route('https://world.openfoodfacts.org/**', async (r) => {
+  await ctx.route('https://*.openfoodfacts.org/**', async (r) => {
     offCalls++;
     const u = new URL(r.request().url());
     if (u.pathname.startsWith('/api/v2/product/5000159484695')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ status: 1, product: { product_name: 'Milk Chocolate Bar', brands: 'Cadbury', serving_quantity: 45, serving_size: '45 g', nutriments: { 'energy-kcal_100g': 534, proteins_100g: 7.3, carbohydrates_100g: 57, fat_100g: 30, sugars_100g: 56 } } }) });
@@ -111,6 +111,14 @@ t = await pa.locator('body').innerText();
 check(t.includes('248 kcal') && t.includes('Protein 46.5 g'), 'amount preview scales per 100 g (165 kcal x 1.5)');
 await pa.getByRole('button', { name: 'Add to day' }).click();
 check((await pa.getByRole('status').allInnerTexts()).some(x => x.includes('Added Chicken')), 'added message');
+
+// UK foods (CoFID) come first and say where they're from
+await pa.getByLabel('Search foods').fill('cheddar english');
+const ukFirst = pa.locator('ul li button').first();
+await ukFirst.waitFor();
+const ukText = (await ukFirst.innerText()).replace(/\s+/g, ' ');
+check(ukText.startsWith('Cheese, Cheddar, English') && ukText.includes('416 kcal') && ukText.endsWith('· UK'), 'UK CoFID food found: ' + ukText);
+await pa.screenshot({ path: 'food-uk.png' });
 
 // portion unit
 await pa.getByLabel('Search foods').fill('egg whole raw fresh');

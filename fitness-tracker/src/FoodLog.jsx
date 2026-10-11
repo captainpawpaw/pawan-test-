@@ -14,10 +14,10 @@ const line = C.line;
 const plum = C.plum;
 const plumSoft = C.plumSoft;
 const mono = "'IBM Plex Mono', monospace";
-const sans = "'Inter', sans-serif";
-const condensed = "'Barlow Condensed', sans-serif";
+const sans = C.sans;
+const condensed = C.display;
 
-const SOURCE_LABEL = { usda: "USDA", "usda-online": "USDA online", off: "Open Food Facts", claude: "Claude estimate", custom: "Your entry" };
+const SOURCE_LABEL = { cofid: "UK CoFID", usda: "USDA", "usda-online": "USDA online", off: "Open Food Facts", claude: "Claude estimate", custom: "Your entry" };
 const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 })}`;
 
 // entries: this day's food; recent: foods logged before (newest first);
@@ -28,13 +28,13 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
   const totals = useMemo(() => sumFood(entries), [entries]);
 
   return (
-    <div style={st.section}>
+    <div className="ft-card" style={st.section}>
       <div style={st.head}>
         <span style={st.title}>FOOD</span>
         <button
           onClick={() => setAdding((a) => !a)}
           aria-expanded={adding}
-          style={{ ...st.addBtn, color: adding ? raised : plum, background: adding ? plum : "transparent" }}
+          style={{ ...st.addBtn, color: adding ? C.onFill : plum, background: adding ? plum : "transparent" }}
         >
           {adding ? "Close" : "+ Add"}
         </button>
@@ -177,6 +177,7 @@ function AddFood({ recent, onAdd, onDone }) {
       {mode === "claude" && <ClaudeEstimate onAdd={(items) => { onAdd(items); setFlash(`Added ${items.length} item${items.length === 1 ? "" : "s"} from Claude's estimate.`); setMode("search"); }} onBack={() => setMode("search")} />}
       {mode === "scan" && <BarcodeScan onFound={pick} onBack={() => setMode("search")} />}
       <button type="button" onClick={onDone} style={{ ...st.linkBtn, alignSelf: "flex-end" }}>Done adding</button>
+      <span style={st.note}>UK foods: McCance and Widdowson’s CoFID 2021. Contains public sector information licensed under the Open Government Licence v3.0.</span>
     </div>
   );
 }
@@ -245,7 +246,7 @@ function FoodSearch({ recent, onPick, onMode }) {
           <li key={f.id}>
             <button type="button" onClick={() => onPick(f)} style={st.result}>
               <span style={st.resultName}>{f.name}</span>
-              <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g{f.group ? ` · ${f.group}` : ""}</span>
+              <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g{f.group ? ` · ${f.group}` : ""}{f.source === "cofid" ? " · UK" : f.source === "usda" ? " · US" : ""}</span>
             </button>
           </li>
         ))}
@@ -271,7 +272,7 @@ function FoodSearch({ recent, onPick, onMode }) {
       {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
 
       <ResultList items={recentHits} label={q.trim() ? "Logged before" : "Recent"} />
-      <ResultList items={local.slice(0, 15)} label="Foods (USDA)" />
+      <ResultList items={local.slice(0, 15)} label="Foods (UK CoFID and USDA)" />
       <ResultList items={usdaShown} label="More from USDA online" />
       {q.trim().length >= 2 && foods && !local.length && !recentHits.length && <span style={st.note}>No match in the built-in list.</span>}
 
@@ -316,7 +317,7 @@ function FoodSearch({ recent, onPick, onMode }) {
 
 function AmountStep({ food, onAdd, onBack }) {
   const units = useMemo(() => [{ g: 1, label: "g" }, ...(food.portions || [])], [food]);
-  const [unit, setUnit] = useState(food.portions?.length && food.source !== "usda" ? 1 : 0);
+  const [unit, setUnit] = useState(food.portions?.length && food.source !== "usda" && food.source !== "cofid" ? 1 : 0);
   const [qty, setQty] = useState(food.lastGrams && unit === 0 ? String(food.lastGrams) : unit === 0 ? "100" : "1");
   const grams = (Number(qty) || 0) * units[unit].g;
   const vals = scale(food.per100, grams);
@@ -630,7 +631,7 @@ const st = {
   optionRow: { display: "flex", flexWrap: "wrap", gap: 6 },
   inline: { display: "flex", flexDirection: "column", gap: 4 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "flex-end" },
-  primaryBtn: { fontFamily: mono, fontSize: 12, color: raised, background: plum, border: `1px solid ${plum}`, borderRadius: 3, padding: "7px 12px" },
+  primaryBtn: { fontFamily: mono, fontSize: 12, color: C.onFill, background: plum, border: `1px solid ${plum}`, borderRadius: 3, padding: "7px 12px" },
   secondaryBtn: { fontFamily: mono, fontSize: 12, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 3, padding: "7px 10px", textAlign: "left" },
   pickedName: { fontFamily: sans, fontWeight: 600, fontSize: 15, color: ink },
   preview: { display: "flex", flexDirection: "column", gap: 2, fontSize: 13, color: ink, background: raised, borderRadius: 3, padding: "7px 9px" },
@@ -640,7 +641,7 @@ const st = {
   hiddenInput: { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" },
   thumb: { position: "relative", width: 52, height: 52, borderRadius: 3, overflow: "hidden", border: `1px solid ${line}` },
   thumbImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
-  thumbX: { position: "absolute", right: 1, top: 1, width: 18, height: 18, borderRadius: "50%", border: "none", background: ink, color: raised, fontSize: 12, lineHeight: 1, padding: 0 },
+  thumbX: { position: "absolute", right: 1, top: 1, width: 18, height: 18, borderRadius: "50%", border: "none", background: ink, color: C.onFill, fontSize: 12, lineHeight: 1, padding: 0 },
   video: { width: "100%", maxHeight: 280, background: ink, borderRadius: 4, objectFit: "cover" },
   flash: { fontSize: 13, color: plum },
   note: { fontFamily: mono, fontSize: 11, color: inkFaint },

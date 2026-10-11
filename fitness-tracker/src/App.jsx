@@ -204,6 +204,9 @@ export default function App() {
     const t = profile.theme?.name;
     if (t && THEMES[t] && t !== theme) setTheme(applyTheme(t));
   }, [profile.theme?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef(null);
+  const closeMenu = useCallback(() => { setMenuOpen(false); menuBtnRef.current?.focus(); }, []);
   const chooseTheme = async (name) => {
     setTheme(applyTheme(name));
     const next = { ...profile, theme: { name, at: Date.now() } };
@@ -559,7 +562,23 @@ export default function App() {
       <header className="ft-masthead" style={styles.header}>
         <div style={styles.eyebrowRow}>
           <div style={styles.eyebrow}>TRAINING LEDGER</div>
-          <DriveStatus />
+          <div style={styles.headerRight}>
+            <DriveStatus />
+            <button
+              ref={menuBtnRef}
+              type="button"
+              aria-label="Menu"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-controls="app-menu"
+              onClick={() => setMenuOpen((o) => !o)}
+              style={styles.menuBtn}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div style={styles.monthRow}>
           <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
@@ -567,6 +586,7 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
 
       <div className="ft-tabs" style={styles.tabRow}>
@@ -611,6 +631,7 @@ export default function App() {
         onClick={() => setCalPinned((p) => !p)}
         aria-expanded={calOpen}
         aria-controls="month-calendar"
+        className="ft-card"
         style={{ ...styles.calToggle, ...(calOpen ? styles.calToggleOpen : {}) }}
       >
         <span style={styles.calIcon} aria-hidden="true">▦</span>
@@ -754,25 +775,68 @@ export default function App() {
       )}
       </>
       )}
-      <ThemePicker value={theme} onChange={chooseTheme} />
       <Backup />
     </div>
   );
 }
 
-function ThemePicker({ value, onChange }) {
+// The ☰ menu under the header. It sits outside the header so the header's
+// theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
+function AppMenu({ theme, onTheme, onClose, buttonRef }) {
+  const ref = useRef(null);
+  // Drop down from just under the ☰ button, right-aligned with it.
+  const [pos, setPos] = useState(null);
+  React.useLayoutEffect(() => {
+    const place = () => {
+      const host = ref.current?.offsetParent, btn = buttonRef.current;
+      if (!host || !btn) return;
+      const h = host.getBoundingClientRect(), r = btn.getBoundingClientRect();
+      setPos({ top: r.bottom - h.top + 6, right: Math.max(8, h.right - r.right) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [buttonRef]);
+  useEffect(() => {
+    if (pos) ref.current?.querySelector('[aria-checked="true"]')?.focus();
+  }, [Boolean(pos)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const away = (e) => {
+      if (!ref.current?.contains(e.target) && !buttonRef.current?.contains(e.target)) onClose();
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [onClose, buttonRef]);
+  const onKeyDown = (e) => {
+    const items = [...ref.current.querySelectorAll('[role="menuitemradio"]')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "Tab") onClose();
+  };
   return (
-    <div role="group" aria-label="Theme" style={styles.themeRow}>
-      <span style={styles.themeLabel}>Theme</span>
-      {THEME_NAMES.map((t) => (
-        <button key={t} type="button" aria-pressed={value === t} onClick={() => onChange(t)} style={{ ...styles.themeBtn, ...(value === t ? styles.themeBtnOn : {}) }}>
-          <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].vars.paper, borderColor: THEMES[t].vars.ink }}>
-            <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
-            <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
-          </span>
-          {THEMES[t].label}
-        </button>
-      ))}
+    <div id="app-menu" ref={ref} role="menu" aria-label="Menu" onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
+      <div style={styles.menuHeading} id="menu-theme-heading">Theme</div>
+      <div role="group" aria-labelledby="menu-theme-heading">
+        {THEME_NAMES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="menuitemradio"
+            aria-checked={theme === t}
+            onClick={() => onTheme(t)}
+            style={{ ...styles.menuItem, ...(theme === t ? styles.menuItemOn : {}) }}
+          >
+            <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
+              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
+              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
+            </span>
+            <span style={{ flex: 1 }}>{THEMES[t].label}</span>
+            {theme === t && <span aria-hidden="true">✓</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -947,12 +1011,12 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
   };
 
   return (
-    <div className={className} style={{ ...styles.section, borderLeftColor: accent }}>
+    <div className={`${className || ""} ft-card`} style={{ ...styles.section, borderLeftColor: accent }}>
       <div style={styles.sectionHead}>
         <span style={{ ...styles.sectionTitle, color: accent }}>{title}</span>
         <button
           onClick={() => (open ? closeForm() : setOpen(true))}
-          style={{ ...styles.addBtn, borderColor: accent, color: open ? raised : accent, background: open ? accent : "transparent" }}
+          style={{ ...styles.addBtn, borderColor: accent, color: open ? C.onFill : accent, background: open ? accent : "transparent" }}
         >
           {open ? "Cancel" : "+ Add"}
         </button>
@@ -993,7 +1057,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                         type="button"
                         aria-pressed={active}
                         onClick={() => setVals((v) => ({ ...v, bw: on }))}
-                        style={{ ...styles.unitBtn, borderRadius: i === 0 ? "3px 0 0 3px" : "0 3px 3px 0", ...(active ? { background: accent, borderColor: accent, color: raised } : { borderColor: accent, color: accent }) }}
+                        style={{ ...styles.unitBtn, borderRadius: i === 0 ? "3px 0 0 3px" : "0 3px 3px 0", ...(active ? { background: accent, borderColor: accent, color: C.onFill } : { borderColor: accent, color: accent }) }}
                       >
                         {label}
                       </button>
@@ -1121,7 +1185,7 @@ function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accen
                 type="button"
                 aria-pressed={on}
                 onClick={() => setTag(on ? null : t)}
-                style={{ ...styles.rowTag, ...(on ? { background: accent, borderColor: accent, color: raised } : {}) }}
+                style={{ ...styles.rowTag, ...(on ? { background: accent, borderColor: accent, color: C.onFill } : {}) }}
               >
                 #{t}
               </button>
@@ -1275,7 +1339,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
             style={{
               ...styles.filterChip,
               borderColor: color,
-              color: filter === id ? raised : color,
+              color: filter === id ? C.onFill : color,
               background: filter === id ? color : "transparent",
             }}
           >
@@ -1318,7 +1382,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
               const tags = tagsOf(tagMap, e.name);
               const isEditing = editing === e.name;
               return (
-                <div key={e.name} style={styles.libraryItem}>
+                <div key={e.name} className="ft-card" style={styles.libraryItem}>
                   <div style={styles.libraryRow}>
                     <div style={styles.libraryRowText}>
                       <span style={styles.rowMain}>{e.name}</span>
@@ -1469,7 +1533,7 @@ function NewExerciseForm({ suggestions, onCreate, onClose }) {
     if (!r.ok) setError(r.error);
   };
   return (
-    <form onSubmit={submit} style={styles.importPanel} aria-label="New exercise">
+    <form onSubmit={submit} className="ft-card" style={styles.importPanel} aria-label="New exercise">
       <div style={styles.sectionHead}>
         <span style={styles.importTitle}>NEW EXERCISE</span>
         <button type="button" onClick={onClose} style={styles.tagDoneBtn}>Close</button>
@@ -1697,7 +1761,7 @@ function ImportPanel({ library, onImport, onClose }) {
   );
 
   return (
-    <section style={styles.importPanel} aria-label="Import exercises">
+    <section className="ft-card" style={styles.importPanel} aria-label="Import exercises">
       <div style={styles.sectionHead}>
         <span style={styles.importTitle}>IMPORT FROM A WEB PAGE</span>
         <button onClick={onClose} style={styles.tagDoneBtn}>Close</button>
@@ -1887,19 +1951,22 @@ const paisleyBg = `url("data:image/svg+xml,${encodeURIComponent(paisleySvg)}")`;
 
 const styles = {
   page: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     backgroundColor: paper,
     color: ink,
     minHeight: "100vh",
     padding: "20px 16px 40px",
+    position: "relative",
     maxWidth: 640,
     margin: "0 auto",
   },
   header: { marginBottom: 4 },
-  themeRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 28 },
-  themeLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, marginRight: 4 },
-  themeBtn: { display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: "4px 12px 4px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 999 },
-  themeBtnOn: { borderColor: ink, background: C.field, fontWeight: 600 },
+  headerRight: { display: "flex", alignItems: "flex-start", gap: 8, marginLeft: "auto" },
+  menuBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, flex: "none", color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
+  menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 230, display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
+  menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
+  menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
+  menuItemOn: { fontWeight: 600, background: paper },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
@@ -1950,7 +2017,7 @@ const styles = {
   },
   monthRow: { display: "flex", alignItems: "baseline", justifyContent: "space-between" },
   monthTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 34,
     letterSpacing: "0.02em",
@@ -1977,7 +2044,7 @@ const styles = {
     background: "none",
     border: "none",
     borderBottom: "2px solid transparent",
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 15,
     letterSpacing: "0.08em",
@@ -2085,7 +2152,7 @@ const styles = {
     marginBottom: 14,
   },
   importTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 17,
     letterSpacing: "0.04em",
@@ -2151,8 +2218,8 @@ const styles = {
   shotList: { display: "flex", flexWrap: "wrap", gap: 8 },
   shotThumb: { position: "relative", width: 64, height: 88, borderRadius: 3, overflow: "hidden", border: `1px solid ${line}`, background: paper },
   shotImg: { width: "100%", height: "100%", objectFit: "cover", objectPosition: "top", display: "block" },
-  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: raised, background: ink, borderRadius: 2, padding: "0 4px" },
-  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: raised, fontSize: 13, lineHeight: 1, padding: 0 },
+  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: C.onFill, background: ink, borderRadius: 2, padding: "0 4px" },
+  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: C.onFill, fontSize: 13, lineHeight: 1, padding: 0 },
   importError: { fontSize: 13, color: rust },
   removeImportedBtn: {
     alignSelf: "flex-start",
@@ -2165,7 +2232,7 @@ const styles = {
     textDecoration: "underline",
   },
   pickItem: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 13,
     background: raised,
     border: "1px solid",
@@ -2195,7 +2262,7 @@ const styles = {
     alignItems: "baseline",
     gap: 10,
     padding: "8px 10px",
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 14,
     color: ink,
     cursor: "pointer",
@@ -2227,7 +2294,7 @@ const styles = {
     borderRadius: 999,
     padding: "4px 10px",
   },
-  tagChipOn: { background: ink, color: raised, borderStyle: "solid", borderColor: ink },
+  tagChipOn: { background: ink, color: C.onFill, borderStyle: "solid", borderColor: ink },
   tagEditor: {
     display: "flex",
     flexDirection: "column",
@@ -2243,7 +2310,7 @@ const styles = {
     gap: 2,
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 12,
-    color: raised,
+    color: C.onFill,
     background: ink,
     borderRadius: 999,
     padding: "2px 4px 2px 9px",
@@ -2251,7 +2318,7 @@ const styles = {
   editTagX: {
     background: "none",
     border: "none",
-    color: raised,
+    color: C.onFill,
     fontSize: 14,
     lineHeight: 1,
     padding: "0 4px",
@@ -2259,7 +2326,7 @@ const styles = {
   tagAddBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 12,
-    color: raised,
+    color: C.onFill,
     background: ink,
     border: `1px solid ${ink}`,
     borderRadius: 4,
@@ -2306,7 +2373,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 18,
     letterSpacing: "0.02em",
@@ -2387,7 +2454,7 @@ const styles = {
   selectedHeader: {
     marginTop: 22,
     marginBottom: 10,
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 600,
     fontSize: 22,
     letterSpacing: "0.03em",
@@ -2413,7 +2480,7 @@ const styles = {
   },
   sectionHead: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   sectionTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif",
+    fontFamily: C.display,
     fontWeight: 700,
     fontSize: 18,
     letterSpacing: "0.06em",
@@ -2435,7 +2502,7 @@ const styles = {
     gap: 3,
   },
   input: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 14,
     padding: "7px 8px",
     border: `1px solid ${line}`,
@@ -2455,7 +2522,7 @@ const styles = {
   },
   rows: { display: "flex", flexDirection: "column", gap: 6 },
   emptyText: {
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: C.sans,
     fontSize: 13,
     color: inkFaint,
     fontStyle: "italic",
@@ -2469,7 +2536,7 @@ const styles = {
     padding: "7px 9px",
     gap: 8,
   },
-  rowMain: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, fontWeight: 500, flex: 1 },
+  rowMain: { fontFamily: C.sans, fontSize: 13.5, fontWeight: 500, flex: 1 },
   rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
   editBtn: {
     background: "none",
