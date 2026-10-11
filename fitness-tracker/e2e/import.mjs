@@ -73,7 +73,7 @@ async function pasteHtml(p, html) {
   }, html);
 }
 await pa.goto('http://localhost:4190/'); await ex(pa); await pa.getByText('3/4 Sit-Up').waitFor();
-await pa.getByText('Import exercises from a web page').click();
+await pa.getByText('Import from a web page').click();
 check(!(await pa.locator('body').innerText()).includes('Read with Claude'), 'Read with Claude hidden outside claude.ai');
 await pasteHtml(pa, mockHtml);
 check((await pa.locator('body').innerText()).includes('Page layout kept'), 'pasted HTML detected');
@@ -133,7 +133,7 @@ t = await pb.locator('body').innerText();
 check(t.includes('#greek god 10') && t.includes('day 1: legs and abs: 4 × 6–8'), 'other device gets imported plans and tags');
 
 // plain-text paste (tab separated)
-await pb.getByText('Import exercises from a web page').click();
+await pb.getByText('Import from a web page').click();
 await pb.locator('#import-paste').fill('Day 3: Shoulders and Arms\nExercise\tSets\tReps\tRest\nSeated Barbell Military Press\t4\t6-8\t2 min\nSkullcrusher\t3\t10-12\t1.5 min\n');
 await pb.getByRole('button', { name: 'Read page' }).click();
 t = await pb.locator('section[aria-label="Import exercises"]').innerText();
@@ -159,7 +159,7 @@ await C.addInitScript(() => {
 });
 const pc = await C.newPage(); pc.on('pageerror', e => errs.push(e.message));
 await pc.goto('http://localhost:4190/'); await ex(pc); await pc.getByText('3/4 Sit-Up').waitFor();
-await pc.getByText('Import exercises from a web page').click();
+await pc.getByText('Import from a web page').click();
 check((await pc.locator('body').innerText()).includes('Read with Claude'), 'Read with Claude shown when Claude is available');
 // a tall 600x3000 phone-style screenshot
 const png = await pc.evaluate(async () => { const c = document.createElement('canvas'); c.width = 600; c.height = 3000; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 600, 3000); g.fillStyle = '#000'; g.font = '30px sans-serif'; for (let y = 50; y < 3000; y += 60) g.fillText('Back squat 4 x 6-8 row ' + y, 20, y); const b = await new Promise(r => c.toBlob(r, 'image/png')); return Array.from(new Uint8Array(await b.arrayBuffer())); });

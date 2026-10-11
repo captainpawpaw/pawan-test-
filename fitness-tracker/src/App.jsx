@@ -105,6 +105,7 @@ export default function App() {
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
   const [imported, setImported] = useState({});
+  const [loaded, setLoaded] = useState({ tags: false, imported: false });
   const [profile, setProfile] = useState({});
 
   const key = monthKey(cursor);
@@ -151,6 +152,7 @@ export default function App() {
     try {
       const res = await storage.get("tags", false);
       setTagMap(res ? JSON.parse(res.value) : {});
+      setLoaded((l) => ({ ...l, tags: true }));
     } catch (e) {
       /* keep what's on screen */
     }
@@ -162,6 +164,7 @@ export default function App() {
     try {
       const res = await storage.get("exercises", false);
       setImported(res ? JSON.parse(res.value) : {});
+      setLoaded((l) => ({ ...l, imported: true }));
     } catch (e) {
       /* keep what's on screen */
     }
@@ -204,7 +207,7 @@ export default function App() {
       if (!imp || imp.removed || !imp.name) continue;
       const base = byKey.get(nameKey(imp.name));
       if (base) withPlans.set(base.name, imp.plans || []);
-      else extra.push({ name: imp.name, category: imp.category || "strength", equipment: imp.equipment || null, primaryMuscles: imp.primaryMuscles || [], plans: imp.plans || [], imported: true });
+      else extra.push({ name: imp.name, category: imp.category || "strength", equipment: imp.equipment || null, primaryMuscles: imp.primaryMuscles || [], plans: imp.plans || [], imported: true, custom: Boolean(imp.custom) });
     }
     const list = baseExercises.map((e) => (withPlans.has(e.name) ? { ...e, plans: withPlans.get(e.name) } : e));
     return [...list, ...extra].sort((a, b) => a.name.localeCompare(b.name));
@@ -320,10 +323,95 @@ export default function App() {
 
   const dayEntries = monthData[selected] || { strength: [], cardio: [] };
 
+  // Your own exercises live with the imported ones, marked custom.
+  const libraryKeys = useMemo(() => new Set(fullExercises.map((e) => nameKey(e.name))), [fullExercises]);
+  const [newExerciseNote, setNewExerciseNote] = useState("");
+
+  const createExercise = async ({ name, category, equipment, muscle, tags = [] }) => {
+    const clean = name.trim().replace(/\s+/g, " ");
+    if (!clean) return { ok: false, error: "Give the exercise a name." };
+    if (libraryKeys.has(nameKey(clean))) return { ok: false, error: `“${clean}” is already in your exercises.` };
+    const now = Date.now();
+    const ok = await saveImported({
+      ...imported,
+      [clean]: { name: clean, category: category || "strength", equipment: equipment || null, primaryMuscles: muscle ? [muscle] : [], plans: [], custom: true, at: now },
+    });
+    const cleanTags = [...new Set([...tags.map(cleanTag), YOUR_TAG].filter(Boolean))];
+    await setExerciseTags(clean, cleanTags);
+    return { ok, name: clean, error: ok ? "" : "Couldn't save. Try again." };
+  };
+
+  // Once per visit, after the library and your data have loaded: add any
+  // exercise you've logged that isn't in the library yet (e.g. logged before
+  // this feature), and give all your own exercises the "your exercise" tag.
+  const backfilled = useRef(false);
+  useEffect(() => {
+    if (backfilled.current || exercisesLoading || baseExercises.length < 100 || !loaded.tags || !loaded.imported) return;
+    backfilled.current = true;
+    (async () => {
+      const months = await loadAllMonths().catch(() => null);
+      if (!months) return;
+      const known = new Set(fullExercises.map((e) => nameKey(e.name)));
+      const found = new Map(); // key -> { name, category, bw }
+      for (const month of Object.values(months)) {
+        for (const day of Object.values(month || {})) {
+          for (const [type, field] of [["strength", "exercise"], ["cardio", "activity"]]) {
+            for (const e of day?.[type] || []) {
+              const name = String(e?.[field] || "").trim().replace(/\s+/g, " ");
+              const k = nameKey(name);
+              if (!name || known.has(k)) continue;
+              const prev = found.get(k);
+              found.set(k, { name: prev?.name || name, category: type === "cardio" ? "cardio" : "strength", bw: (prev?.bw ?? true) && Boolean(e.bw) });
+            }
+          }
+        }
+      }
+      const now = Date.now();
+      let nextImported = null;
+      if (found.size) {
+        nextImported = { ...imported };
+        for (const f of found.values()) {
+          nextImported[f.name] = { name: f.name, category: f.category, equipment: f.bw ? "body only" : null, primaryMuscles: [], plans: [], custom: true, at: now };
+        }
+      }
+      const mine = [
+        ...Object.values(imported).filter((x) => x?.custom && !x.removed).map((x) => x.name),
+        ...[...found.values()].map((f) => f.name),
+      ];
+      const nextTags = { ...tagMap };
+      let tagsChanged = false;
+      for (const n of mine) {
+        const cur = tagsOf(nextTags, n);
+        if (!cur.includes(YOUR_TAG)) { nextTags[n] = { tags: [...cur, YOUR_TAG], at: now }; tagsChanged = true; }
+      }
+      if (nextImported) await saveImported(nextImported);
+      if (tagsChanged) {
+        setTagMap(nextTags);
+        const res = await storage.set("tags", JSON.stringify(nextTags), false).catch(() => null);
+        if (res) drive.scheduleSync();
+      }
+      if (found.size) {
+        setNewExerciseNote(`Added ${found.size} exercise${found.size === 1 ? "" : "s"} you've logged to your exercises.`);
+        setTimeout(() => setNewExerciseNote(""), 6000);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercisesLoading, baseExercises, loaded]);
+
   const addEntry = (type, entry) => {
     const current = monthData[selected] || { strength: [], cardio: [] };
     const updated = { ...current, [type]: [...(current[type] || []), { id: uid(), ...entry }] };
     persist({ ...monthData, [selected]: updated });
+    // A name that isn't in the library yet becomes one of your exercises.
+    const name = (type === "cardio" ? entry.activity : entry.exercise || "").trim();
+    if (name && !libraryKeys.has(nameKey(name))) {
+      createExercise({ name, category: type === "cardio" ? "cardio" : "strength", equipment: entry.bw ? "body only" : null }).then((r) => {
+        if (r.ok) {
+          setNewExerciseNote(`Added “${r.name}” to your exercises.`);
+          setTimeout(() => setNewExerciseNote(""), 5000);
+        }
+      });
+    }
   };
 
   const addFoods = (list) => {
@@ -425,6 +513,7 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
+      <SyncNotice />
 
       <div style={styles.tabRow}>
         {[["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
@@ -454,6 +543,7 @@ export default function App() {
           saveError={tagSaveError}
           onImport={importExercises}
           onRemoveImported={removeImported}
+          onCreate={createExercise}
         />
       ) : (
       <>
@@ -502,6 +592,7 @@ export default function App() {
           <div style={styles.selectedHeader}>
             <span>{selectedLabel()}</span>
             {saveError && <span style={styles.errorTag}>Not saved — try again</span>}
+            {newExerciseNote && <span role="status" style={styles.newExerciseNote}>{newExerciseNote}</span>}
           </div>
 
           {activeTab === "food" ? (
@@ -587,6 +678,20 @@ export default function App() {
       </>
       )}
       <Backup />
+    </div>
+  );
+}
+
+// Shown while Drive is connected but this visit hasn't synced yet.
+function SyncNotice() {
+  const [st, setSt] = useState({ state: "off" });
+  useEffect(() => drive.subscribe(setSt), []);
+  if (!drive.driveSupported() || (st.state !== "needs-auth" && st.state !== "connecting")) return null;
+  return (
+    <div role="status" style={styles.syncNotice}>
+      {st.state === "connecting"
+        ? "Syncing with Google Drive…"
+        : "Your log may be out of date. Tap anywhere to sync with Google Drive."}
     </div>
   );
 }
@@ -971,10 +1076,12 @@ function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accen
 const RESULT_CAP = 120;
 
 const tagsOf = (tagMap, name) => tagMap[name]?.tags || [];
+const YOUR_TAG = "your exercise";
 const cleanTag = (t) => t.trim().replace(/^#+/, "").replace(/\s+/g, " ").toLowerCase().slice(0, 48);
 
-function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveError, onImport, onRemoveImported }) {
+function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveError, onImport, onRemoveImported, onCreate }) {
   const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState(null);
@@ -1013,12 +1120,23 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
 
   return (
     <div style={styles.library}>
-      {importing ? (
+      {creating ? (
+        <NewExerciseForm
+          suggestions={[...new Set(Object.values(tagMap).flatMap((v) => v?.tags || []))].sort()}
+          onCreate={async (v) => {
+            const r = await onCreate(v);
+            if (r.ok) { setCreating(false); setQuery(r.name); setFilter("all"); setTagFilter(null); }
+            return r;
+          }}
+          onClose={() => setCreating(false)}
+        />
+      ) : importing ? (
         <ImportPanel library={exercises} onImport={onImport} onClose={() => setImporting(false)} />
       ) : (
-        <button onClick={() => setImporting(true)} style={styles.importOpenBtn}>
-          ↓ Import exercises from a web page
-        </button>
+        <div style={styles.libraryActions}>
+          <button onClick={() => setCreating(true)} style={{ ...styles.importOpenBtn, marginBottom: 0 }}>+ New exercise</button>
+          <button onClick={() => setImporting(true)} style={{ ...styles.importOpenBtn, marginBottom: 0 }}>↓ Import from a web page</button>
+        </div>
       )}
       <input
         type="text"
@@ -1084,7 +1202,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
                   <div style={styles.libraryRow}>
                     <div style={styles.libraryRowText}>
                       <span style={styles.rowMain}>{e.name}</span>
-                      {meta && <span style={styles.libraryMeta}>{meta}{e.imported ? " · imported" : ""}</span>}
+                      {meta && <span style={styles.libraryMeta}>{meta}{e.custom ? " · your exercise" : e.imported ? " · imported" : ""}</span>}
                       {e.plans?.length > 0 && (
                         <span style={styles.libraryPlans}>
                           {e.plans.map((pl, i) => (
@@ -1127,6 +1245,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
                       onChange={(next) => onSetTags(e.name, next)}
                       onDone={() => setEditing(null)}
                       onRemove={e.imported ? () => { onRemoveImported(e.name); setEditing(null); } : null}
+                      removeLabel={e.custom ? "Remove this exercise" : "Remove this imported exercise"}
                     />
                   )}
                 </div>
@@ -1142,7 +1261,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
   );
 }
 
-function TagEditor({ name, tags, suggestions, onChange, onDone, onRemove }) {
+function TagEditor({ name, tags, suggestions, onChange, onDone, onRemove, removeLabel }) {
   const [text, setText] = useState("");
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -1206,9 +1325,71 @@ function TagEditor({ name, tags, suggestions, onChange, onDone, onRemove }) {
       )}
       {onRemove && (
         <button type="button" onClick={onRemove} style={styles.removeImportedBtn}>
-          Remove this imported exercise
+          {removeLabel || "Remove this exercise"}
         </button>
       )}
+    </form>
+  );
+}
+
+const EQUIPMENT_CHOICES = ["body only", "barbell", "dumbbell", "kettlebells", "cable", "machine", "bands", "e-z curl bar", "medicine ball", "exercise ball", "foam roll", "other"];
+const MUSCLE_CHOICES = ["abdominals", "biceps", "calves", "chest", "forearms", "glutes", "hamstrings", "lats", "lower back", "middle back", "neck", "quadriceps", "shoulders", "traps", "triceps", "abductors", "adductors"];
+const CATEGORY_CHOICES = [["strength", "Strength"], ["cardio", "Cardio"], ["stretching", "Stretching"], ["plyometrics", "Plyometrics"], ["powerlifting", "Powerlifting"], ["strongman", "Strongman"], ["olympic weightlifting", "Olympic weightlifting"]];
+
+function NewExerciseForm({ suggestions, onCreate, onClose }) {
+  const [v, setV] = useState({ name: "", category: "strength", equipment: "", muscle: "", tags: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => { setV((cur) => ({ ...cur, [k]: e.target.value })); setError(""); };
+  const submit = async (ev) => {
+    ev.preventDefault();
+    setBusy(true);
+    const r = await onCreate({ ...v, tags: v.tags.split(",") });
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+  };
+  return (
+    <form onSubmit={submit} style={styles.importPanel} aria-label="New exercise">
+      <div style={styles.sectionHead}>
+        <span style={styles.importTitle}>NEW EXERCISE</span>
+        <button type="button" onClick={onClose} style={styles.tagDoneBtn}>Close</button>
+      </div>
+      <label style={styles.fieldLabel}>
+        Name
+        <input id="new-exercise-name" value={v.name} onChange={set("name")} placeholder="e.g. Landmine press" autoFocus autoComplete="off" style={styles.input} />
+      </label>
+      <div style={styles.newExerciseGrid}>
+        <label style={styles.fieldLabel}>
+          Type
+          <select value={v.category} onChange={set("category")} style={styles.input}>
+            {CATEGORY_CHOICES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <label style={styles.fieldLabel}>
+          Equipment (optional)
+          <select value={v.equipment} onChange={set("equipment")} style={styles.input}>
+            <option value="">—</option>
+            {EQUIPMENT_CHOICES.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </label>
+        <label style={styles.fieldLabel}>
+          Main muscle (optional)
+          <select value={v.muscle} onChange={set("muscle")} style={styles.input}>
+            <option value="">—</option>
+            {MUSCLE_CHOICES.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </label>
+      </div>
+      <label style={styles.fieldLabel}>
+        Tags (optional, separate with commas)
+        <input value={v.tags} onChange={set("tags")} placeholder={suggestions.length ? suggestions.slice(0, 3).join(", ") : "legs day, monday"} list="new-exercise-tags" autoComplete="off" style={styles.input} />
+        <datalist id="new-exercise-tags">{suggestions.map((t) => <option key={t} value={t} />)}</datalist>
+      </label>
+      {error && <span role="alert" style={styles.importError}>{error}</span>}
+      <div style={styles.importBtnRow}>
+        <button type="submit" disabled={busy || !v.name.trim()} style={styles.tagAddBtn}>Save exercise</button>
+        <button type="button" onClick={onClose} style={styles.tagDoneBtn}>Cancel</button>
+      </div>
     </form>
   );
 }
@@ -1596,6 +1777,16 @@ const styles = {
   },
   header: { marginBottom: 4 },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
+  syncNotice: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 11,
+    color: ink,
+    background: raised,
+    border: `1px solid ${rust}`,
+    borderRadius: 4,
+    padding: "7px 10px",
+    marginTop: 10,
+  },
   driveWrap: { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: "4px 10px", marginLeft: "auto" },
   driveBtn: {
     display: "inline-flex",
@@ -1741,6 +1932,9 @@ const styles = {
     marginTop: 2,
     overflowWrap: "anywhere",
   },
+  libraryActions: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 },
+  newExerciseGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 },
+  newExerciseNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: teal, fontWeight: 400, letterSpacing: 0 },
   importOpenBtn: {
     width: "100%",
     fontFamily: "'IBM Plex Mono', monospace",
