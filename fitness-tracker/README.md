@@ -96,6 +96,14 @@ Inside a claude.ai artifact two extra options use Claude (`src/claudeRead.js`):
 Tall screenshots are cut into overlapping pieces first, since Claude sees each
 image at about 1.2 megapixels.
 
+## Themes
+
+Two looks, picked at the bottom of the page: **Classic** (warm paper) and
+**Ledger** (vintage ledger paper with ruled lines and a red margin, Swiss red
+and black, a blueprint masthead, maple for food and neon milestone badges).
+Colours live in `src/theme.js` as CSS variables; the choice is kept in the
+profile, so it syncs through Google Drive.
+
 ## Progress
 
 The Progress tab charts one exercise, one tag or all exercises: the Ledger

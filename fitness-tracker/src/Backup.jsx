@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { exportBook, importBook } from "./driveSync";
+import { C } from "./theme";
 
-const ink = "#23211D";
-const inkFaint = "#706B5E";
-const raised = "#F5F1E8";
-const line = "#D9D2C2";
-const teal = "#1F6E64";
-const rust = "#B5551F";
+const ink = C.ink;
+const inkFaint = C.inkFaint;
+const raised = C.raised;
+const line = C.line;
+const teal = C.teal;
+const rust = C.rust;
 const mono = "'IBM Plex Mono', monospace";
 
 // Saving a file: inside a claude.ai artifact through the `downloads`

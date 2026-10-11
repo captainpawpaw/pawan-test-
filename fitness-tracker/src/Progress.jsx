@@ -1,20 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { C } from "./theme";
 import {
   DAY, SCALES, SCALE_LABEL, SCALE_SPAN_DAYS, METRICS,
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
   metricsFor, bucketize, bucketizeWeightReps, bucketizeScore, niceTicks, niceRange, compact, parseIso, daysOnTarget,
 } from "./progress";
 
-const ink = "#23211D";
-const inkFaint = "#706B5E";
-const paper = "#EDE8DE";
-const raised = "#F5F1E8";
-const line = "#D9D2C2";
-const grid = "#E4DDCF";
-const rust = "#B5551F";
-const teal = "#1F6E64";
-const plum = "#7A3E62";
-const blue = "#3F6FA8"; // reps, beside rust weight (checked for colour-blind separation)
+const ink = C.ink;
+const inkFaint = C.inkFaint;
+const paper = C.paper;
+const raised = C.raised;
+const line = C.line;
+const grid = C.grid;
+const rust = C.rust;
+const teal = C.teal;
+const plum = C.plum;
+const blue = C.blue; // reps, beside rust weight (checked for colour-blind separation)
 const colorFor = (type) => (type === "cardio" ? teal : type === "food" ? plum : rust);
 const mono = "'IBM Plex Mono', monospace";
 const condensed = "'Barlow Condensed', sans-serif";
@@ -394,7 +395,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
         ) : metric === "score" ? (
           <>
             <Tile label={`Latest ${periodWord}`} value={latest ? fmtNum(latest.value) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : "No data in view"} />
-            <Tile label="Change since start" value={latest ? `${latest.value >= 100 ? "+" : "−"}${fmtNum(Math.abs(latest.value - 100))}%` : "–"} sub="start = your first two weeks = 100" />
+            <Tile label="Change since start" value={latest ? `${latest.value >= 100 ? "+" : "−"}${fmtNum(Math.abs(latest.value - 100))}%` : "–"} sub="start = your first two weeks = 100" badge={latest && latest.value >= 110 ? milestone(latest.value) : null} />
             <Tile label={`Best ${periodWord} in view`} value={best ? fmtNum(best.value) : "–"} sub={best ? periodLabel(best.start, scale, true) : ""} />
           </>
         ) : m.agg === "avg" ? (
@@ -615,21 +616,25 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
   );
 }
 
-function Tile({ label, value, sub }) {
+// Milestones every 10 points above the start: 110, 120, 130 …
+const milestone = (v) => `${Math.floor(v / 10) * 10}+ club`;
+
+function Tile({ label, value, sub, badge }) {
   return (
     <div style={s.tile}>
       <span style={s.tileLabel}>{label}</span>
-      <span style={s.tileValue}>{value}</span>
+      <span style={s.tileValue}>{value}{badge && <span style={s.badge}>{badge}</span>}</span>
       {sub && <span style={s.tileSub}>{sub}</span>}
     </div>
   );
 }
 
 const s = {
+  badge: { display: "inline-block", marginLeft: 8, verticalAlign: "middle", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", color: C.highlightInk, background: C.highlight, borderRadius: 999, padding: "2px 8px" },
   wrap: { display: "flex", flexDirection: "column", gap: 10, marginTop: 16 },
   empty: { marginTop: 24, fontSize: 14, color: inkFaint, lineHeight: 1.5 },
   label: { fontFamily: mono, fontSize: 11, color: inkFaint, letterSpacing: "0.06em" },
-  select: { fontFamily: "'Inter', sans-serif", fontSize: 15, padding: "8px 10px", border: `1px solid ${line}`, borderRadius: 4, background: "#fff", color: ink, width: "100%" },
+  select: { fontFamily: "'Inter', sans-serif", fontSize: 15, padding: "8px 10px", border: `1px solid ${line}`, borderRadius: 4, background: C.field, color: ink, width: "100%" },
   chips: { display: "flex", flexWrap: "wrap", gap: 6 },
   chip: { fontFamily: mono, fontSize: 12, border: "1px solid", borderRadius: 999, padding: "5px 12px" },
   card: { background: raised, border: `1px solid ${line}`, borderRadius: 4, padding: "12px 0 10px", display: "flex", flexDirection: "column", gap: 10 },
@@ -654,7 +659,7 @@ const s = {
   tipStrong: { fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: ink },
   valueLabel: { fontFamily: mono, fontSize: 11, fontWeight: 500, fill: ink },
   emptyPlot: { fontFamily: "'Inter', sans-serif", fontSize: 12, fill: inkFaint },
-  tooltip: { position: "absolute", pointerEvents: "none", display: "flex", flexDirection: "column", gap: 2, background: "#fff", border: `1px solid ${line}`, borderRadius: 4, boxShadow: "0 4px 14px rgba(35,33,29,0.12)", padding: "6px 9px", width: 146 },
+  tooltip: { position: "absolute", pointerEvents: "none", display: "flex", flexDirection: "column", gap: 2, background: C.field, border: `1px solid ${line}`, borderRadius: 4, boxShadow: "0 4px 14px rgba(35,33,29,0.12)", padding: "6px 9px", width: 146 },
   tipValue: { fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 14, color: ink },
   tipLabel: { fontFamily: mono, fontSize: 10, color: inkFaint },
   zoomRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 12px" },

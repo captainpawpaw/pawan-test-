@@ -1,17 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { C } from "./theme";
 import {
   NUTRIENTS, MACRO_LABEL, MACRO_UNIT, scale, sumFood, loadFoods, searchFoods,
   onlineLookupsAllowed, searchOpenFoodFacts, lookupBarcode, searchUsdaOnline, usdaOnlineKnownOff,
   cameraAllowed, startBarcodeScan, claudeEstimateAvailable, claudePhotoLimits, estimateWithClaude,
 } from "./food";
 
-const ink = "#23211D";
-const inkFaint = "#706B5E";
-const paper = "#EDE8DE";
-const raised = "#F5F1E8";
-const line = "#D9D2C2";
-const plum = "#7A3E62";
-const plumSoft = "#E6D3DD";
+const ink = C.ink;
+const inkFaint = C.inkFaint;
+const paper = C.paper;
+const raised = C.raised;
+const line = C.line;
+const plum = C.plum;
+const plumSoft = C.plumSoft;
 const mono = "'IBM Plex Mono', monospace";
 const sans = "'Inter', sans-serif";
 const condensed = "'Barlow Condensed', sans-serif";
@@ -610,7 +611,7 @@ const st = {
   targetForm: { display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" },
   rows: { display: "flex", flexDirection: "column", gap: 6 },
   empty: { fontSize: 13, color: inkFaint, fontStyle: "italic" },
-  row: { display: "flex", alignItems: "center", gap: 8, background: plumSoft + "55", borderRadius: 3, padding: "7px 9px" },
+  row: { display: "flex", alignItems: "center", gap: 8, background: `color-mix(in srgb, ${plumSoft} 33%, transparent)`, borderRadius: 3, padding: "7px 9px" },
   rowName: { fontSize: 14, color: ink, overflowWrap: "anywhere" },
   rowMeta: { fontFamily: mono, fontSize: 11, color: inkFaint, overflowWrap: "anywhere" },
   rowKcal: { fontFamily: mono, fontSize: 13, color: ink, flexShrink: 0 },
@@ -619,7 +620,7 @@ const st = {
   addBox: { display: "flex", flexDirection: "column", gap: 10, background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: 10 },
   stack: { display: "flex", flexDirection: "column", gap: 8 },
   fieldLabel: { fontFamily: mono, fontSize: 11, color: inkFaint, display: "flex", flexDirection: "column", gap: 3 },
-  input: { fontFamily: sans, fontSize: 14, padding: "7px 8px", border: `1px solid ${line}`, borderRadius: 3, background: "#fff", color: ink },
+  input: { fontFamily: sans, fontSize: 14, padding: "7px 8px", border: `1px solid ${line}`, borderRadius: 3, background: C.field, color: ink },
   resultGroup: { display: "flex", flexDirection: "column", gap: 4 },
   groupLabel: { fontFamily: mono, fontSize: 10, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase" },
   resultList: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 },
@@ -643,5 +644,5 @@ const st = {
   video: { width: "100%", maxHeight: 280, background: ink, borderRadius: 4, objectFit: "cover" },
   flash: { fontSize: 13, color: plum },
   note: { fontFamily: mono, fontSize: 11, color: inkFaint },
-  error: { fontFamily: mono, fontSize: 11, color: "#B5551F" },
+  error: { fontFamily: mono, fontSize: 11, color: C.rust },
 };
