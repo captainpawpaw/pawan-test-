@@ -76,7 +76,9 @@ await A.addInitScript(() => {
   const downloads = { save: async (req) => { window.__saved.push({ filename: req.filename, size: String(req.data).length }); } };
   window.claude = { use: async (n) => (n === 'sample' ? sample : n === 'downloads' ? downloads : null) };
 });
-await pa.goto('http://localhost:4190/'); await pa.getByText('FOOD', { exact: true }).waitFor();
+await pa.goto('http://localhost:4190/'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
+await pa.screenshot({ path: 'food-tab.png' });
+check(!(await pa.locator('body').innerText()).includes('STRENGTH'), 'food tab shows only food');
 await pa.getByRole('button', { name: '+ Add' }).last().click();
 await pa.getByLabel('Search foods').fill('banana');
 await pa.waitForTimeout(900);
