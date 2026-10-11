@@ -91,7 +91,7 @@ await pa.locator('button', { hasText: 'Cancel' }).first().click();
 await pa.getByRole('button', { name: 'EXERCISES' }).click();
 await pa.getByLabel('Search exercises').fill('landmine');
 let t = await pa.locator('body').innerText();
-check(/Landmine Press\nStrength · Your Exercise/i.test(t), 'shown in the library as your exercise');
+check(/Landmine Press\nStrength · Your Exercise\n#your exercise/i.test(t), 'logged name saved as your exercise, tagged #your exercise');
 await pa.getByLabel('Search exercises').fill('padel');
 check(/Padel\nCardio · Your Exercise/i.test(await pa.locator('body').innerText()), 'cardio one filed as cardio');
 
@@ -107,7 +107,7 @@ await pa.getByRole('button', { name: 'Save exercise' }).click();
 await pa.waitForTimeout(800); await pa.getByText(/^Banded Hip Airplane$/).first().waitFor();
 t = await pa.locator('body').innerText();
 check(await pa.getByLabel('Search exercises').inputValue() === 'Banded Hip Airplane', 'library jumps to the new exercise');
-check(/Banded Hip Airplane\nStrength · Other · Quadriceps · Your Exercise/i.test(t) && t.includes('#legs day') && t.includes('#conditioning'), 'saved with details and tags');
+check(/Banded Hip Airplane\nStrength · Other · Quadriceps · Your Exercise/i.test(t) && t.includes('#legs day') && t.includes('#conditioning') && t.includes('#your exercise'), 'saved with details, tags and #your exercise');
 await pa.screenshot({ path: 'new-exercise-saved.png' });
 // duplicate
 await pa.getByRole('button', { name: '+ New exercise' }).click();
@@ -150,5 +150,30 @@ await pb.evaluate(() => window.dispatchEvent(new Event('focus')));
 await pb.getByText('3×3 @ 150kg').waitFor({ timeout: 5000 }).catch(() => {});
 const bt = await pb.locator('body').innerText();
 check(bt.includes('3×3 @ 150kg'), 'returning to the app pulls new entries');
+
+// ---- names logged before this feature are added on open ----
+const C = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(C);
+await C.addInitScript(() => {
+  if (localStorage.getItem('seeded')) return;
+  localStorage.setItem('fitness-tracker:month:2026-10', JSON.stringify({ '11': { strength: [
+    { id: 'a1', exercise: 'Front Pull Down Machine', sets: '3', reps: '10', weight: '60' },
+    { id: 'a2', exercise: 'front pull down machine', sets: '3', reps: '10', weight: '60' },
+    { id: 'a3', exercise: 'Single cable pull down', sets: '3', reps: '10', weight: '12.5' },
+    { id: 'a4', exercise: 'Back Squat', sets: '3', reps: '5', weight: '100' },
+    { id: 'a5', exercise: 'Ring Dip Hold', sets: '3', reps: '1', bw: true } ], cardio: [ { id: 'c1', activity: 'Padel', duration: '60' } ] } }));
+  localStorage.setItem('seeded', '1');
+});
+const pc = await C.newPage(); pc.on('pageerror', (e) => errs.push(e.message));
+await pc.goto('http://localhost:4190/');
+await pc.getByText("Added 4 exercises you've logged to your exercises.").waitFor({ timeout: 8000 });
+check(true, 'earlier logged names added once each (case ignored, built-in Back Squat skipped)');
+await pc.getByRole('button', { name: 'EXERCISES' }).click();
+await pc.getByRole('button', { name: /#your exercise 4/ }).click();
+t = await pc.locator('body').innerText();
+check(t.includes('Front Pull Down Machine') && t.includes('Single cable pull down') && t.includes('Ring Dip Hold') && t.includes('Padel') && !t.includes('Back Squat'), 'tap #your exercise to see them all');
+check(/Ring Dip Hold\nStrength · Body Only · Your Exercise/i.test(t) && /Padel\nCardio · Your Exercise/i.test(t), 'type and body weight carried over');
+await pc.screenshot({ path: 'your-exercises.png' });
+await pc.reload(); await pc.waitForTimeout(1500);
+check(!(await pc.locator('body').innerText()).includes("you've logged to your exercises"), 'not added again on the next visit');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

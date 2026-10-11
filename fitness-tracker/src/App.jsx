@@ -105,6 +105,7 @@ export default function App() {
   const [tagMap, setTagMap] = useState({});
   const [tagSaveError, setTagSaveError] = useState(false);
   const [imported, setImported] = useState({});
+  const [loaded, setLoaded] = useState({ tags: false, imported: false });
   const [profile, setProfile] = useState({});
 
   const key = monthKey(cursor);
@@ -151,6 +152,7 @@ export default function App() {
     try {
       const res = await storage.get("tags", false);
       setTagMap(res ? JSON.parse(res.value) : {});
+      setLoaded((l) => ({ ...l, tags: true }));
     } catch (e) {
       /* keep what's on screen */
     }
@@ -162,6 +164,7 @@ export default function App() {
     try {
       const res = await storage.get("exercises", false);
       setImported(res ? JSON.parse(res.value) : {});
+      setLoaded((l) => ({ ...l, imported: true }));
     } catch (e) {
       /* keep what's on screen */
     }
@@ -333,10 +336,67 @@ export default function App() {
       ...imported,
       [clean]: { name: clean, category: category || "strength", equipment: equipment || null, primaryMuscles: muscle ? [muscle] : [], plans: [], custom: true, at: now },
     });
-    const cleanTags = [...new Set(tags.map(cleanTag).filter(Boolean))];
-    if (cleanTags.length) await setExerciseTags(clean, cleanTags);
+    const cleanTags = [...new Set([...tags.map(cleanTag), YOUR_TAG].filter(Boolean))];
+    await setExerciseTags(clean, cleanTags);
     return { ok, name: clean, error: ok ? "" : "Couldn't save. Try again." };
   };
+
+  // Once per visit, after the library and your data have loaded: add any
+  // exercise you've logged that isn't in the library yet (e.g. logged before
+  // this feature), and give all your own exercises the "your exercise" tag.
+  const backfilled = useRef(false);
+  useEffect(() => {
+    if (backfilled.current || exercisesLoading || baseExercises.length < 100 || !loaded.tags || !loaded.imported) return;
+    backfilled.current = true;
+    (async () => {
+      const months = await loadAllMonths().catch(() => null);
+      if (!months) return;
+      const known = new Set(fullExercises.map((e) => nameKey(e.name)));
+      const found = new Map(); // key -> { name, category, bw }
+      for (const month of Object.values(months)) {
+        for (const day of Object.values(month || {})) {
+          for (const [type, field] of [["strength", "exercise"], ["cardio", "activity"]]) {
+            for (const e of day?.[type] || []) {
+              const name = String(e?.[field] || "").trim().replace(/\s+/g, " ");
+              const k = nameKey(name);
+              if (!name || known.has(k)) continue;
+              const prev = found.get(k);
+              found.set(k, { name: prev?.name || name, category: type === "cardio" ? "cardio" : "strength", bw: (prev?.bw ?? true) && Boolean(e.bw) });
+            }
+          }
+        }
+      }
+      const now = Date.now();
+      let nextImported = null;
+      if (found.size) {
+        nextImported = { ...imported };
+        for (const f of found.values()) {
+          nextImported[f.name] = { name: f.name, category: f.category, equipment: f.bw ? "body only" : null, primaryMuscles: [], plans: [], custom: true, at: now };
+        }
+      }
+      const mine = [
+        ...Object.values(imported).filter((x) => x?.custom && !x.removed).map((x) => x.name),
+        ...[...found.values()].map((f) => f.name),
+      ];
+      const nextTags = { ...tagMap };
+      let tagsChanged = false;
+      for (const n of mine) {
+        const cur = tagsOf(nextTags, n);
+        if (!cur.includes(YOUR_TAG)) { nextTags[n] = { tags: [...cur, YOUR_TAG], at: now }; tagsChanged = true; }
+      }
+      if (nextImported) await saveImported(nextImported);
+      if (tagsChanged) {
+        setTagMap(nextTags);
+        const res = await storage.set("tags", JSON.stringify(nextTags), false).catch(() => null);
+        if (res) drive.scheduleSync();
+      }
+      if (found.size) {
+        setNewExerciseNote(`Added ${found.size} exercise${found.size === 1 ? "" : "s"} you've logged to your exercises.`);
+        setTimeout(() => setNewExerciseNote(""), 6000);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercisesLoading, baseExercises, loaded]);
 
   const addEntry = (type, entry) => {
     const current = monthData[selected] || { strength: [], cardio: [] };
@@ -1016,6 +1076,7 @@ function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accen
 const RESULT_CAP = 120;
 
 const tagsOf = (tagMap, name) => tagMap[name]?.tags || [];
+const YOUR_TAG = "your exercise";
 const cleanTag = (t) => t.trim().replace(/^#+/, "").replace(/\s+/g, " ").toLowerCase().slice(0, 48);
 
 function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveError, onImport, onRemoveImported, onCreate }) {
