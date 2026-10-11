@@ -71,6 +71,14 @@ const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu
 const bg = (p, sel) => p.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
 await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
 check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'Classic by default');
+check(await pa.locator('header svg.ft-logo').count() === 1, 'logo mark beside the name');
+const icons = await pa.evaluate(() => [...document.querySelectorAll('link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest]')].map(l => l.getAttribute('href')));
+check(icons.join() === '/icon.svg,/apple-touch-icon.png,/manifest.webmanifest', 'page links its icons: ' + icons.join());
+const got = await pa.evaluate(async (u) => Promise.all(u.map(x => fetch(x).then(r => r.status))), [...icons, '/icon-192.png', '/icon-512.png']);
+check(got.every(s => s === 200), 'icon files are served: ' + got.join());
+const mf = await pa.evaluate(() => fetch('/manifest.webmanifest').then(r => r.json()));
+check(mf.name === 'Training Ledger' && mf.icons.length === 3, 'manifest names the app and its icons');
+await pa.locator('header').screenshot({ path: 'logo-header-classic.png' });
 check(await bg(pa, 'body') === 'rgb(237, 232, 222)', 'classic paper: ' + await bg(pa, 'body'));
 await pa.getByRole('button', { name: 'Menu' }).click();
 check(await pa.getByRole('menuitemradio', { name: 'Classic' }).getAttribute('aria-checked') === 'true', 'menu shows Classic ticked');
@@ -111,6 +119,7 @@ check(await pa.evaluate(() => getComputedStyle(document.body).backgroundImage).t
 check((await pa.locator('header').evaluate(el => getComputedStyle(el).borderBottomColor)) === 'rgb(211, 26, 26)', 'Krypton: crimson masthead edge');
 check(await pa.locator('.ft-section').first().locator('.ft-masthead-title, h2, div').first().evaluate(el => getComputedStyle(el).color) !== 'rgb(0, 0, 0)', 'Krypton: light text');
 await pa.screenshot({ path: 'theme-krypton.png', fullPage: true });
+await pa.locator('header').screenshot({ path: 'logo-header-krypton.png' });
 await pickTheme(pa, 'Gotham Swarm');
 k = await card(pa);
 check(k.bg === 'rgb(193, 198, 203)' && k.r === '0px' && k.sh.includes('8px 8px 0px') && k.tt === 'uppercase', 'Gotham: slate slabs with hard shadow ' + JSON.stringify(k));

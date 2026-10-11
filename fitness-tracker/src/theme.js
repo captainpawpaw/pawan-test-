@@ -112,6 +112,11 @@ const sides = (c) => `border-top-color: ${c} !important; border-right-color: ${c
 
 export const THEME_CSS = `
   body { background: var(--ft-paper); font-family: var(--ft-sans); }
+  /* Logo colours: as designed on light grounds, brighter on dark ones. */
+  :root { --ft-logo-blue: #1E6FD9; --ft-logo-orange: #F26B1D; --ft-logo-red: #E8371E; --ft-logo-yellow: #F7A91B; --ft-logo-cyan: #19B9DC; }
+  html[data-theme="ledger"] .ft-masthead, html[data-theme="krypton"], html[data-theme="gotham"] .ft-masthead, html[data-theme="alpine"] {
+    --ft-logo-blue: #5B9BF0; --ft-logo-orange: #FF8A3D; --ft-logo-red: #FF5A3C; --ft-logo-yellow: #FFC233; --ft-logo-cyan: #33D1F0;
+  }
   html[data-theme="krypton"] .ft-page, html[data-theme="gotham"] .ft-page,
   html[data-theme="alpine"] .ft-page, html[data-theme="ledger"] .ft-page { background: transparent !important; }
 
