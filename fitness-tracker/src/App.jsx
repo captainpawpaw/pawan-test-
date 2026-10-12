@@ -1328,11 +1328,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               accent={accent}
             />
             {lastFor && !editingId && vals[f.key] && (
-              <LastTime
-                last={lastFor(vals[f.key])}
-                accent={accent}
-                onWarmUp={(last) => setVals((v) => ({ ...v, weight: String(last.warmUp), ...(last.bw ? { bw: true } : {}), ...(v.reps ? {} : last.reps ? { reps: String(last.reps) } : {}) }))}
-              />
+              <LastTime last={lastFor(vals[f.key])} accent={accent} />
             )}
             </React.Fragment>
           ) : f.bodyweightToggle ? (
@@ -1414,23 +1410,17 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
   );
 }
 
-// "Last time" for the exercise being logged: the previous session's top set,
-// and a warm-up weight 30% lighter.
-function LastTime({ last, accent, onWarmUp }) {
+// "Last time" for the exercise being logged: the previous session's top
+// weight, and a first set 30% lighter (70% of it).
+function LastTime({ last, accent }) {
   if (!last) return null;
-  const d = new Date(Number(last.date.slice(0, 4)), Number(last.date.slice(5, 7)) - 1, Number(last.date.slice(8, 10)));
-  const when = `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${d.getDate()} ${d.toLocaleDateString("en-GB", { month: "short" })}`;
-  const load = last.bw ? (last.weight > 0 ? `body weight + ${kgText(last.weight)}` : "body weight") : kgText(last.weight);
-  const warm = last.warmUp == null ? null : last.bw ? `body weight + ${kgText(last.warmUp)}` : kgText(last.warmUp);
+  const load = (kg) => (last.bw ? (kg > 0 ? `body weight + ${kgText(kg)}` : "body weight") : kgText(kg));
   return (
     <div role="status" aria-label="Last time" style={{ ...styles.lastTime, borderColor: accent }}>
       <span>
-        <strong>Last time</strong> ({when}): max {load} × {last.reps || 0} reps{last.sets ? `, ${last.sets} set${last.sets === 1 ? "" : "s"}` : ""}.
-        {warm && <> Warm up with <strong>{warm}</strong> (30% lighter).</>}
+        <strong>Last time:</strong> max {load(last.weight)}
+        {last.warmUp != null ? <>, first set <strong>{load(last.warmUp)}</strong></> : last.reps ? `, ${last.reps} reps` : ""}
       </span>
-      {warm && (
-        <button type="button" onClick={() => onWarmUp(last)} style={{ ...styles.lastTimeBtn, borderColor: accent, color: accent }}>Use warm-up</button>
-      )}
     </div>
   );
 }
@@ -2809,7 +2799,6 @@ const styles = {
     paddingBottom: 6,
   },
   lastTime: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 13, lineHeight: 1.45, color: ink, background: C.field, border: "1px solid", borderLeftWidth: 3, borderRadius: 3, padding: "8px 10px" },
-  lastTimeBtn: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, background: "transparent", border: "1px solid", borderRadius: 3, padding: "6px 10px", minHeight: 32 },
   dayNav: { display: "inline-flex", gap: 6, marginLeft: "auto", alignSelf: "center" },
   dayNavBtn: { background: "none", border: `1px solid ${line}`, borderRadius: 4, width: 34, height: 34, fontSize: 18, lineHeight: 1, color: ink, padding: 0 },
   errorTag: {
