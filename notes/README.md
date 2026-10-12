@@ -34,8 +34,21 @@ npm run build
 
 Outputs a static site to `dist/` that any static host (Vercel, Netlify, GitHub Pages) can serve.
 
+## Publish as a claude.ai artifact
+
+```bash
+npm run build:artifact
+```
+
+Writes `dist-artifact/notes.html`, a single page (React loads from cdnjs) to
+publish as an artifact with the `db`, `user` and `downloads` capabilities.
+
 ## Data storage
 
-Notes are saved in the browser's `localStorage` under `notes-app:notes`, so they
+When opened as a published claude.ai artifact, each person's notes are saved to
+their own private space in the artifact's database, so they follow you across
+devices and no one else (the artifact's owner included) can read them.
+
+Anywhere else, notes are saved in the browser's `localStorage` under `notes-app:notes`, so they
 live only on that device/browser. Use **Export** to back them up or move them to
 another device, then **Import** there.
