@@ -1,0 +1,85 @@
+import { chromium } from 'playwright';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+const DIST = process.argv[2];
+const srv = http.createServer((req, res) => {
+  let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
+  const f = path.join(DIST, p);
+  if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'Content-Type': f.endsWith('.js') ? 'text/javascript' : f.endsWith('.json') ? 'application/json' : 'text/html' });
+  fs.createReadStream(f).pipe(res);
+}).listen(4190);
+const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+await ctx.route('https://accounts.google.com/**', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
+await ctx.route('https://fonts.googleapis.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
+// two weeks ago: an upper and a lower session
+await ctx.addInitScript(() => {
+  if (localStorage.getItem('seeded')) return;
+  const pad = (n) => String(n).padStart(2, '0'); const x = new Date(); x.setDate(x.getDate() - 14);
+  localStorage.setItem(`fitness-tracker:month:${x.getFullYear()}-${pad(x.getMonth() + 1)}`, JSON.stringify({ [pad(x.getDate())]: { strength: [
+    { id: 'a', exercise: 'Barbell Bench Press - Medium Grip', sets: '3', reps: '10', weight: '100' },
+    { id: 'b', exercise: 'Back Squat', sets: '3', reps: '10', weight: '120' },
+    { id: 'c', exercise: 'Bent Over Barbell Row', sets: '3', reps: '10', weight: '80' },
+    { id: 'd', exercise: 'Dumbbell Bicep Curl', sets: '3', reps: '10', weight: '15' },
+  ], cardio: [] } }));
+  localStorage.setItem('seeded', '1');
+});
+const p = await ctx.newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+const plan = () => p.getByRole('note', { name: "Today's plan" });
+const label = async () => (await p.locator('[data-dayswipe] > span').first().innerText()).trim();
+const goTo = async (dow) => { for (let i = 0; i < 8 && !(await label()).startsWith(dow); i++) await p.getByRole('button', { name: 'Next day' }).click(); };
+await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.waitForTimeout(500);
+check(await plan().count() === 0, 'Default: no day plan');
+// the Default split: picking an exercise fills 3 x 10
+await p.locator('.ft-section').first().getByRole('button', { name: '+ Add' }).click();
+await p.getByLabel('Exercise').fill('Back Squ');
+await p.getByRole('option', { name: /Back Squat/ }).first().click();
+check(await p.getByLabel('Sets').inputValue() === '3' && await p.getByLabel('Reps').inputValue() === '10', 'Default fills 3 × 10');
+check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 120 kg, first set 85 kg', 'and the first set at 70%');
+await p.locator('.ft-section').first().getByRole('button', { name: 'Cancel' }).click();
+// choose Upper/Lower
+await p.getByRole('button', { name: 'Menu' }).click();
+await p.getByRole('menuitem', { name: 'Training split…' }).click();
+const settings = p.getByRole('region', { name: 'Training split settings' });
+check(await settings.getByRole('radio', { name: /^Default/ }).isChecked(), 'Default is chosen to start with');
+await settings.getByRole('radio', { name: /^Upper\/Lower/ }).check();
+check(await settings.getByLabel('Sets').inputValue() === '4' && await settings.getByLabel('Reps').inputValue() === '8', 'Upper/Lower suggests 4 × 8');
+await p.screenshot({ path: 'split-settings.png', fullPage: true });
+await settings.getByRole('button', { name: 'Save' }).click();
+check((await settings.innerText()).includes('Saved: Upper/Lower · 4 days, 4 × 8, first set 70%.'), 'saved');
+const pr = await p.evaluate(() => JSON.parse(localStorage.getItem('fitness-tracker:profile')));
+check(pr.split.id === 'upper-lower' && pr.split.sets === 4, 'stored in the profile (syncs)');
+await settings.getByRole('button', { name: 'Close' }).click();
+// Monday: Upper A, with upper-body exercises you've logged
+await goTo('MON');
+let t = await plan().innerText();
+check(t.includes('Upper A: chest, back, shoulders, arms · 4 × 8, first set 70%'), 'Monday is Upper A: ' + t.split('\n')[0]);
+check(t.includes('Barbell Bench Press') && t.includes('Bent Over Barbell Row') && t.includes('Dumbbell Bicep Curl') && !t.includes('Back Squat'), 'suggests the upper-body exercises you\'ve logged');
+await p.screenshot({ path: 'split-day.png' });
+await p.getByRole('button', { name: '+ Barbell Bench Press - Medium Grip' }).click();
+check(await p.getByLabel('Exercise').inputValue() === 'Barbell Bench Press - Medium Grip' && await p.getByLabel('Sets').inputValue() === '4' && await p.getByLabel('Reps').inputValue() === '8', 'tapping one starts logging it at 4 × 8');
+check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 100 kg, first set 70 kg', 'with last time and the first set');
+await p.getByLabel('Max weight (kg)').fill('70'); await p.getByRole('button', { name: 'Log a set' }).click();
+check(!(await plan().innerText()).includes('Barbell Bench Press'), 'a logged exercise leaves the suggestions');
+// Tuesday: Lower A; Wednesday: rest
+await goTo('TUE');
+t = await plan().innerText();
+check(t.includes('Lower A') && t.includes('Back Squat') && !t.includes('Bench'), 'Tuesday is Lower A, with squats');
+await goTo('WED');
+check((await plan().innerText()).includes('Rest day'), 'Wednesday is a rest day');
+// change the first set to 60%
+await p.getByRole('button', { name: 'Menu' }).click();
+await p.getByRole('menuitem', { name: 'Training split…' }).click();
+await settings.getByLabel('First set %').fill('60');
+await settings.getByRole('button', { name: 'Save' }).click();
+await settings.getByRole('button', { name: 'Close' }).click();
+await goTo('TUE');
+await p.getByRole('button', { name: '+ Back Squat' }).click();
+check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 120 kg, first set 72.5 kg', 'first set follows your %: ' + await p.getByRole('status', { name: 'Last time' }).innerText());
+check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
+await b.close(); srv.close();

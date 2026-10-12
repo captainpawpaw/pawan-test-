@@ -10,6 +10,8 @@ import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
 import { strengthHistory, lastSession } from "./lastTime";
+import { SplitSettings, DayPlan } from "./Split";
+import { activeSplit, sessionOn, suggestFor } from "./splits";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
@@ -369,6 +371,17 @@ export default function App() {
     return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
   }, []);
   const weighInDueAt = useMemo(() => weighInDue(weighIn, weights, new Date(clock)), [weighIn, weights, clock]);
+  // Training split: the day's session, and the sets, reps and first-set % to use.
+  const split = useMemo(() => activeSplit(profile.split), [profile.split]);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const saveSplit = async (value) => {
+    const next = { ...profile, split: { ...value, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+    return Boolean(res);
+  };
+
   const saveWeighIn = async (patch) => {
     const cur = profile.weighin || {};
     const changed = ["on", "day", "time"].some((k) => k in patch && patch[k] !== cur[k]);
@@ -432,6 +445,16 @@ export default function App() {
     return () => { live = false; };
   }, [loadAllMonths, dataVersion, key]); // and again on changing month, to pick up edits made in the last one
   const history = useMemo(() => strengthHistory({ ...allMonths, [monthKey(cursor)]: monthData }), [allMonths, monthData, cursor]);
+
+  // Exercises you've logged that suit the day's session in your split,
+  // leaving out what's already logged that day.
+  const todaySuggestions = useMemo(() => {
+    const session = sessionOn(split, new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected)));
+    if (!session) return [];
+    const done = new Set((monthData[selected]?.strength || []).map((e) => nameKey(e.exercise || "")));
+    const logged = [...history].filter(([k]) => !done.has(k)).map(([, sessions]) => [sessions[sessions.length - 1].entries[0].exercise, sessions.length]);
+    return suggestFor(session, logged, fullExercises);
+  }, [split, cursor, selected, monthData, history, fullExercises]);
 
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
@@ -706,7 +729,7 @@ export default function App() {
 
   const pickFromLibrary = (exercise) => {
     const type = exercise.category === "cardio" ? "cardio" : "strength";
-    setPrefill({ type, value: exercise.name, plan: exercise.plans?.[0] || null, token: Date.now() });
+    setPrefill({ type, value: exercise.name, plan: exercise.plans?.[0] || (type === "strength" ? { sets: split.sets, reps: split.reps } : null), token: Date.now() });
     setActiveTab("log");
   };
 
@@ -776,9 +799,11 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setWeighInOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setSplitOpen(false); setWeighInOpen(true); closeMenu(); }} onSplit={() => { setWeighInOpen(false); setSplitOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
-      {weighInOpen ? (
+      {splitOpen ? (
+        <SplitSettings setting={profile.split} onSave={saveSplit} onClose={() => setSplitOpen(false)} />
+      ) : weighInOpen ? (
         <WeighInSettings setting={weighIn} onSave={saveWeighIn} onClose={() => setWeighInOpen(false)} />
       ) : weighInDueAt && (
         <WeighInPrompt
@@ -964,6 +989,13 @@ export default function App() {
               saveError={saveError}
             />
           ) : (
+          <>
+          <DayPlan
+            split={split}
+            session={sessionOn(split, new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected)))}
+            suggestions={todaySuggestions}
+            onPick={(name) => setPrefill({ type: "strength", value: name, plan: { sets: split.sets, reps: split.reps }, token: Date.now() })}
+          />
           <div className="ft-sections" style={styles.sections}>
             <Section
               className="ft-section"
@@ -995,7 +1027,8 @@ export default function App() {
               onEdit={(id, e) => editEntry("strength", id, e)}
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
-              lastFor={(name) => lastSession(history, name, `${key}-${selected}`)}
+              lastFor={(name) => lastSession(history, name, `${key}-${selected}`, split.firstPct)}
+              defaults={{ sets: String(split.sets), reps: String(split.reps) }}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
                 <StrengthFooter
                   entries={dayEntries.strength}
@@ -1033,6 +1066,7 @@ export default function App() {
               footer={dayEntries.cardio && dayEntries.cardio.length > 0 ? `Total time: ${cardioDuration(dayEntries.cardio)} min` : null}
             />
           </div>
+          </>
           )}
         </div>
       )}
@@ -1061,7 +1095,7 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onWeighIn, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, onSplit, onClose, buttonRef }) {
   const ref = useRef(null);
   // Drop down from just under the ☰ button, right-aligned with it.
   const [pos, setPos] = useState(null);
@@ -1116,6 +1150,10 @@ function AppMenu({ theme, onTheme, onWeighIn, onClose, buttonRef }) {
           </button>
         ))}
       </div>
+      <div style={styles.menuHeading}>Training</div>
+      <button type="button" role="menuitem" onClick={onSplit} style={styles.menuItem}>
+        <span style={{ flex: 1 }}>Training split…</span>
+      </button>
       <div style={styles.menuHeading}>Reminders</div>
       <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
         <span style={{ flex: 1 }}>Weekly weigh-in…</span>
@@ -1248,7 +1286,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, lastFor }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, lastFor, defaults }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
@@ -1316,7 +1354,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               onPicked={(name, tag) => {
                 const plans = (plansByName || {})[name] || [];
                 const plan = plans.find((pl) => tag && pl.tag === tag) || plans[0];
-                const fill = planValues(sectionType, plan);
+                const fill = { ...(defaults || {}), ...planValues(sectionType, plan) };
                 setVals((cur) => {
                   const next = { ...cur, [f.key]: name, ...bwFor(name) };
                   for (const [k, v] of Object.entries(fill)) if (!cur[k]) next[k] = v;
