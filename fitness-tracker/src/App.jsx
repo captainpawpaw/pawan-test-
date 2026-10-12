@@ -20,6 +20,32 @@ const DOW = ["M","T","W","T","F","S","S"];
 
 const TABS = [["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]];
 
+// A synced map in storage ({ [id]: entry }): loads it, and writes one entry at
+// a time, re-reading first so anything that arrived by sync isn't lost.
+function useSyncedMap(key) {
+  const [map, setMap] = useState({});
+  const load = useCallback(async () => {
+    try {
+      const res = await storage.get(key, false);
+      setMap(res ? JSON.parse(res.value) : {});
+    } catch (e) {
+      /* keep what's on screen */
+    }
+  }, [key]);
+  useEffect(() => { load(); }, [load]);
+  const write = useCallback(async (id, entry) => {
+    let cur = {};
+    try { const res = await storage.get(key, false); cur = res ? JSON.parse(res.value) : {}; } catch { cur = {}; }
+    const next = { ...cur, [id]: entry };
+    const ok = await storage.set(key, JSON.stringify(next), false).catch(() => null);
+    if (!ok) return false;
+    setMap(next);
+    drive.scheduleSync();
+    return true;
+  }, [key]);
+  return [map, setMap, write, load];
+}
+
 // Things that use a sideways drag themselves: typing, sliders, the chart,
 // anything scrolling sideways, and the calendar sidebar.
 function swipeBlocked(el) {
@@ -267,30 +293,13 @@ export default function App() {
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
-  // My foods: packaged foods saved from photos of their labels.
-  const [myFoods, setMyFoods] = useState({});
-  const loadMyFoods = useCallback(async () => {
-    try {
-      const res = await storage.get("myfoods", false);
-      setMyFoods(res ? JSON.parse(res.value) : {});
-    } catch (e) {
-      /* keep what's on screen */
-    }
-  }, []);
-  useEffect(() => { loadMyFoods(); }, [loadMyFoods]);
-  // Re-reads before writing, so a food that arrived by sync isn't lost.
-  const writeMyFood = async (id, entry) => {
-    let cur = {};
-    try { const res = await storage.get("myfoods", false); cur = res ? JSON.parse(res.value) : {}; } catch { cur = { ...myFoods }; }
-    const next = { ...cur, [id]: entry };
-    const ok = await storage.set("myfoods", JSON.stringify(next), false).catch(() => null);
-    if (!ok) return false;
-    setMyFoods(next);
-    drive.scheduleSync();
-    return true;
-  };
+  // My foods (packaged foods saved from photos of their labels) and meals
+  // (several foods added in one tap): synced lists keyed by id.
+  const [myFoods, , writeMyFood, loadMyFoods] = useSyncedMap("myfoods");
+  const [meals, , writeMeal, loadMeals] = useSyncedMap("meals");
+  const newId = (prefix) => `${prefix}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const saveMyFood = async (food) => {
-    const id = food.id || `my:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const id = food.id || newId("my");
     const entry = { ...food, id, at: Date.now() };
     return (await writeMyFood(id, entry)) ? entry : null;
   };
@@ -298,6 +307,18 @@ export default function App() {
     const f = myFoods[id];
     if (f) await writeMyFood(id, { id, name: f.name, removed: true, at: Date.now() });
   };
+  // A meal keeps its foods as logged (amounts and nutrients), without day-entry ids.
+  const saveMeal = async (name, entries) => {
+    const id = newId("meal");
+    const items = entries.map(({ id: _id, meal: _m, ...e }) => e);
+    const entry = { id, name: name.trim().slice(0, 60), items, at: Date.now() };
+    return (await writeMeal(id, entry)) ? entry : null;
+  };
+  const removeMeal = async (id) => {
+    const m = meals[id];
+    if (m) await writeMeal(id, { id, name: m.name, removed: true, at: Date.now() });
+  };
+  const mealList = useMemo(() => Object.values(meals).filter((m) => m && !m.removed && m.items?.length).sort((a, b) => (b.at || 0) - (a.at || 0)), [meals]);
   const myFoodList = useMemo(() => Object.values(myFoods).filter((f) => f && !f.removed && f.per100).sort((a, b) => (b.at || 0) - (a.at || 0)), [myFoods]);
 
   // Theme: remembered in this browser for a quick start, and in the profile
@@ -387,8 +408,9 @@ export default function App() {
       if (keys.includes("exercises")) loadImported();
       if (keys.includes("profile")) loadProfile();
       if (keys.includes("myfoods")) loadMyFoods();
+      if (keys.includes("meals")) loadMeals();
     });
-  }, [loadMonth, loadTags, loadImported, loadProfile, loadMyFoods]);
+  }, [loadMonth, loadTags, loadImported, loadProfile, loadMyFoods, loadMeals]);
 
   const saveImported = async (next) => {
     setImported(next);
@@ -869,6 +891,9 @@ export default function App() {
               myFoods={myFoodList}
               onSaveMyFood={saveMyFood}
               onRemoveMyFood={removeMyFood}
+              meals={mealList}
+              onSaveMeal={saveMeal}
+              onRemoveMeal={removeMeal}
               saveError={saveError}
             />
           ) : (

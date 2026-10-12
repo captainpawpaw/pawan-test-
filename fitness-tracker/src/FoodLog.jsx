@@ -25,8 +25,10 @@ const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigi
 
 // entries: this day's food; recent: foods logged before (newest first);
 // onAdd(list) adds one or more entries to the day.
-export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood }) {
+export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood, meals = [], onSaveMeal, onRemoveMeal }) {
   const [adding, setAdding] = useState(false);
+  const [savingMeal, setSavingMeal] = useState(false);
+  const [mealMsg, setMealMsg] = useState("");
   const [editingId, setEditingId] = useState(null);
   const totals = useMemo(() => sumFood(entries), [entries]);
 
@@ -46,7 +48,7 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
       <Totals totals={totals} targets={targets} onSaveTargets={onSaveTargets} />
       {saveError && <div role="alert" style={st.error}>Not saved — try again</div>}
 
-      {adding && <AddFood recent={recent} onAdd={onAdd} onDone={() => setAdding(false)} myFoods={myFoods} onSaveMyFood={onSaveMyFood} onRemoveMyFood={onRemoveMyFood} />}
+      {adding && <AddFood recent={recent} onAdd={onAdd} onDone={() => setAdding(false)} myFoods={myFoods} onSaveMyFood={onSaveMyFood} onRemoveMyFood={onRemoveMyFood} meals={meals} onRemoveMeal={onRemoveMeal} />}
 
       <div style={st.rows}>
         {!entries?.length ? (
@@ -59,7 +61,7 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
                 <div style={st.rowName}>{e.name}</div>
                 <div style={st.rowMeta}>
                   {e.qty && e.portion ? `${fmtG(e.qty)} × ${e.portion} · ` : ""}{e.grams > 0 ? `${fmtG(e.grams)} g · ` : ""}P {fmtG(e.protein)} · C {fmtG(e.carbs)} · F {fmtG(e.fat)}
-                  {e.estimate ? " · ≈ estimate" : ""}
+                  {e.estimate ? " · ≈ estimate" : ""}{e.meal ? ` · ${e.meal}` : ""}
                 </div>
               </div>
               <span style={st.rowKcal}>{Math.round(e.kcal)} kcal</span>
@@ -75,7 +77,63 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
           ))
         )}
       </div>
+      {onSaveMeal && entries?.length > 0 && !savingMeal && (
+        <div style={st.btnRow}>
+          <button type="button" onClick={() => { setSavingMeal(true); setMealMsg(""); }} style={st.secondaryBtn}>Save as meal</button>
+          {mealMsg && <span role="status" style={st.flash}>{mealMsg}</span>}
+        </div>
+      )}
+      {savingMeal && (
+        <SaveMeal
+          entries={entries}
+          onSave={async (name, chosen) => {
+            const saved = await onSaveMeal(name, chosen);
+            if (saved) { setSavingMeal(false); setMealMsg(`Saved ${saved.name} (${saved.items.length} food${saved.items.length === 1 ? "" : "s"}). Add it from + Add next time.`); }
+            return Boolean(saved);
+          }}
+          onCancel={() => setSavingMeal(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/* ---------- meals ---------- */
+const mealTotals = (items) => sumFood(items);
+
+function SaveMeal({ entries, onSave, onCancel }) {
+  const [name, setName] = useState("");
+  const [picked, setPicked] = useState(() => Object.fromEntries(entries.map((e) => [e.id, true])));
+  const [err, setErr] = useState("");
+  const chosen = entries.filter((e) => picked[e.id]);
+  const t = mealTotals(chosen);
+  const submit = async (ev) => {
+    ev.preventDefault();
+    if (!name.trim() || !chosen.length) return;
+    if (!(await onSave(name, chosen))) setErr("Couldn't save it. Try again.");
+  };
+  return (
+    <form onSubmit={submit} style={st.addBox} aria-label="Save as meal">
+      <span style={st.pickedName}>Save as meal</span>
+      <label style={st.fieldLabel}>Meal name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Breakfast" autoFocus style={st.input} /></label>
+      <div role="group" aria-label="Foods in the meal" style={st.stack}>
+        {entries.map((e) => (
+          <label key={e.id} style={st.estRow}>
+            <input type="checkbox" checked={Boolean(picked[e.id])} onChange={(ev) => setPicked((p) => ({ ...p, [e.id]: ev.target.checked }))} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={st.rowName}>{e.name}</span>
+              <span style={{ ...st.rowMeta, display: "block" }}>{e.qty && e.portion ? `${fmtG(e.qty)} × ${e.portion}` : `${fmtG(e.grams)} g`} · {Math.round(e.kcal)} kcal</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <span style={st.note}>{chosen.length} food{chosen.length === 1 ? "" : "s"} · {t.kcal} kcal · P {fmtG(t.protein)} g · C {fmtG(t.carbs)} g · F {fmtG(t.fat)} g</span>
+      {err && <span role="alert" style={st.error}>{err}</span>}
+      <div style={st.btnRow}>
+        <button type="submit" disabled={!name.trim() || !chosen.length} style={st.primaryBtn}>Save meal</button>
+        <button type="button" onClick={onCancel} style={st.secondaryBtn}>Cancel</button>
+      </div>
+    </form>
   );
 }
 
@@ -166,7 +224,7 @@ export function myFoodToPick(f) {
   return withSpoons({ id: f.id, name: f.brand ? `${f.name} (${f.brand})` : f.name, group: "My foods", source: "mine", per100: f.per100, portions: f.portions || [], barcode: f.barcode, thumb: f.thumb, lower: `${f.name} ${f.brand || ""}`.toLowerCase() });
 }
 
-function AddFood({ recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood }) {
+function AddFood({ recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood, meals, onRemoveMeal }) {
   const [mode, setMode] = useState("search"); // search | amount | claude | manual | scan | label
   const [picked, setPicked] = useState(null);
   const [flash, setFlash] = useState("");
@@ -182,7 +240,13 @@ function AddFood({ recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood 
   return (
     <div style={st.addBox}>
       {flash && mode === "search" && <div role="status" style={st.flash}>{flash}</div>}
-      {mode === "search" && <FoodSearch recent={recent} onPick={pick} onMode={setMode} myFoods={myFoods} onRemoveMyFood={onRemoveMyFood} />}
+      {mode === "search" && (
+        <FoodSearch
+          recent={recent} onPick={pick} onMode={setMode} myFoods={myFoods} onRemoveMyFood={onRemoveMyFood}
+          meals={meals} onRemoveMeal={onRemoveMeal}
+          onAddMeal={(m) => { onAdd(m.items.map((it) => ({ ...it, meal: m.name }))); setFlash(`Added ${m.name}: ${m.items.length} food${m.items.length === 1 ? "" : "s"}.`); }}
+        />
+      )}
       {mode === "label" && (
         <LabelCapture
           onSave={onSaveMyFood}
@@ -210,7 +274,7 @@ function mineByBarcode(myFoods, code) {
   return f ? myFoodToPick(f) : null;
 }
 
-function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
+function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meals = [], onRemoveMeal, onAddMeal }) {
   const [q, setQ] = useState("");
   const [foods, setFoods] = useState(null);
   const [loadErr, setLoadErr] = useState(false);
@@ -231,6 +295,11 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
   }, [online]);
 
   const local = useMemo(() => (foods && q.trim().length >= 2 ? searchFoods(foods, q) : []), [foods, q]);
+  const mealHits = useMemo(() => {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const text = (m) => `${m.name} ${m.items.map((it) => it.name).join(" ")}`.toLowerCase();
+    return (words.length ? meals.filter((m) => words.every((w) => text(m).includes(w))) : meals).slice(0, 6);
+  }, [meals, q]);
   const myHits = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const list = myFoods.map(myFoodToPick);
@@ -328,6 +397,28 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
         </div>
       )}
 
+      {mealHits.length > 0 && onAddMeal && (
+        <div style={st.resultGroup}>
+          <span style={st.groupLabel}>Meals · one tap adds them all</span>
+          <ul style={st.resultList}>
+            {mealHits.map((m) => {
+              const t = mealTotals(m.items);
+              return (
+                <li key={m.id} style={st.mineRow}>
+                  <button type="button" onClick={() => onAddMeal(m)} aria-label={`Add meal ${m.name}`} style={{ ...st.result, flex: 1, minWidth: 0 }}>
+                    <span style={st.resultName}>{m.name}</span>
+                    <span style={st.resultMeta}>{m.items.map((it) => it.name.replace(/\s*\(.*\)$/, "").split(",")[0]).join(" + ")}</span>
+                    <span style={st.resultMeta}>{t.kcal} kcal · P {fmtG(t.protein)} g · {m.items.length} food{m.items.length === 1 ? "" : "s"}</span>
+                  </button>
+                  {onRemoveMeal && (
+                    <button type="button" aria-label={`Remove meal ${m.name}`} onClick={() => { if (window.confirm(`Remove the meal ${m.name}? Days you've already logged keep their foods.`)) onRemoveMeal(m.id); }} style={st.deleteBtn}>×</button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {myHits.length > 0 && (
         <div style={st.resultGroup}>
           <span style={st.groupLabel}>My foods</span>
