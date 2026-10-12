@@ -4,9 +4,9 @@
 # Needs Playwright: npm install --no-save playwright
 set -euo pipefail
 cd "$(dirname "$0")"
-(cd .. && VITE_GOOGLE_CLIENT_ID=test-client.apps.googleusercontent.com npx vite build --outDir e2e/dist --emptyOutDir >/dev/null)
+(cd .. && node scripts/copy-ocr.mjs >/dev/null && VITE_GOOGLE_CLIENT_ID=test-client.apps.googleusercontent.com npx vite build --outDir e2e/dist --emptyOutDir >/dev/null)
 fail=0
-for t in sync tags logtags import bw progress food food-artifact custom calendar edit layout minweight theme; do
+for t in sync tags logtags import bw progress food food-artifact custom calendar edit layout minweight theme label; do
   out=$(node "$t.mjs" dist 2>&1) || true
   pass=$(grep -c '^PASS' <<<"$out" || true)
   bad=$(grep -Ec '^FAIL|Error' <<<"$out" || true)

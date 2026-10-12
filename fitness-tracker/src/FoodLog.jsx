@@ -5,6 +5,9 @@ import {
   onlineLookupsAllowed, searchOpenFoodFacts, lookupBarcode, searchUsdaOnline, usdaOnlineKnownOff,
   cameraAllowed, startBarcodeScan, claudeEstimateAvailable, claudePhotoLimits, estimateWithClaude,
 } from "./food";
+import { withSpoons } from "./spoons.js";
+import { readLabelOnDevice, readLabelWithClaude, claudeLabelAvailable, thumbnail } from "./labelReader";
+import { missingLabel } from "./labelParse.js";
 
 const ink = C.ink;
 const inkFaint = C.inkFaint;
@@ -17,12 +20,12 @@ const mono = "'IBM Plex Mono', monospace";
 const sans = C.sans;
 const condensed = C.display;
 
-const SOURCE_LABEL = { cofid: "UK CoFID", usda: "USDA", "usda-online": "USDA online", off: "Open Food Facts", claude: "Claude estimate", custom: "Your entry" };
+const SOURCE_LABEL = { mine: "My foods", cofid: "UK CoFID", usda: "USDA", "usda-online": "USDA online", off: "Open Food Facts", claude: "Claude estimate", custom: "Your entry" };
 const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 })}`;
 
 // entries: this day's food; recent: foods logged before (newest first);
 // onAdd(list) adds one or more entries to the day.
-export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError }) {
+export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const totals = useMemo(() => sumFood(entries), [entries]);
@@ -43,7 +46,7 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
       <Totals totals={totals} targets={targets} onSaveTargets={onSaveTargets} />
       {saveError && <div role="alert" style={st.error}>Not saved — try again</div>}
 
-      {adding && <AddFood recent={recent} onAdd={onAdd} onDone={() => setAdding(false)} />}
+      {adding && <AddFood recent={recent} onAdd={onAdd} onDone={() => setAdding(false)} myFoods={myFoods} onSaveMyFood={onSaveMyFood} onRemoveMyFood={onRemoveMyFood} />}
 
       <div style={st.rows}>
         {!entries?.length ? (
@@ -158,8 +161,13 @@ function Totals({ totals, targets, onSaveTargets }) {
 }
 
 /* ---------- adding food ---------- */
-function AddFood({ recent, onAdd, onDone }) {
-  const [mode, setMode] = useState("search"); // search | amount | claude | manual | scan
+// A saved food, ready to pick: "Name (Brand)", with spoons.
+export function myFoodToPick(f) {
+  return withSpoons({ id: f.id, name: f.brand ? `${f.name} (${f.brand})` : f.name, group: "My foods", source: "mine", per100: f.per100, portions: f.portions || [], barcode: f.barcode, thumb: f.thumb, lower: `${f.name} ${f.brand || ""}`.toLowerCase() });
+}
+
+function AddFood({ recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood }) {
+  const [mode, setMode] = useState("search"); // search | amount | claude | manual | scan | label
   const [picked, setPicked] = useState(null);
   const [flash, setFlash] = useState("");
 
@@ -174,18 +182,35 @@ function AddFood({ recent, onAdd, onDone }) {
   return (
     <div style={st.addBox}>
       {flash && mode === "search" && <div role="status" style={st.flash}>{flash}</div>}
-      {mode === "search" && <FoodSearch recent={recent} onPick={pick} onMode={setMode} />}
+      {mode === "search" && <FoodSearch recent={recent} onPick={pick} onMode={setMode} myFoods={myFoods} onRemoveMyFood={onRemoveMyFood} />}
+      {mode === "label" && (
+        <LabelCapture
+          onSave={onSaveMyFood}
+          onSaved={(saved, addNow) => {
+            if (addNow) pick(myFoodToPick(saved));
+            else { setFlash(`Saved ${saved.name} to My foods.`); setMode("search"); }
+          }}
+          onBack={() => setMode("search")}
+        />
+      )}
       {mode === "amount" && picked && <AmountStep food={picked} onAdd={added} onBack={() => setMode("search")} />}
       {mode === "manual" && <ManualFood onAdd={added} onBack={() => setMode("search")} />}
       {mode === "claude" && <ClaudeEstimate onAdd={(items) => { onAdd(items); setFlash(`Added ${items.length} item${items.length === 1 ? "" : "s"} from Claude's estimate.`); setMode("search"); }} onBack={() => setMode("search")} />}
-      {mode === "scan" && <BarcodeScan onFound={pick} onBack={() => setMode("search")} />}
+      {mode === "scan" && <BarcodeScan onFound={pick} onBack={() => setMode("search")} myFoods={myFoods} />}
       <button type="button" onClick={onDone} style={{ ...st.linkBtn, alignSelf: "flex-end" }}>Done adding</button>
       <span style={st.note}>UK foods: McCance and Widdowson’s CoFID 2021. Contains public sector information licensed under the Open Government Licence v3.0.</span>
     </div>
   );
 }
 
-function FoodSearch({ recent, onPick, onMode }) {
+// A barcode you've saved a food under comes back as that food.
+function mineByBarcode(myFoods, code) {
+  const c = String(code).replace(/\D/g, "");
+  const f = (myFoods || []).find((m) => m.barcode && m.barcode.replace(/\D/g, "") === c);
+  return f ? myFoodToPick(f) : null;
+}
+
+function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
   const [q, setQ] = useState("");
   const [foods, setFoods] = useState(null);
   const [loadErr, setLoadErr] = useState(false);
@@ -206,6 +231,11 @@ function FoodSearch({ recent, onPick, onMode }) {
   }, [online]);
 
   const local = useMemo(() => (foods && q.trim().length >= 2 ? searchFoods(foods, q) : []), [foods, q]);
+  const myHits = useMemo(() => {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const list = myFoods.map(myFoodToPick);
+    return (words.length ? list.filter((f) => words.every((w) => f.lower.includes(w))) : list).slice(0, words.length ? 8 : 6);
+  }, [myFoods, q]);
   const recentHits = useMemo(() => {
     const w = q.trim().toLowerCase();
     return (w ? recent.filter((f) => f.name.toLowerCase().includes(w)) : recent).slice(0, w ? 5 : 8);
@@ -232,6 +262,8 @@ function FoodSearch({ recent, onPick, onMode }) {
 
   const findBarcode = async (ev) => {
     ev.preventDefault();
+    const mine = mineByBarcode(myFoods, barcode);
+    if (mine) { setBarcodeMsg(""); onPick(mine); return; }
     setBarcodeMsg("Looking up…");
     try {
       const f = await lookupBarcode(barcode);
@@ -274,6 +306,27 @@ function FoodSearch({ recent, onPick, onMode }) {
       {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
       {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
 
+      {myHits.length > 0 && (
+        <div style={st.resultGroup}>
+          <span style={st.groupLabel}>My foods</span>
+          <ul style={st.resultList}>
+            {myHits.map((f) => (
+              <li key={f.id} style={st.mineRow}>
+                <button type="button" onClick={() => onPick(f)} style={{ ...st.result, flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                  {f.thumb ? <img src={f.thumb} alt="" style={st.mineThumb} /> : <span aria-hidden="true" style={st.mineThumb} />}
+                  <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                    <span style={st.resultName}>{f.name}</span>
+                    <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g</span>
+                  </span>
+                </button>
+                {onRemoveMyFood && (
+                  <button type="button" aria-label={`Remove ${f.name} from My foods`} onClick={() => { if (window.confirm(`Remove ${f.name} from My foods? Days you've already logged keep it.`)) onRemoveMyFood(f.id); }} style={st.deleteBtn}>×</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <ResultList items={recentHits} label={q.trim() ? "Logged before" : "Recent"} />
       <ResultList items={local.slice(0, 15)} label="Foods (UK CoFID and USDA)" />
       <ResultList items={usdaShown} label="More from USDA online" />
@@ -299,6 +352,7 @@ function FoodSearch({ recent, onPick, onMode }) {
       )}
 
       <div style={st.optionRow}>
+        <button type="button" onClick={() => onMode("label")} style={st.secondaryBtn}>Photograph a label</button>
         {online && cameraAllowed() && <button type="button" onClick={() => onMode("scan")} style={st.secondaryBtn}>Scan barcode</button>}
         {canClaude && <button type="button" onClick={() => onMode("claude")} style={st.secondaryBtn}>Describe a meal for Claude</button>}
         <button type="button" onClick={() => onMode("manual")} style={st.secondaryBtn}>Enter manually</button>
@@ -571,13 +625,184 @@ function ClaudeEstimate({ onAdd, onBack }) {
   );
 }
 
-function BarcodeScan({ onFound, onBack }) {
+/* ---------- a food from photos of its label ---------- */
+const LABEL_FIELDS = [["kcal", "Calories (kcal)"], ["protein", "Protein (g)"], ["carbs", "Carbs (g)"], ["fat", "Fat (g)"], ["fibre", "Fibre (g)"], ["sugar", "Sugar (g)"]];
+
+function LabelCapture({ onSave, onSaved, onBack }) {
+  const [photos, setPhotos] = useState([]); // [{ file, url }]
+  const [status, setStatus] = useState(null);
+  const [form, setForm] = useState(null); // review step
+  const [useClaude, setUseClaude] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+  const ctlRef = useRef(null);
+
+  useEffect(() => {
+    let live = true;
+    if (!onlineLookupsAllowed()) claudeLabelAvailable().then((ok) => live && setUseClaude(ok));
+    return () => { live = false; ctlRef.current?.abort(); photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)); };
+  }, []);
+
+  const addPhotos = (files) => {
+    const imgs = [...files].filter((f) => /^image\//.test(f.type));
+    setPhotos((cur) => [...cur, ...imgs.map((file) => ({ file, url: URL.createObjectURL(file) }))].slice(0, 4));
+  };
+
+  const toForm = (r) => ({
+    name: r.name || "",
+    brand: r.brand || "",
+    servingG: r.servingG ? String(r.servingG) : "",
+    barcode: r.barcode || "",
+    ...Object.fromEntries(LABEL_FIELDS.map(([k]) => [k, r.per100?.[k] != null ? String(r.per100[k]) : ""])),
+    missing: r.missing || [],
+    sources: r.sources || [],
+    note: r.note || "",
+    kcalEstimated: Boolean(r.kcalEstimated),
+  });
+
+  const read = async () => {
+    ctlRef.current?.abort();
+    const ctl = new AbortController();
+    ctlRef.current = ctl;
+    const files = photos.map((p) => p.file);
+    try {
+      if (useClaude) {
+        setStatus({ kind: "busy", text: "Claude is reading the label…" });
+        setForm(toForm(await readLabelWithClaude(files, { signal: ctl.signal })));
+      } else {
+        setStatus({ kind: "busy", text: "Reading the label…" });
+        const r = await readLabelOnDevice(files, {
+          onProgress: (p) => {
+            if (ctl.signal.aborted) return;
+            const text = p.step === "barcode" ? "Looking for a barcode…"
+              : p.step === "load" ? "Getting the label reader ready (the first time takes a little longer)…"
+              : p.step === "lookup" ? "Found a barcode. Checking Open Food Facts…"
+              : `Reading photo ${p.photo} of ${p.of}… ${Math.round((p.progress || 0) * 100)}%`;
+            setStatus({ kind: "busy", text });
+          },
+        });
+        if (ctl.signal.aborted) return;
+        setForm(toForm(r));
+      }
+      setStatus(null);
+    } catch (e) {
+      if (e?.code === "cancelled" || ctl.signal.aborted) return;
+      setStatus({ kind: "error", text: e?.code === "not_granted" ? "Claude wasn't allowed to help here. Fill the numbers in below." : "Couldn't read the label. Fill the numbers in below, or try a sharper, closer photo." });
+      setForm(toForm({ missing: NUTRIENTS }));
+    }
+  };
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const num = (v) => (v === "" || v == null ? null : Number(v));
+  const valid = form && form.name.trim() && num(form.kcal) >= 0 && num(form.kcal) != null;
+
+  const save = async (addNow) => {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const per100 = Object.fromEntries(LABEL_FIELDS.map(([k]) => [k, Math.max(0, num(form[k]) || 0)]));
+      const servingG = num(form.servingG) > 0 ? num(form.servingG) : null;
+      const thumb = photos[0] ? await thumbnail(photos[0].file).catch(() => null) : null;
+      const saved = await onSave({
+        name: form.name.trim().slice(0, 80),
+        brand: form.brand.trim().slice(0, 60),
+        per100,
+        portions: servingG ? [{ g: servingG, label: "1 serving" }] : [],
+        barcode: form.barcode.replace(/\D/g, "") || null,
+        thumb,
+        from: form.sources.join(",") || "manual",
+      });
+      if (saved) onSaved(saved, addNow);
+      else setStatus({ kind: "error", text: "Couldn't save it. Try again." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (form) {
+    const missing = form.missing.filter((k) => form[k] === "");
+    return (
+      <form onSubmit={(e) => { e.preventDefault(); save(true); }} style={st.stack} aria-label="Check the label details">
+        <span style={st.pickedName}>Check the details</span>
+        <span style={st.note}>
+          {form.sources.includes("claude") ? "Read by Claude from your photos." : form.sources.includes("label") ? "Read from your photos." : ""}
+          {form.sources.includes("off") ? " Name and gaps filled from Open Food Facts (barcode " + form.barcode + ")." : ""}
+          {" "}Check them against the label before saving. Values are per 100 g (or 100 ml).{form.note ? ` ${form.note}` : ""}
+        </span>
+        {status && <span role={status.kind === "error" ? "alert" : "status"} style={status.kind === "error" ? st.error : st.note}>{status.text}</span>}
+        {missing.length > 0 && <span role="status" style={st.error}>Not found on the label: {missingLabel(missing)}. Fill these in, or leave blank for 0.</span>}
+        {form.kcalEstimated && <span style={st.note}>Calories worked out from protein, carbs and fat.</span>}
+        <label style={st.fieldLabel}>Name<input value={form.name} onChange={set("name")} placeholder="e.g. Crunchy granola" style={st.input} required /></label>
+        <label style={st.fieldLabel}>Brand (optional)<input value={form.brand} onChange={set("brand")} placeholder="e.g. Jordans" style={st.input} /></label>
+        <div style={st.labelGrid}>
+          {LABEL_FIELDS.map(([k, label]) => (
+            <label key={k} style={st.fieldLabel}>
+              {label}
+              <input type="number" inputMode="decimal" step="any" min="0" value={form[k]} onChange={set(k)} style={{ ...st.input, width: "100%", boxSizing: "border-box", ...(form[k] === "" && form.missing.includes(k) ? { borderColor: C.rust } : {}) }} />
+            </label>
+          ))}
+        </div>
+        <div style={st.labelGrid}>
+          <label style={st.fieldLabel}>Serving size (g, optional)<input type="number" inputMode="decimal" step="any" min="0" value={form.servingG} onChange={set("servingG")} placeholder="30" style={{ ...st.input, width: "100%", boxSizing: "border-box" }} /></label>
+          <label style={st.fieldLabel}>Barcode (optional)<input inputMode="numeric" value={form.barcode} onChange={set("barcode")} style={{ ...st.input, width: "100%", boxSizing: "border-box" }} /></label>
+        </div>
+        <div style={st.btnRow}>
+          <button type="submit" disabled={!valid || saving} style={st.primaryBtn}>Save and add to today</button>
+          <button type="button" disabled={!valid || saving} onClick={() => save(false)} style={st.secondaryBtn}>Save to My foods</button>
+          <button type="button" onClick={() => { setForm(null); setStatus(null); }} style={st.secondaryBtn}>Back to photos</button>
+        </div>
+        <span style={st.note}>Saved foods appear under My foods when you search, and on every device you sync.</span>
+      </form>
+    );
+  }
+
+  return (
+    <div style={st.stack}>
+      <span style={st.pickedName}>Photograph a label</span>
+      <span style={st.note}>Take or choose photos of the pack: the front (for its name) and the nutrition label, close up and flat. Include the barcode if you can.</span>
+      <div style={st.btnRow}>
+        <label style={st.fileBtn}>
+          Take a photo
+          <input type="file" accept="image/*" capture="environment" onChange={(e) => { addPhotos(e.target.files || []); e.target.value = ""; }} style={st.hiddenInput} aria-label="Take a photo of the pack or label" />
+        </label>
+        <label style={st.fileBtn}>
+          Choose photos
+          <input type="file" accept="image/*" multiple onChange={(e) => { addPhotos(e.target.files || []); e.target.value = ""; }} style={st.hiddenInput} aria-label="Choose photos of the pack and label" />
+        </label>
+      </div>
+      {photos.length > 0 && (
+        <div style={st.btnRow}>
+          {photos.map((p, i) => (
+            <span key={p.url} style={st.thumb}>
+              <img src={p.url} alt={`Pack photo ${i + 1}`} style={st.thumbImg} />
+              <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => { URL.revokeObjectURL(p.url); setPhotos((cur) => cur.filter((x) => x.url !== p.url)); }} style={st.thumbX}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {status && <span role={status.kind === "error" ? "alert" : "status"} aria-live="polite" style={status.kind === "error" ? st.error : st.note}>{status.text}</span>}
+      <div style={st.btnRow}>
+        <button type="button" disabled={!photos.length || status?.kind === "busy"} onClick={read} style={st.primaryBtn}>Read label</button>
+        <button type="button" onClick={() => setForm(toForm({ missing: [] }))} style={st.secondaryBtn}>Type it in instead</button>
+        <button type="button" onClick={onBack} style={st.secondaryBtn}>Back</button>
+      </div>
+      <span style={st.note}>{useClaude ? "Claude reads the photos (uses your Claude usage)." : "Read on this device; photos aren't uploaded. A barcode is looked up on Open Food Facts."}</span>
+    </div>
+  );
+}
+
+function BarcodeScan({ onFound, onBack, myFoods }) {
+  const mineRef = useRef(myFoods);
+  mineRef.current = myFoods;
   const videoRef = useRef(null);
   const [msg, setMsg] = useState("Starting camera…");
   useEffect(() => {
     let stop = null, live = true;
     startBarcodeScan(videoRef.current, async (code) => {
       if (!live) return;
+      const mine = mineByBarcode(mineRef.current, code);
+      if (mine) { onFound(mine); return; }
       setMsg(`Found ${code}. Looking it up…`);
       try {
         const f = await lookupBarcode(code);
@@ -652,6 +877,9 @@ const st = {
   thumbX: { position: "absolute", right: 1, top: 1, width: 18, height: 18, borderRadius: "50%", border: "none", background: ink, color: C.onFill, fontSize: 12, lineHeight: 1, padding: 0 },
   video: { width: "100%", maxHeight: 280, background: ink, borderRadius: 4, objectFit: "cover" },
   flash: { fontSize: 13, color: plum },
+  labelGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 },
+  mineRow: { display: "flex", alignItems: "center", gap: 4 },
+  mineThumb: { width: 34, height: 34, flex: "none", borderRadius: 3, objectFit: "cover", background: plumSoft },
   note: { fontFamily: mono, fontSize: 11, color: inkFaint },
   error: { fontFamily: mono, fontSize: 11, color: C.rust },
 };

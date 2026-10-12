@@ -228,6 +228,39 @@ export default function App() {
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
+  // My foods: packaged foods saved from photos of their labels.
+  const [myFoods, setMyFoods] = useState({});
+  const loadMyFoods = useCallback(async () => {
+    try {
+      const res = await storage.get("myfoods", false);
+      setMyFoods(res ? JSON.parse(res.value) : {});
+    } catch (e) {
+      /* keep what's on screen */
+    }
+  }, []);
+  useEffect(() => { loadMyFoods(); }, [loadMyFoods]);
+  // Re-reads before writing, so a food that arrived by sync isn't lost.
+  const writeMyFood = async (id, entry) => {
+    let cur = {};
+    try { const res = await storage.get("myfoods", false); cur = res ? JSON.parse(res.value) : {}; } catch { cur = { ...myFoods }; }
+    const next = { ...cur, [id]: entry };
+    const ok = await storage.set("myfoods", JSON.stringify(next), false).catch(() => null);
+    if (!ok) return false;
+    setMyFoods(next);
+    drive.scheduleSync();
+    return true;
+  };
+  const saveMyFood = async (food) => {
+    const id = food.id || `my:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const entry = { ...food, id, at: Date.now() };
+    return (await writeMyFood(id, entry)) ? entry : null;
+  };
+  const removeMyFood = async (id) => {
+    const f = myFoods[id];
+    if (f) await writeMyFood(id, { id, name: f.name, removed: true, at: Date.now() });
+  };
+  const myFoodList = useMemo(() => Object.values(myFoods).filter((f) => f && !f.removed && f.per100).sort((a, b) => (b.at || 0) - (a.at || 0)), [myFoods]);
+
   // Theme: remembered in this browser for a quick start, and in the profile
   // so it follows you to other devices.
   const [theme, setTheme] = useState(savedTheme);
@@ -314,8 +347,9 @@ export default function App() {
       if (keys.includes("tags")) loadTags();
       if (keys.includes("exercises")) loadImported();
       if (keys.includes("profile")) loadProfile();
+      if (keys.includes("myfoods")) loadMyFoods();
     });
-  }, [loadMonth, loadTags, loadImported, loadProfile]);
+  }, [loadMonth, loadTags, loadImported, loadProfile, loadMyFoods]);
 
   const saveImported = async (next) => {
     setImported(next);
@@ -782,6 +816,9 @@ export default function App() {
               onEdit={(id, e) => editEntry("food", id, e)}
               targets={profile.targets}
               onSaveTargets={saveTargets}
+              myFoods={myFoodList}
+              onSaveMyFood={saveMyFood}
+              onRemoveMyFood={removeMyFood}
               saveError={saveError}
             />
           ) : (

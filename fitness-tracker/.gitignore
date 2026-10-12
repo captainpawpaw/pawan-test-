@@ -6,3 +6,4 @@ dist
 e2e/dist
 e2e/*.png
 e2e/dist-plain
+public/ocr/
