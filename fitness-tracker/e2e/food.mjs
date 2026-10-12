@@ -100,6 +100,8 @@ check(t.includes('0 eaten of 2,200 kcal') && t.includes('0 eaten of 150 g'), 'me
 // built-in search + grams
 const addBtn = pa.getByRole('button', { name: '+ Add' }).last();
 await addBtn.click();
+const offIdle = pa.getByRole('button', { name: 'Search branded products (type a name above)' });
+check(await offIdle.isVisible() && await offIdle.isDisabled(), 'branded search always shown, waiting for a name');
 await pa.getByLabel('Search foods').fill('chicken breast roasted');
 const first = pa.locator('ul li button').first();
 await first.waitFor();
@@ -141,6 +143,9 @@ check(usdaCalls >= 1, 'USDA online function queried');
 // Open Food Facts on demand
 await pa.getByLabel('Search foods').fill('greek yogurt');
 check(!(await pa.locator('body').innerText()).includes('Branded products (Open Food Facts)'), 'branded search waits for a tap');
+const offBtn = pa.getByRole('button', { name: /Search branded products for/ });
+const offY = (await offBtn.boundingBox()).y, firstSuggestion = await pa.getByText(/^(Recent|Logged before|My foods|Foods \(UK CoFID and USDA\))$/).first().boundingBox();
+check(!firstSuggestion || offY < firstSuggestion.y, 'branded search sits above the suggestions');
 await pa.getByRole('button', { name: /Search branded products for/ }).click();
 await pa.getByText('Branded products (Open Food Facts)').waitFor();
 check(!(await pa.locator('body').innerText()).includes('No nutrition'), 'products without nutrition data are skipped');
