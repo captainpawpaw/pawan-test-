@@ -1,9 +1,9 @@
 // "Last time": the previous session of an exercise, shown when you log it
-// again, with a warm-up weight 30% lighter than that session's top weight.
+// again, with a first-set weight: a share (70% by default) of that session's top weight.
 
 import { nameKey } from "./importParser.js";
 
-export const WARM_UP_DROP = 0.3;
+export const FIRST_SET_PCT = 70;
 
 // months: { "2026-10": { "05": { strength: [...] } } } -> Map(nameKey -> [{ date, entries }]) oldest first
 export function strengthHistory(months) {
@@ -30,8 +30,8 @@ export function strengthHistory(months) {
 export const roundPlate = (kg) => Math.max(0, Math.round(kg / 2.5) * 2.5);
 
 // The latest session of `name` before `beforeDate` (YYYY-MM-DD): its top set
-// (heaviest, then most reps) and the warm-up weight. null if there isn't one.
-export function lastSession(history, name, beforeDate) {
+// (heaviest, then most reps) and the first-set weight. null if there isn't one.
+export function lastSession(history, name, beforeDate, firstPct = FIRST_SET_PCT) {
   const sessions = history?.get(nameKey(name || ""));
   if (!sessions) return null;
   let s = null;
@@ -47,6 +47,6 @@ export function lastSession(history, name, beforeDate) {
     reps: num(top.reps),
     sets: num(top.sets),
     bw,
-    warmUp: weight > 0 ? roundPlate(weight * (1 - WARM_UP_DROP)) : null,
+    warmUp: weight > 0 ? roundPlate((weight * firstPct) / 100) : null,
   };
 }

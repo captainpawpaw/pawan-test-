@@ -140,6 +140,7 @@ check(await shut(pm), 'phone: tapping the dimmed page closes it');
 await tab(pm).tap(); await settled(pm); await tab(pm).tap();
 check(await shut(pm), 'phone: tapping the tab again closes it');
 await pm.getByRole('button', { name: 'Menu' }).tap();
+await pm.getByRole('menuitem', { name: /^Theme/ }).tap();
 await pm.getByRole('menuitemradio', { name: 'Alpine Sunset' }).tap();
 await tab(pm).tap(); await settled(pm);
 await pm.screenshot({ path: 'cal-open-alpine.png' });
