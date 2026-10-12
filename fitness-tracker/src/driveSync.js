@@ -10,7 +10,7 @@
 // or inside a claude.ai artifact (whose sandbox blocks Google), it stays off.
 
 import { storage } from "./storage";
-import { mergeBooks, mergeExercises, mergeMonth, mergeProfile, mergeTags, mergeTombstones, sameMonth } from "./merge";
+import { mergeBooks, mergeExercises, mergeMonth, mergeMyFoods, mergeProfile, mergeTags, mergeTombstones, sameMonth } from "./merge";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 const SCOPE = "https://www.googleapis.com/auth/drive.appdata";
@@ -23,6 +23,7 @@ const DELETED_KEY = "deleted";
 const TAGS_KEY = "tags";
 const EXERCISES_KEY = "exercises";
 const PROFILE_KEY = "profile";
+const MYFOODS_KEY = "myfoods";
 const DEBOUNCE_MS = 1500;
 
 export const driveSupported = () => Boolean(CLIENT_ID) && typeof window !== "undefined" && !window.claude;
@@ -75,7 +76,7 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 // fn(keys[]) is called when a sync changed data in this browser: month keys
-// like "2026-09", plus "tags", "exercises" or "profile" when those changed.
+// like "2026-09", plus "tags", "exercises", "profile" or "myfoods" when those changed.
 export function onMonthsChanged(fn) {
   monthListeners.add(fn);
   return () => monthListeners.delete(fn);
@@ -169,7 +170,7 @@ async function download(id) {
   const text = await res.text();
   try {
     const book = JSON.parse(text);
-    return { months: book.months || {}, deleted: book.deleted || {}, tags: book.tags || {}, exercises: book.exercises || {}, profile: book.profile || {} };
+    return { months: book.months || {}, deleted: book.deleted || {}, tags: book.tags || {}, exercises: book.exercises || {}, profile: book.profile || {}, myfoods: book.myfoods || {} };
   } catch {
     throw new Error("The Drive copy is damaged. Nothing was changed.");
   }
@@ -213,6 +214,7 @@ async function readLocalBook() {
     tags: (await readJson(TAGS_KEY)) || {},
     exercises: (await readJson(EXERCISES_KEY)) || {},
     profile: (await readJson(PROFILE_KEY)) || {},
+    myfoods: (await readJson(MYFOODS_KEY)) || {},
   };
 }
 
@@ -232,7 +234,7 @@ async function writeLocalBook(book, localKeys) {
   }
   const deletedNow = (await readJson(DELETED_KEY)) || {};
   await storage.set(DELETED_KEY, JSON.stringify(mergeTombstones(deletedNow, book.deleted)));
-  for (const [key, merge] of [[TAGS_KEY, mergeTags], [EXERCISES_KEY, mergeExercises], [PROFILE_KEY, mergeProfile]]) {
+  for (const [key, merge] of [[TAGS_KEY, mergeTags], [EXERCISES_KEY, mergeExercises], [PROFILE_KEY, mergeProfile], [MYFOODS_KEY, mergeMyFoods]]) {
     const now = (await readJson(key)) || {};
     const next = merge(now, book[key]);
     if (JSON.stringify(next) !== JSON.stringify(now)) {
@@ -251,7 +253,7 @@ let timer = null;
 
 async function syncOnce() {
   if (!fileId) fileId = await findFile();
-  const remote = fileId ? await download(fileId) : { months: {}, deleted: {}, tags: {}, exercises: {}, profile: {} };
+  const remote = fileId ? await download(fileId) : { months: {}, deleted: {}, tags: {}, exercises: {}, profile: {}, myfoods: {} };
   const local = await readLocalBook();
   const merged = mergeBooks(local, remote);
   const changed = await writeLocalBook(merged, Object.keys(local.months));
@@ -336,7 +338,7 @@ export async function importBook(raw) {
   if (!raw || typeof raw !== "object" || typeof raw.months !== "object") {
     throw new Error("That file isn't a Training Ledger backup.");
   }
-  const incoming = { months: raw.months || {}, deleted: raw.deleted || {}, tags: raw.tags || {}, exercises: raw.exercises || {}, profile: raw.profile || {} };
+  const incoming = { months: raw.months || {}, deleted: raw.deleted || {}, tags: raw.tags || {}, exercises: raw.exercises || {}, profile: raw.profile || {}, myfoods: raw.myfoods || {} };
   const local = await readLocalBook();
   const merged = mergeBooks(local, incoming);
   const changed = await writeLocalBook(merged, Object.keys(local.months));

@@ -71,6 +71,7 @@ await A.addInitScript(() => {
   sample.limits = async () => ({ maxPromptBytes: 262144, images: { maxCount: 4, maxInputBytes: 20e6, mediaTypes: ['image/png', 'image/jpeg'] } });
   sample.json = async (prompt, opts) => {
     window.__prompts.push({ prompt, images: [].concat(opts.images || []).length });
+    if (prompt.includes('nutrition information label')) return { name: 'Protein Granola', brand: 'Testbrand', per100: { kcal: 412, protein: 22.5, carbs: 48, fat: 13.1, fibre: 6.4, sugar: 9.8 }, servingGrams: 40, barcode: '5012345678900', note: '' };
     return { items: [ { name: 'Chicken tikka masala', grams: 350, kcal: 520, protein: 38, carbs: 18, fat: 32, fibre: 3, sugar: 9 }, { name: 'Pilau rice', grams: 200, kcal: 300, protein: 6, carbs: 60, fat: 5 } ], note: 'Assumed a restaurant portion.' };
   };
   const downloads = { save: async (req) => { window.__saved.push({ filename: req.filename, size: String(req.data).length }); } };
@@ -103,6 +104,20 @@ await pa.getByRole('button', { name: 'Add 2 items' }).click();
 await pa.getByRole('button', { name: 'Done adding' }).click();
 t = await pa.locator('body').innerText();
 check(t.includes('Chicken tikka masala') && t.includes('≈ estimate') && t.includes('670'), 'estimate added and marked: ' + (t.match(/\d[\d,]* kcal/g) || []).slice(0, 4).join(' '));
+// label photos: Claude reads them; saved to My foods
+await pa.getByRole('button', { name: '+ Add' }).last().click();
+await pa.getByRole('button', { name: 'Photograph a label' }).click();
+check((await pa.locator('body').innerText()).includes('Claude reads the photos'), 'claude.ai: Claude reads the label');
+await pa.getByLabel('Choose photos of the pack and label').setInputFiles([{ name: 'front.png', mimeType: 'image/png', buffer: Buffer.from(png) }, { name: 'label.png', mimeType: 'image/png', buffer: Buffer.from(png) }]);
+await pa.getByRole('button', { name: 'Read label' }).click();
+await pa.getByText('Check the details').waitFor();
+const lp = (await pa.evaluate(() => window.__prompts)).at(-1);
+check(lp.images === 2 && lp.prompt.includes('per 100 g'), 'Claude gets both photos');
+check(await pa.getByLabel('Name', { exact: true }).inputValue() === 'Protein Granola' && await pa.getByLabel('Calories (kcal)', { exact: true }).inputValue() === '412' && await pa.getByLabel('Serving size (g, optional)').inputValue() === '40', 'Claude\'s reading fills the form');
+await pa.getByRole('button', { name: 'Save to My foods' }).click();
+await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).waitFor({ timeout: 5000 }).catch(() => {});
+check(await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).count() === 1 && external === 0, 'saved to My foods, nothing sent outside');
+await pa.getByRole('button', { name: 'Done adding' }).click();
 await pa.getByText('Back up or move your data').click();
 await pa.getByRole('button', { name: 'Export backup' }).click();
 await pa.getByText(/^Saved a backup of/).waitFor();

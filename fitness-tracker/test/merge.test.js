@@ -64,3 +64,12 @@ test("body weight setting keeps the latest change", () => {
   assert.equal(mergeProfile(a, b).bodyweight.weights.length, 2);
   assert.equal(mergeBooks({ profile: b }, { profile: a }).profile.bodyweight.at, 9);
 });
+
+test("My foods merge by id; the newest edit (or removal) wins", () => {
+  const a = { "my:1": { name: "Granola", at: 1 }, "my:2": { name: "Oat bar", at: 5 } };
+  const b = { "my:1": { name: "Granola (Lidl)", at: 3 }, "my:2": { name: "Oat bar", at: 2, removed: true }, "my:3": { name: "Skyr", at: 4 } };
+  const m = mergeBooks({ myfoods: a }, { myfoods: b }).myfoods;
+  assert.equal(m["my:1"].name, "Granola (Lidl)");
+  assert.ok(!m["my:2"].removed);
+  assert.equal(m["my:3"].name, "Skyr");
+});
