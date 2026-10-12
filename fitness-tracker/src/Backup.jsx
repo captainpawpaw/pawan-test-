@@ -39,8 +39,8 @@ async function saveFile(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export default function Backup() {
-  const [open, setOpen] = useState(false);
+// Opened from the menu as a panel above the tabs.
+export default function Backup({ onClose }) {
   const [status, setStatus] = useState(null);
   const [canSave, setCanSave] = useState(!window.claude);
   const [pending, setPending] = useState(null); // parsed file waiting for confirmation
@@ -87,42 +87,43 @@ export default function Backup() {
   };
 
   return (
-    <section style={st.box} aria-label="Back up or move your data">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} style={st.toggle}>
-        {open ? "▾" : "▸"} Back up or move your data
-      </button>
-      {open && (
-        <div style={st.body}>
-          <p style={st.p}>
-            Export saves everything (workouts, food, tags, imported exercises and settings) as one file. Import adds a backup's
-            entries to what's here; nothing already logged is removed. Use it to move between this link and the website version.
-          </p>
-          <div style={st.row}>
-            {canSave && <button type="button" onClick={doExport} disabled={status?.kind === "busy"} style={st.primary}>Export backup</button>}
-            <label style={st.fileBtn}>
-              Import a backup
-              <input type="file" accept=".json,application/json" onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ""; }} style={st.hidden} aria-label="Import a backup file" />
-            </label>
-          </div>
-          {pending && (
-            <div style={st.confirm}>
-              <span>{pending.name}: {pending.days} logged day{pending.days === 1 ? "" : "s"}. Add them to this log?</span>
-              <div style={st.row}>
-                <button type="button" onClick={doImport} style={st.primary}>Import</button>
-                <button type="button" onClick={() => setPending(null)} style={st.secondary}>Cancel</button>
-              </div>
-            </div>
-          )}
-          {status && <span role={status.kind === "error" ? "alert" : "status"} style={{ ...st.status, color: status.kind === "error" ? rust : status.kind === "done" ? teal : inkFaint }}>{status.text}</span>}
+    <section className="ft-card" style={st.card} aria-label="Back up or move your data">
+      <div style={st.head}>
+        <span style={st.eyebrow}>Back up or move your data</span>
+        <button type="button" onClick={onClose} style={st.link}>Close</button>
+      </div>
+      <div style={st.body}>
+        <p style={st.p}>
+          Export saves everything (workouts, food, tags, imported exercises and settings) as one file. Import adds a backup's
+          entries to what's here; nothing already logged is removed. Use it to move between this link and the website version.
+        </p>
+        <div style={st.row}>
+          {canSave && <button type="button" onClick={doExport} disabled={status?.kind === "busy"} style={st.primary}>Export backup</button>}
+          <label style={st.fileBtn}>
+            Import a backup
+            <input type="file" accept=".json,application/json" onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ""; }} style={st.hidden} aria-label="Import a backup file" />
+          </label>
         </div>
-      )}
+        {pending && (
+          <div style={st.confirm}>
+            <span>{pending.name}: {pending.days} logged day{pending.days === 1 ? "" : "s"}. Add them to this log?</span>
+            <div style={st.row}>
+              <button type="button" onClick={doImport} style={st.primary}>Import</button>
+              <button type="button" onClick={() => setPending(null)} style={st.secondary}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {status && <span role={status.kind === "error" ? "alert" : "status"} style={{ ...st.status, color: status.kind === "error" ? rust : status.kind === "done" ? teal : inkFaint }}>{status.text}</span>}
+      </div>
     </section>
   );
 }
 
 const st = {
-  box: { marginTop: 28, borderTop: `1px solid ${line}`, paddingTop: 12 },
-  toggle: { fontFamily: mono, fontSize: 12, color: inkFaint, background: "none", border: "none", padding: 0 },
+  card: { margin: "12px 0 0", padding: "12px 14px", background: raised, border: `1px solid ${line}`, borderLeft: `3px solid ${teal}`, borderRadius: 4, color: ink },
+  head: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  eyebrow: { fontFamily: mono, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint },
+  link: { fontFamily: mono, fontSize: 12, color: ink, background: "transparent", border: "none", textDecoration: "underline", padding: "6px 0", minHeight: 32 },
   body: { display: "flex", flexDirection: "column", gap: 10, marginTop: 10 },
   p: { margin: 0, fontSize: 13, lineHeight: 1.5, color: ink, maxWidth: "62ch" },
   row: { display: "flex", flexWrap: "wrap", gap: 8 },
@@ -130,6 +131,6 @@ const st = {
   secondary: { fontFamily: mono, fontSize: 12, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 3, padding: "7px 12px" },
   fileBtn: { position: "relative", fontFamily: mono, fontSize: 12, color: ink, border: `1px solid ${ink}`, borderRadius: 3, padding: "7px 12px", cursor: "pointer" },
   hidden: { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" },
-  confirm: { display: "flex", flexDirection: "column", gap: 8, fontSize: 13, background: raised, border: `1px solid ${line}`, borderRadius: 4, padding: 10 },
+  confirm: { display: "flex", flexDirection: "column", gap: 8, fontSize: 13, background: C.field, border: `1px solid ${line}`, borderRadius: 4, padding: 10 },
   status: { fontSize: 13 },
 };

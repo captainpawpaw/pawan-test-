@@ -120,7 +120,7 @@ await pa.getByRole('button', { name: 'Save to My foods' }).click();
 await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).waitFor({ timeout: 5000 }).catch(() => {});
 check(await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).count() === 1 && external === 0, 'saved to My foods, nothing sent outside');
 await pa.getByRole('button', { name: 'Done adding' }).click();
-await pa.getByText('Back up or move your data').click();
+await pa.getByRole('button', { name: 'Menu' }).click(); await pa.getByRole('menuitem', { name: 'Back up or move your data…' }).click();
 await pa.getByRole('button', { name: 'Export backup' }).click();
 await pa.getByText(/^Saved a backup of/).waitFor();
 const saved = await pa.evaluate(() => window.__saved);
