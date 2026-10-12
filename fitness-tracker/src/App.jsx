@@ -12,6 +12,8 @@ import { weighInDue, describeWeighIn } from "./weighin";
 import { strengthHistory, lastSession } from "./lastTime";
 import { BodyWeightField } from "./BodyWeight";
 import { validUnit, toKg, fromKg, bwText } from "./units";
+import { SplitSettings, DayPlan } from "./Split";
+import { SPLITS, activeSplit, sessionOn, suggestFor } from "./splits";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
@@ -380,6 +382,17 @@ export default function App() {
     return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
   }, []);
   const weighInDueAt = useMemo(() => weighInDue(weighIn, weights, new Date(clock)), [weighIn, weights, clock]);
+  // Training split: the day's session, and the sets, reps and first-set % to use.
+  const split = useMemo(() => activeSplit(profile.split), [profile.split]);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const saveSplit = async (value) => {
+    const next = { ...profile, split: { ...value, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+    return Boolean(res);
+  };
+
   const saveWeighIn = async (patch) => {
     const cur = profile.weighin || {};
     const changed = ["on", "day", "time"].some((k) => k in patch && patch[k] !== cur[k]);
@@ -443,6 +456,16 @@ export default function App() {
     return () => { live = false; };
   }, [loadAllMonths, dataVersion, key]); // and again on changing month, to pick up edits made in the last one
   const history = useMemo(() => strengthHistory({ ...allMonths, [monthKey(cursor)]: monthData }), [allMonths, monthData, cursor]);
+
+  // Exercises you've logged that suit the day's session in your split,
+  // leaving out what's already logged that day.
+  const todaySuggestions = useMemo(() => {
+    const session = sessionOn(split, new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected)));
+    if (!session) return [];
+    const done = new Set((monthData[selected]?.strength || []).map((e) => nameKey(e.exercise || "")));
+    const logged = [...history].filter(([k]) => !done.has(k)).map(([, sessions]) => [sessions[sessions.length - 1].entries[0].exercise, sessions.length]);
+    return suggestFor(session, logged, fullExercises);
+  }, [split, cursor, selected, monthData, history, fullExercises]);
 
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
@@ -717,7 +740,7 @@ export default function App() {
 
   const pickFromLibrary = (exercise) => {
     const type = exercise.category === "cardio" ? "cardio" : "strength";
-    setPrefill({ type, value: exercise.name, plan: exercise.plans?.[0] || null, token: Date.now() });
+    setPrefill({ type, value: exercise.name, plan: exercise.plans?.[0] || (type === "strength" ? { sets: split.sets, reps: split.reps } : null), token: Date.now() });
     setActiveTab("log");
   };
 
@@ -787,9 +810,11 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setWeighInOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setSplitOpen(false); setWeighInOpen(true); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps, firstPct: sp.firstPct }); closeMenu(); }} onAdjustSplit={() => { setWeighInOpen(false); setSplitOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
-      {weighInOpen ? (
+      {splitOpen ? (
+        <SplitSettings setting={profile.split} onSave={saveSplit} onClose={() => setSplitOpen(false)} />
+      ) : weighInOpen ? (
         <WeighInSettings setting={weighIn} onSave={saveWeighIn} onClose={() => setWeighInOpen(false)} />
       ) : weighInDueAt && (
         <WeighInPrompt
@@ -977,6 +1002,13 @@ export default function App() {
               saveError={saveError}
             />
           ) : (
+          <>
+          <DayPlan
+            split={split}
+            session={sessionOn(split, new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected)))}
+            suggestions={todaySuggestions}
+            onPick={(name) => setPrefill({ type: "strength", value: name, plan: { sets: split.sets, reps: split.reps }, token: Date.now() })}
+          />
           <div className="ft-sections" style={styles.sections}>
             <Section
               className="ft-section"
@@ -1009,7 +1041,8 @@ export default function App() {
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
               bwUnit={bwUnit}
-              lastFor={(name) => lastSession(history, name, `${key}-${selected}`)}
+              lastFor={(name) => lastSession(history, name, `${key}-${selected}`, split.firstPct)}
+              defaults={{ sets: String(split.sets), reps: String(split.reps) }}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
                 <StrengthFooter
                   entries={dayEntries.strength}
@@ -1049,6 +1082,7 @@ export default function App() {
               footer={dayEntries.cardio && dayEntries.cardio.length > 0 ? `Total time: ${cardioDuration(dayEntries.cardio)} min` : null}
             />
           </div>
+          </>
           )}
         </div>
       )}
@@ -1077,8 +1111,11 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onWeighIn, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onClose, buttonRef }) {
   const ref = useRef(null);
+  // "main", or a sub-menu: "theme" or "split".
+  const [view, setView] = useState("main");
+  const cameFrom = useRef(null);
   // Drop down from just under the ☰ button, right-aligned with it.
   const [pos, setPos] = useState(null);
   React.useLayoutEffect(() => {
@@ -1092,9 +1129,14 @@ function AppMenu({ theme, onTheme, onWeighIn, onClose, buttonRef }) {
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
   }, [buttonRef]);
+  // Focus: the ticked choice in a sub-menu; back on the main menu, the item it was opened from.
   useEffect(() => {
-    if (pos) ref.current?.querySelector('[aria-checked="true"]')?.focus();
-  }, [Boolean(pos)]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!pos) return;
+    const el = view === "main"
+      ? (cameFrom.current && ref.current?.querySelector(`[data-sub="${cameFrom.current}"]`)) || ref.current?.querySelector('[role^="menuitem"]')
+      : ref.current?.querySelector('[aria-checked="true"]') || ref.current?.querySelector('[role^="menuitem"]');
+    el?.focus();
+  }, [Boolean(pos), view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const away = (e) => {
       if (!ref.current?.contains(e.target) && !buttonRef.current?.contains(e.target)) onClose();
@@ -1102,40 +1144,91 @@ function AppMenu({ theme, onTheme, onWeighIn, onClose, buttonRef }) {
     document.addEventListener("pointerdown", away);
     return () => document.removeEventListener("pointerdown", away);
   }, [onClose, buttonRef]);
+  const open = (sub) => { cameFrom.current = sub; setView(sub); };
+  const back = () => setView("main");
   const onKeyDown = (e) => {
     const items = [...ref.current.querySelectorAll('[role^="menuitem"]')];
     const i = items.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); onClose(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "ArrowLeft" && view !== "main") { e.preventDefault(); back(); }
+    else if (e.key === "ArrowRight" && document.activeElement?.dataset.sub) { e.preventDefault(); open(document.activeElement.dataset.sub); }
     else if (e.key === "Tab") onClose();
   };
+  const chev = <span aria-hidden="true" style={styles.menuChev}>›</span>;
+  const subItem = (sub, label, value) => (
+    <button type="button" role="menuitem" aria-haspopup="menu" data-sub={sub} onClick={() => open(sub)} style={styles.menuItem}>
+      <span style={{ flex: 1 }}>{label}</span>
+      <span style={styles.menuValue}>{value}</span>
+      {chev}
+    </button>
+  );
+  const backItem = (label) => (
+    <button type="button" role="menuitem" onClick={back} style={{ ...styles.menuItem, ...styles.menuBack }}>
+      <span aria-hidden="true">‹</span>
+      <span style={{ flex: 1 }}>{label}</span>
+    </button>
+  );
+  const splitName = (SPLITS.find((sp) => sp.id === split) || SPLITS[0]).name.split(" ·")[0];
   return (
-    <div id="app-menu" ref={ref} role="menu" aria-label="Menu" onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
-      <div style={styles.menuHeading} id="menu-theme-heading">Theme</div>
-      <div role="group" aria-labelledby="menu-theme-heading">
-        {THEME_NAMES.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="menuitemradio"
-            aria-checked={theme === t}
-            onClick={() => onTheme(t)}
-            style={{ ...styles.menuItem, ...(theme === t ? styles.menuItemOn : {}) }}
-          >
-            <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
-              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
-              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
-            </span>
-            <span style={{ flex: 1 }}>{THEMES[t].label}</span>
-            {theme === t && <span aria-hidden="true">✓</span>}
+    <div id="app-menu" ref={ref} role="menu" aria-label={view === "theme" ? "Theme" : view === "split" ? "Training split" : "Menu"} onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
+      {view === "main" && (
+        <>
+          {subItem("theme", "Theme", THEMES[theme]?.label)}
+          {subItem("split", "Training split", splitName)}
+          <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
+            <span style={{ flex: 1 }}>Weekly weigh-in…</span>
           </button>
-        ))}
-      </div>
-      <div style={styles.menuHeading}>Reminders</div>
-      <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
-        <span style={{ flex: 1 }}>Weekly weigh-in…</span>
-      </button>
+        </>
+      )}
+      {view === "theme" && (
+        <>
+          {backItem("Theme")}
+          <div role="group" aria-label="Theme">
+            {THEME_NAMES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="menuitemradio"
+                aria-checked={theme === t}
+                onClick={() => onTheme(t)}
+                style={{ ...styles.menuItem, ...(theme === t ? styles.menuItemOn : {}) }}
+              >
+                <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
+                  <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
+                  <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
+                </span>
+                <span style={{ flex: 1 }}>{THEMES[t].label}</span>
+                {theme === t && <span aria-hidden="true">✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {view === "split" && (
+        <>
+          {backItem("Training split")}
+          <div role="group" aria-label="Training split">
+            {SPLITS.map((sp) => (
+              <button
+                key={sp.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={split === sp.id}
+                onClick={() => onSplit(sp.id)}
+                style={{ ...styles.menuItem, ...(split === sp.id ? styles.menuItemOn : {}) }}
+              >
+                <span style={{ flex: 1 }}>{sp.name}</span>
+                {split === sp.id && <span aria-hidden="true">✓</span>}
+              </button>
+            ))}
+            <button type="button" role="menuitem" onClick={onAdjustSplit} style={{ ...styles.menuItem, color: inkFaint }}>
+              <span style={{ flex: 1 }}>Adjust sets &amp; reps…</span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1260,7 +1353,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit 
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, bwUnit, lastFor }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, bwUnit, lastFor, defaults }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
@@ -1328,7 +1421,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               onPicked={(name, tag) => {
                 const plans = (plansByName || {})[name] || [];
                 const plan = plans.find((pl) => tag && pl.tag === tag) || plans[0];
-                const fill = planValues(sectionType, plan);
+                const fill = { ...(defaults || {}), ...planValues(sectionType, plan) };
                 setVals((cur) => {
                   const next = { ...cur, [f.key]: name, ...bwFor(name) };
                   for (const [k, v] of Object.entries(fill)) if (!cur[k]) next[k] = v;
@@ -2277,10 +2370,13 @@ const styles = {
   header: { marginBottom: 4 },
   headerRight: { display: "flex", alignItems: "flex-start", gap: 8, marginLeft: "auto" },
   menuBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, flex: "none", color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
-  menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 230, display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
+  menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 250, maxHeight: "calc(100dvh - 90px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
   menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
   menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
   menuItemOn: { fontWeight: 600, background: paper },
+  menuValue: { fontSize: 12, color: inkFaint, whiteSpace: "nowrap" },
+  menuChev: { fontSize: 16, color: inkFaint, marginLeft: 2 },
+  menuBack: { color: inkFaint, borderBottom: `1px solid ${line}`, borderRadius: 0, marginBottom: 4 },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
   brand: { display: "flex", alignItems: "center", gap: 8, paddingTop: 2 },
