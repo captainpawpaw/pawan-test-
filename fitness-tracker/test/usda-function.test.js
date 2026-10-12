@@ -32,3 +32,11 @@ test("a pasted key with spaces or quotes still works", async () => {
   const blank = await onRequestGet({ request: new Request("https://x/api/usda?q=oats"), env: { USDA_API_KEY: "  " } });
   assert.equal(blank.status, 503);
 });
+
+test("USDA's reason is passed on, without the key", async () => {
+  globalThis.fetch = async (url) => new Response(`{"error":{"code":"API_KEY_INVALID","message":"bad key SECRET3 in ${url.length}"}}`, { status: 403 });
+  const res = await onRequestGet({ request: new Request("https://x/api/usda?q=rice"), env: { USDA_API_KEY: "SECRET3" } });
+  const body = await res.json();
+  assert.equal(res.status, 502);
+  assert.ok(body.detail.includes("API_KEY_INVALID") && !JSON.stringify(body).includes("SECRET3"));
+});
