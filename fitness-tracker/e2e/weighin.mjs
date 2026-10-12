@@ -33,7 +33,7 @@ await prompt().waitFor();
 check((await prompt().innerText()).includes('Time for your weekly weigh-in') && (await prompt().innerText()).includes('Last time: 79.5 kg'), 'asks for the weight when the weigh-in time has passed');
 await p.screenshot({ path: 'weighin-prompt.png' });
 await p.getByRole('button', { name: 'Save', exact: true }).click();
-check((await prompt().innerText()).includes('Enter your weight in kg'), 'needs a weight');
+check((await prompt().innerText()).includes('Enter your weight, e.g. 78.5 kg'), 'needs a weight');
 // skip this week: gone, and stays gone after reload
 await p.getByRole('button', { name: 'Skip this week' }).click();
 check(await prompt().count() === 0, 'skip hides it');
@@ -42,11 +42,17 @@ check(await prompt().count() === 0, 'a skipped week stays skipped');
 // undo the skip by hand, then log a weight
 await p.evaluate(() => { const pr = JSON.parse(localStorage.getItem('fitness-tracker:profile')); delete pr.weighin.skipped; localStorage.setItem('fitness-tracker:profile', JSON.stringify(pr)); });
 await p.reload(); await prompt().waitFor();
-await p.getByLabel('Weight (kg)').fill('79.2');
+check(await prompt().getByRole('group', { name: 'Weight unit' }).getByRole('button').allInnerTexts().then(t => t.join(',')) === 'kg,lb,st & lb', 'choice of kg, lb, or st & lb');
+await prompt().getByRole('button', { name: 'lb', exact: true }).click();
+check((await prompt().innerText()).includes('Last time: 175.3 lb'), 'in lb: ' + (await prompt().innerText()).split('\n').find(l => l.startsWith('Last')));
+await prompt().getByRole('button', { name: 'st & lb' }).click();
+check((await prompt().innerText()).includes('Last time: 12 st 7.3 lb'), 'in st & lb: ' + (await prompt().innerText()).split('\n').find(l => l.startsWith('Last')));
+await p.getByLabel('Stones').fill('12'); await p.getByLabel('Pounds').fill('7');
+await p.screenshot({ path: 'weighin-stones.png' });
 await p.getByRole('button', { name: 'Save', exact: true }).click();
 check(await prompt().count() === 0, 'saving the weight closes it');
 const pr = await profile();
-check(pr.bodyweight.weights.at(-1).kg === 79.2 && pr.bodyweight.weights.length === 7, 'weight saved for today');
+check(pr.bodyweight.weights.at(-1).kg === 79.4 && pr.bodyweight.weights.length === 7 && pr.units.weight === 'st', 'weight saved for today in kg (12 st 7 lb = 79.4 kg), and the unit remembered');
 // settings from the menu
 await p.getByRole('button', { name: 'Menu' }).click();
 await p.getByRole('menuitem', { name: 'Weekly weigh-in…' }).click();
@@ -67,7 +73,7 @@ await settings.getByRole('button', { name: 'Close' }).click();
 await p.getByRole('button', { name: 'PROGRESS' }).click();
 await p.getByLabel('Show progress for').selectOption('body:weight');
 let t = await p.locator('body').innerText();
-check(t.includes('Body weight (7 weigh-ins)') && t.includes('Latest weigh-in') && t.includes('79.2 kg'), 'Progress charts body weight');
+check(t.includes('Body weight (7 weigh-ins)') && t.includes('Latest weigh-in') && t.includes('12 st 7 lb') && t.includes('Body weight') && /\bst\b/.test(t), 'Progress charts body weight in st & lb');
 check(t.includes('Weekly weigh-in: Mondays at 7:30'), 'and shows the weigh-in time');
 await p.screenshot({ path: 'weighin-progress.png' });
 // turn it off

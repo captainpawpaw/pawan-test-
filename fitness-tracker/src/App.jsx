@@ -10,6 +10,8 @@ import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
 import { strengthHistory, lastSession } from "./lastTime";
+import { BodyWeightField } from "./BodyWeight";
+import { validUnit, toKg, fromKg, bwText } from "./units";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
@@ -356,6 +358,15 @@ export default function App() {
     const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
     if (res) drive.scheduleSync();
     return Boolean(res);
+  };
+
+  // Body weight unit (kg, lb, or st & lb), chosen wherever you enter it.
+  const bwUnit = validUnit(profile.units?.weight);
+  const saveBwUnit = async (unit) => {
+    const next = { ...profile, units: { ...(profile.units || {}), weight: unit, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
   };
 
   // Weekly weigh-in: asks for your weight at the day and time you set.
@@ -785,6 +796,8 @@ export default function App() {
           key={weighInDueAt.getTime()}
           setting={weighIn}
           lastKg={weights.length ? weights[weights.length - 1].kg : null}
+          unit={bwUnit}
+          onUnit={saveBwUnit}
           onSave={saveBodyweight}
           onSkip={() => saveWeighIn({ skipped: weighInDueAt.getTime() })}
           onSettings={() => setWeighInOpen(true)}
@@ -813,7 +826,7 @@ export default function App() {
         className={slideDir ? `ft-slide-${slideDir}` : undefined}
       >
       {activeTab === "progress" ? (
-        <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => setWeighInOpen(true)} />
+        <Progress bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => setWeighInOpen(true)} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -995,12 +1008,15 @@ export default function App() {
               onEdit={(id, e) => editEntry("strength", id, e)}
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
+              bwUnit={bwUnit}
               lastFor={(name) => lastSession(history, name, `${key}-${selected}`)}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
                 <StrengthFooter
                   entries={dayEntries.strength}
                   bodyweightKg={bwOnDay(cursor, selected)}
                   onSaveBodyweight={saveBodyweight}
+                  unit={bwUnit}
+                  onUnit={saveBwUnit}
                 />
               ) : null}
             />
@@ -1194,19 +1210,19 @@ function planValues(sectionType, plan) {
   return mins ? { duration: mins[1] } : {};
 }
 
-function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
+function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState({ main: "", extra: "" });
   const [error, setError] = useState("");
   const hasBw = entries.some((e) => e.bw);
   const known = bodyweightKg != null;
 
-  const open = () => { setValue(known ? String(bodyweightKg) : ""); setError(""); setEditing(true); };
+  const open = () => { setValue(known ? fromKg(bodyweightKg, unit) : { main: "", extra: "" }); setError(""); setEditing(true); };
   const save = async (ev) => {
     ev.preventDefault();
-    const kg = Number(value);
-    if (!value || !(kg > 20 && kg < 400)) { setError("Enter your body weight in kg, e.g. 78.5"); return; }
-    const ok = await onSaveBodyweight(Math.round(kg * 10) / 10);
+    const kg = toKg(unit, value.main, value.extra);
+    if (!(kg > 20 && kg < 400)) { setError(`Enter your body weight, e.g. ${unit === "lb" ? "175 lb" : unit === "st" ? "12 st 7 lb" : "78.5 kg"}`); return; }
+    const ok = await onSaveBodyweight(kg);
     if (!ok) { setError("Couldn't save. Try again."); return; }
     setEditing(false);
   };
@@ -1219,24 +1235,20 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
       </span>
       {hasBw && !editing && (
         <span style={styles.bwLine}>
-          {known ? `Body weight ${kgText(bodyweightKg)} included` : "Add your body weight to count body-weight sets."}
+          {known ? `Body weight ${bwText(bodyweightKg, unit)} included` : "Add your body weight to count body-weight sets."}
           <button type="button" onClick={open} style={styles.bwEditBtn}>{known ? "Change" : "Set body weight"}</button>
         </span>
       )}
       {editing && (
         <form onSubmit={save} noValidate style={styles.bwForm}>
-          <label htmlFor="bodyweight-input" style={styles.bwLabel}>Your body weight (kg)</label>
-          <input
+          <span style={styles.bwLabel}>Your body weight</span>
+          <BodyWeightField
             id="bodyweight-input"
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            min="20"
+            unit={unit}
+            onUnit={(u) => { onUnit(u); setValue((v) => { const kg = toKg(unit, v.main, v.extra); return kg ? fromKg(kg, u) : { main: "", extra: "" }; }); setError(""); }}
             value={value}
-            onChange={(e) => { setValue(e.target.value); setError(""); }}
-            placeholder="78.5"
+            onChange={(v) => { setValue(v); setError(""); }}
             autoFocus
-            style={{ ...styles.input, width: 90 }}
           />
           <button type="submit" style={styles.tagAddBtn}>Save</button>
           <button type="button" onClick={() => setEditing(false)} style={styles.tagDoneBtn}>Cancel</button>
@@ -1248,7 +1260,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, lastFor }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, bwUnit, lastFor }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
@@ -1366,7 +1378,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               {vals.bw && (
                 <span style={styles.bwHint}>
                   {bodyweightKg != null
-                    ? `Counts as ${kgText(bodyweightKg)} body weight${Number(vals[f.key]) ? ` + ${vals[f.key]} kg` : ""}.`
+                    ? `Counts as ${bwText(bodyweightKg, bwUnit)} body weight${Number(vals[f.key]) ? ` + ${vals[f.key]} kg` : ""}.`
                     : "Set your body weight under the day's sets to count it in volume."}
                 </span>
               )}

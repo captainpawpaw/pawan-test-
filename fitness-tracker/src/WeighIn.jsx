@@ -2,18 +2,20 @@
 import React, { useState } from "react";
 import { C } from "./theme";
 import { DAYS, describeWeighIn, weighInCalendar } from "./weighin";
+import { BodyWeightField } from "./BodyWeight";
+import { toKg, fromKg, bwText } from "./units";
 
 const mono = "'IBM Plex Mono', monospace";
 
-// Asks for this week's weight.
-export function WeighInPrompt({ setting, lastKg, onSave, onSkip, onSettings }) {
-  const [value, setValue] = useState("");
+// Asks for this week's weight, in your chosen unit.
+export function WeighInPrompt({ setting, lastKg, unit, onUnit, onSave, onSkip, onSettings }) {
+  const [value, setValue] = useState({ main: "", extra: "" });
   const [error, setError] = useState("");
   const save = async (ev) => {
     ev.preventDefault();
-    const kg = Number(value);
-    if (!value || !(kg > 20 && kg < 400)) { setError("Enter your weight in kg, e.g. 78.5"); return; }
-    if (!(await onSave(Math.round(kg * 10) / 10))) setError("Couldn't save. Try again.");
+    const kg = toKg(unit, value.main, value.extra);
+    if (!(kg > 20 && kg < 400)) { setError(`Enter your weight, e.g. ${EXAMPLE[unit]}`); return; }
+    if (!(await onSave(kg))) setError("Couldn't save. Try again.");
   };
   return (
     <section aria-label="Weekly weigh-in" className="ft-card" style={s.card}>
@@ -23,26 +25,24 @@ export function WeighInPrompt({ setting, lastKg, onSave, onSkip, onSettings }) {
       </div>
       <p style={s.text}>Time for your weekly weigh-in ({describeWeighIn(setting)}).</p>
       <form onSubmit={save} noValidate style={s.row}>
-        <label htmlFor="weighin-kg" style={s.label}>Weight (kg)</label>
-        <input
+        <BodyWeightField
           id="weighin-kg"
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          min="20"
+          unit={unit}
+          onUnit={(u) => { onUnit(u); setValue({ main: "", extra: "" }); setError(""); }}
           value={value}
-          placeholder={lastKg ? String(lastKg) : "78.5"}
-          onChange={(e) => { setValue(e.target.value); setError(""); }}
-          style={s.input}
+          onChange={(v) => { setValue(v); setError(""); }}
+          placeholder={lastKg ? fromKg(lastKg, unit) : null}
         />
         <button type="submit" style={s.primary}>Save</button>
         <button type="button" onClick={onSkip} style={s.secondary}>Skip this week</button>
       </form>
-      {lastKg != null && <p style={s.note}>Last time: {lastKg} kg</p>}
+      {lastKg != null && <p style={s.note}>Last time: {bwText(lastKg, unit)}</p>}
       {error && <p role="alert" style={s.error}>{error}</p>}
     </section>
   );
 }
+
+const EXAMPLE = { kg: "78.5 kg", lb: "175 lb", st: "12 st 7 lb" };
 
 // Choose the day and time, or turn the reminder off.
 export function WeighInSettings({ setting, onSave, onClose }) {
