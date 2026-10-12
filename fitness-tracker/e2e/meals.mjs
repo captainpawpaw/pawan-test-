@@ -95,6 +95,18 @@ await pa.getByRole('button', { name: 'Edit Coffee' }).click();
 await pa.getByLabel('Meal', { exact: true }).selectOption('snacks');
 await pa.getByRole('button', { name: 'Save changes' }).click();
 check((await part(pa, 'Snacks').innerText()).includes('Coffee') && !(await part(pa, 'Breakfast').innerText()).includes('Coffee'), 'editing moves a food to another part');
+// parts fold up: one line with the count and subtotal, tap to open or close
+const bToggle = part(pa, 'Breakfast').getByRole('button', { name: /^.?Breakfast 3 items/ });
+check(await bToggle.getAttribute('aria-expanded') === 'true', 'a part you added to is open');
+await bToggle.click();
+let bc = await part(pa, 'Breakfast').innerText();
+check(bc.includes('3 items · 350 kcal') && !bc.includes('Porridge oats') && await bToggle.getAttribute('aria-expanded') === 'false', 'tapping folds it to one line');
+await pa.screenshot({ path: 'food-folded.png', fullPage: true });
+await pa.reload(); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
+check(!(await part(pa, 'Breakfast').innerText()).includes('Porridge oats') && (await part(pa, 'Snacks').innerText()).includes('Coffee'), 'which parts are open is remembered');
+await part(pa, 'Breakfast').getByRole('button', { name: /^.?Breakfast 3 items/ }).click();
+check((await part(pa, 'Breakfast').innerText()).includes('Porridge oats'), 'tapping opens it again');
+check(await part(pa, 'Lunch').getByRole('button', { name: 'Lunch', exact: true }).isDisabled(), 'an empty part has nothing to open');
 // save breakfast as a meal: name filled in
 await pa.getByRole('button', { name: 'Save breakfast as a meal' }).click();
 check(await pa.getByLabel('Meal name').inputValue() === 'Breakfast', 'meal name starts as the part');

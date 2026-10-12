@@ -28,9 +28,20 @@ const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigi
 // A day's food in four parts. Entries carry slot: breakfast | lunch | dinner | snacks.
 export const SLOTS = [["breakfast", "Breakfast"], ["lunch", "Lunch"], ["dinner", "Dinner"], ["snacks", "Snacks"]];
 const SLOT_IDS = new Set(SLOTS.map(([id]) => id));
+const OPEN_KEY = "fitness-tracker:food-open";
 
 export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood, meals = [], onSaveMeal, onRemoveMeal }) {
   const [addingSlot, setAddingSlot] = useState(null);
+  // Parts fold to one line until opened; which ones are open is remembered on this device.
+  const [openSlots, setOpenSlots] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); }
+  });
+  const setOpen = (slot, open) => setOpenSlots((cur) => {
+    const next = new Set(cur);
+    if (open) next.add(slot); else next.delete(slot);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...next])); } catch { /* private mode */ }
+    return next;
+  });
   const [savingMealSlot, setSavingMealSlot] = useState(null);
   const [mealMsg, setMealMsg] = useState({ slot: null, text: "" });
   const [editingId, setEditingId] = useState(null);
@@ -56,7 +67,7 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
         <button aria-label={`Delete ${e.name}`} onClick={() => { if (editingId === e.id) setEditingId(null); onDelete(e.id); }} style={st.deleteBtn}>×</button>
       </div>
       {editingId === e.id && (
-        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); }} onCancel={() => setEditingId(null)} />
+        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); if (next.slot && next.slot !== e.slot) setOpen(next.slot, true); }} onCancel={() => setEditingId(null)} />
       )}
     </React.Fragment>
   );
@@ -74,13 +85,32 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
         const items = list.filter((e) => e.slot === slot);
         const sub = sumFood(items);
         const adding = addingSlot === slot;
+        const open = adding || (openSlots.has(slot) && items.length > 0);
         return (
           <section key={slot} aria-label={label} style={st.slot}>
             <div style={st.slotHead}>
-              <span style={st.slotTitle}>{label}</span>
-              <span style={st.slotSum}>{items.length ? `${sub.kcal} kcal · P ${fmtG(sub.protein)} g` : ""}</span>
               <button
-                onClick={() => setAddingSlot(adding ? null : slot)}
+                type="button"
+                onClick={() => items.length && setOpen(slot, !openSlots.has(slot))}
+                aria-expanded={items.length ? open : undefined}
+                aria-controls={`food-${slot}`}
+                disabled={!items.length}
+                style={st.slotToggle}
+              >
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={st.slotTitle}>{label}</span>
+                    {items.length > 0 && (
+                      <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" style={{ ...st.chev, transform: open ? "rotate(90deg)" : "none" }}>
+                        <path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  {items.length > 0 && <span style={st.slotSum}>{`${items.length} item${items.length === 1 ? "" : "s"} · ${sub.kcal} kcal · P ${fmtG(sub.protein)} g`}</span>}
+                </span>
+              </button>
+              <button
+                onClick={() => { if (adding) setAddingSlot(null); else { setAddingSlot(slot); setOpen(slot, true); } }}
                 aria-expanded={adding}
                 aria-label={adding ? `Close adding to ${label}` : `+ Add to ${label}`}
                 style={{ ...st.addBtn, color: adding ? C.onFill : plum, background: adding ? plum : "transparent" }}
@@ -98,8 +128,8 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
                 meals={meals} onRemoveMeal={onRemoveMeal}
               />
             )}
-            {items.length > 0 && <div style={st.rows}>{items.map(row)}</div>}
-            {onSaveMeal && items.length > 0 && savingMealSlot !== slot && (
+            {open && items.length > 0 && <div id={`food-${slot}`} style={st.rows}>{items.map(row)}</div>}
+            {open && onSaveMeal && items.length > 0 && savingMealSlot !== slot && (
               <div style={st.btnRow}>
                 <button type="button" onClick={() => { setSavingMealSlot(slot); setMealMsg({ slot: null, text: "" }); }} style={st.linkBtn}>Save {label.toLowerCase()} as a meal</button>
                 {mealMsg.slot === slot && <span role="status" style={st.flash}>{mealMsg.text}</span>}
@@ -1067,8 +1097,10 @@ const st = {
   nutTable: { display: "flex", flexDirection: "column", gap: 4 },
   slot: { display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${line}`, paddingTop: 10 },
   slotHead: { display: "flex", alignItems: "center", gap: 8 },
+  slotToggle: { flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, minHeight: 36, padding: 0, background: "none", border: "none", color: ink, textAlign: "left", cursor: "pointer" },
+  chev: { flex: "none", color: inkFaint, transition: "transform 0.15s ease" },
   slotTitle: { fontFamily: condensed, fontWeight: 700, fontSize: 16, letterSpacing: "0.05em", textTransform: "uppercase", color: ink },
-  slotSum: { flex: 1, fontFamily: mono, fontSize: 11, color: inkFaint, textAlign: "right" },
+  slotSum: { fontFamily: mono, fontSize: 11, color: inkFaint },
   nutRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6, alignItems: "center" },
   nutHead: { fontFamily: mono, fontSize: 11, fontWeight: 600, color: inkFaint },
   nutName: { fontFamily: mono, fontSize: 11, color: ink },
