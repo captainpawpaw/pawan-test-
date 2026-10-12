@@ -55,3 +55,12 @@ test("mergeNotes keeps the newer version of each note", () => {
   const merged = Object.fromEntries(mergeNotes(local, incoming).map((n) => [n.id, n.body]));
   assert.deepEqual(merged, { a: "new", b: "keep", c: "add" });
 });
+
+test("applySnapshot keeps local copies of notes with unsaved edits", async () => {
+  const { applySnapshot } = await import("../src/cloud.js");
+  const local = [{ id: "a", body: "typing…" }, { id: "b", body: "old" }, { id: "new", body: "draft" }];
+  const remote = [{ id: "a", body: "stale" }, { id: "b", body: "from other device" }, { id: "c", body: "added elsewhere" }];
+  const dirty = new Set(["a", "new"]);
+  const merged = Object.fromEntries(applySnapshot(local, remote, (id) => dirty.has(id)).map((n) => [n.id, n.body]));
+  assert.deepEqual(merged, { a: "typing…", b: "from other device", c: "added elsewhere", new: "draft" });
+});
