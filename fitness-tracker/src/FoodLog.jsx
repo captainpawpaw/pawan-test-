@@ -25,57 +25,183 @@ const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigi
 
 // entries: this day's food; recent: foods logged before (newest first);
 // onAdd(list) adds one or more entries to the day.
-export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood }) {
-  const [adding, setAdding] = useState(false);
+// A day's food in four parts. Entries carry slot: breakfast | lunch | dinner | snacks.
+export const SLOTS = [["breakfast", "Breakfast"], ["lunch", "Lunch"], ["dinner", "Dinner"], ["snacks", "Snacks"]];
+const SLOT_IDS = new Set(SLOTS.map(([id]) => id));
+const OPEN_KEY = "fitness-tracker:food-open";
+
+export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood, meals = [], onSaveMeal, onRemoveMeal }) {
+  const [addingSlot, setAddingSlot] = useState(null);
+  // Parts fold to one line until opened; which ones are open is remembered on this device.
+  const [openSlots, setOpenSlots] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); }
+  });
+  const setOpen = (slot, open) => setOpenSlots((cur) => {
+    const next = new Set(cur);
+    if (open) next.add(slot); else next.delete(slot);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...next])); } catch { /* private mode */ }
+    return next;
+  });
+  const [savingMealSlot, setSavingMealSlot] = useState(null);
+  const [mealMsg, setMealMsg] = useState({ slot: null, text: "" });
   const [editingId, setEditingId] = useState(null);
   const totals = useMemo(() => sumFood(entries), [entries]);
+  const list = entries || [];
+  // Foods logged before the day was split into meals.
+  const unsorted = list.filter((e) => !SLOT_IDS.has(e.slot));
+
+  const row = (e) => (
+    <React.Fragment key={e.id}>
+      <div style={{ ...st.row, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={st.rowName}>{e.name}</div>
+          <div style={st.rowMeta}>
+            {e.qty && e.portion ? `${fmtG(e.qty)} × ${e.portion} · ` : ""}{e.grams > 0 ? `${fmtG(e.grams)} g · ` : ""}P {fmtG(e.protein)} · C {fmtG(e.carbs)} · F {fmtG(e.fat)}
+            {e.estimate ? " · ≈ estimate" : ""}{e.meal ? ` · ${e.meal}` : ""}
+          </div>
+        </div>
+        <span style={st.rowKcal}>{Math.round(e.kcal)} kcal</span>
+        {onEdit && (
+          <button aria-label={`Edit ${e.name}`} onClick={() => setEditingId(editingId === e.id ? null : e.id)} style={st.editBtn}>✎</button>
+        )}
+        <button aria-label={`Delete ${e.name}`} onClick={() => { if (editingId === e.id) setEditingId(null); onDelete(e.id); }} style={st.deleteBtn}>×</button>
+      </div>
+      {editingId === e.id && (
+        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); if (next.slot && next.slot !== e.slot) setOpen(next.slot, true); }} onCancel={() => setEditingId(null)} />
+      )}
+    </React.Fragment>
+  );
 
   return (
     <div className="ft-card" style={st.section}>
       <div style={st.head}>
         <span style={st.title}>FOOD</span>
-        <button
-          onClick={() => setAdding((a) => !a)}
-          aria-expanded={adding}
-          style={{ ...st.addBtn, color: adding ? C.onFill : plum, background: adding ? plum : "transparent" }}
-        >
-          {adding ? "Close" : "+ Add"}
-        </button>
       </div>
 
       <Totals totals={totals} targets={targets} onSaveTargets={onSaveTargets} />
       {saveError && <div role="alert" style={st.error}>Not saved — try again</div>}
 
-      {adding && <AddFood recent={recent} onAdd={onAdd} onDone={() => setAdding(false)} myFoods={myFoods} onSaveMyFood={onSaveMyFood} onRemoveMyFood={onRemoveMyFood} />}
-
-      <div style={st.rows}>
-        {!entries?.length ? (
-          <div style={st.empty}>No food logged for this day.</div>
-        ) : (
-          entries.map((e) => (
-            <React.Fragment key={e.id}>
-            <div style={{ ...st.row, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={st.rowName}>{e.name}</div>
-                <div style={st.rowMeta}>
-                  {e.qty && e.portion ? `${fmtG(e.qty)} × ${e.portion} · ` : ""}{e.grams > 0 ? `${fmtG(e.grams)} g · ` : ""}P {fmtG(e.protein)} · C {fmtG(e.carbs)} · F {fmtG(e.fat)}
-                  {e.estimate ? " · ≈ estimate" : ""}
-                </div>
-              </div>
-              <span style={st.rowKcal}>{Math.round(e.kcal)} kcal</span>
-              {onEdit && (
-                <button aria-label={`Edit ${e.name}`} onClick={() => setEditingId(editingId === e.id ? null : e.id)} style={st.editBtn}>✎</button>
-              )}
-              <button aria-label={`Delete ${e.name}`} onClick={() => { if (editingId === e.id) setEditingId(null); onDelete(e.id); }} style={st.deleteBtn}>×</button>
+      {SLOTS.map(([slot, label]) => {
+        const items = list.filter((e) => e.slot === slot);
+        const sub = sumFood(items);
+        const adding = addingSlot === slot;
+        const open = adding || (openSlots.has(slot) && items.length > 0);
+        return (
+          <section key={slot} aria-label={label} style={st.slot}>
+            <div style={st.slotHead}>
+              <button
+                type="button"
+                onClick={() => items.length && setOpen(slot, !openSlots.has(slot))}
+                aria-expanded={items.length ? open : undefined}
+                aria-controls={`food-${slot}`}
+                disabled={!items.length}
+                style={st.slotToggle}
+              >
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={st.slotTitle}>{label}</span>
+                    {items.length > 0 && (
+                      <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" style={{ ...st.chev, transform: open ? "rotate(90deg)" : "none" }}>
+                        <path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  {items.length > 0 && <span style={st.slotSum}>{`${items.length} item${items.length === 1 ? "" : "s"} · ${sub.kcal} kcal · P ${fmtG(sub.protein)} g`}</span>}
+                </span>
+              </button>
+              <button
+                onClick={() => { if (adding) setAddingSlot(null); else { setAddingSlot(slot); setOpen(slot, true); } }}
+                aria-expanded={adding}
+                aria-label={adding ? `Close adding to ${label}` : `+ Add to ${label}`}
+                style={{ ...st.addBtn, color: adding ? C.onFill : plum, background: adding ? plum : "transparent" }}
+              >
+                {adding ? "Close" : "+ Add"}
+              </button>
             </div>
-            {editingId === e.id && (
-              <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); }} onCancel={() => setEditingId(null)} />
+            {adding && (
+              <AddFood
+                slotLabel={label}
+                recent={recent}
+                onAdd={(foods) => onAdd(foods.map((f) => ({ ...f, slot })))}
+                onDone={() => setAddingSlot(null)}
+                myFoods={myFoods} onSaveMyFood={onSaveMyFood} onRemoveMyFood={onRemoveMyFood}
+                meals={meals} onRemoveMeal={onRemoveMeal}
+              />
             )}
-            </React.Fragment>
-          ))
-        )}
-      </div>
+            {open && items.length > 0 && <div id={`food-${slot}`} style={st.rows}>{items.map(row)}</div>}
+            {open && onSaveMeal && items.length > 0 && savingMealSlot !== slot && (
+              <div style={st.btnRow}>
+                <button type="button" onClick={() => { setSavingMealSlot(slot); setMealMsg({ slot: null, text: "" }); }} style={st.linkBtn}>Save {label.toLowerCase()} as a meal</button>
+                {mealMsg.slot === slot && <span role="status" style={st.flash}>{mealMsg.text}</span>}
+              </div>
+            )}
+            {savingMealSlot === slot && (
+              <SaveMeal
+                entries={items}
+                defaultName={label}
+                onSave={async (name, chosen) => {
+                  const saved = await onSaveMeal(name, chosen);
+                  if (saved) { setSavingMealSlot(null); setMealMsg({ slot, text: `Saved ${saved.name} (${saved.items.length} food${saved.items.length === 1 ? "" : "s"}). Add it from + Add next time.` }); }
+                  return Boolean(saved);
+                }}
+                onCancel={() => setSavingMealSlot(null)}
+              />
+            )}
+          </section>
+        );
+      })}
+
+      {unsorted.length > 0 && (
+        <section aria-label="Not sorted" style={st.slot}>
+          <div style={st.slotHead}>
+            <span style={st.slotTitle}>Not sorted</span>
+            <span style={st.slotSum}>{sumFood(unsorted).kcal} kcal</span>
+          </div>
+          <span style={st.note}>Logged before meals were split up. Tap ✎ to move one to a meal.</span>
+          <div style={st.rows}>{unsorted.map(row)}</div>
+        </section>
+      )}
+      {!list.length && <div style={st.empty}>No food logged for this day.</div>}
     </div>
+  );
+}
+
+/* ---------- meals ---------- */
+const mealTotals = (items) => sumFood(items);
+
+function SaveMeal({ entries, defaultName = "", onSave, onCancel }) {
+  const [name, setName] = useState(defaultName);
+  const [picked, setPicked] = useState(() => Object.fromEntries(entries.map((e) => [e.id, true])));
+  const [err, setErr] = useState("");
+  const chosen = entries.filter((e) => picked[e.id]);
+  const t = mealTotals(chosen);
+  const submit = async (ev) => {
+    ev.preventDefault();
+    if (!name.trim() || !chosen.length) return;
+    if (!(await onSave(name, chosen))) setErr("Couldn't save it. Try again.");
+  };
+  return (
+    <form onSubmit={submit} style={st.addBox} aria-label="Save as meal">
+      <span style={st.pickedName}>Save as meal</span>
+      <label style={st.fieldLabel}>Meal name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Breakfast" autoFocus style={st.input} /></label>
+      <div role="group" aria-label="Foods in the meal" style={st.stack}>
+        {entries.map((e) => (
+          <label key={e.id} style={st.estRow}>
+            <input type="checkbox" checked={Boolean(picked[e.id])} onChange={(ev) => setPicked((p) => ({ ...p, [e.id]: ev.target.checked }))} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={st.rowName}>{e.name}</span>
+              <span style={{ ...st.rowMeta, display: "block" }}>{e.qty && e.portion ? `${fmtG(e.qty)} × ${e.portion}` : `${fmtG(e.grams)} g`} · {Math.round(e.kcal)} kcal</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <span style={st.note}>{chosen.length} food{chosen.length === 1 ? "" : "s"} · {t.kcal} kcal · P {fmtG(t.protein)} g · C {fmtG(t.carbs)} g · F {fmtG(t.fat)} g</span>
+      {err && <span role="alert" style={st.error}>{err}</span>}
+      <div style={st.btnRow}>
+        <button type="submit" disabled={!name.trim() || !chosen.length} style={st.primaryBtn}>Save meal</button>
+        <button type="button" onClick={onCancel} style={st.secondaryBtn}>Cancel</button>
+      </div>
+    </form>
   );
 }
 
@@ -166,7 +292,7 @@ export function myFoodToPick(f) {
   return withSpoons({ id: f.id, name: f.brand ? `${f.name} (${f.brand})` : f.name, group: "My foods", source: "mine", per100: f.per100, portions: f.portions || [], barcode: f.barcode, thumb: f.thumb, lower: `${f.name} ${f.brand || ""}`.toLowerCase() });
 }
 
-function AddFood({ recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood }) {
+function AddFood({ slotLabel, recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood, meals, onRemoveMeal }) {
   const [mode, setMode] = useState("search"); // search | amount | claude | manual | scan | label
   const [picked, setPicked] = useState(null);
   const [flash, setFlash] = useState("");
@@ -182,7 +308,13 @@ function AddFood({ recent, onAdd, onDone, myFoods, onSaveMyFood, onRemoveMyFood 
   return (
     <div style={st.addBox}>
       {flash && mode === "search" && <div role="status" style={st.flash}>{flash}</div>}
-      {mode === "search" && <FoodSearch recent={recent} onPick={pick} onMode={setMode} myFoods={myFoods} onRemoveMyFood={onRemoveMyFood} />}
+      {mode === "search" && (
+        <FoodSearch
+          recent={recent} onPick={pick} onMode={setMode} myFoods={myFoods} onRemoveMyFood={onRemoveMyFood}
+          meals={meals} onRemoveMeal={onRemoveMeal}
+          onAddMeal={(m) => { onAdd(m.items.map((it) => ({ ...it, meal: m.name }))); setFlash(`Added ${m.name}: ${m.items.length} food${m.items.length === 1 ? "" : "s"}.`); }}
+        />
+      )}
       {mode === "label" && (
         <LabelCapture
           onSave={onSaveMyFood}
@@ -210,7 +342,7 @@ function mineByBarcode(myFoods, code) {
   return f ? myFoodToPick(f) : null;
 }
 
-function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
+function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meals = [], onRemoveMeal, onAddMeal }) {
   const [q, setQ] = useState("");
   const [foods, setFoods] = useState(null);
   const [loadErr, setLoadErr] = useState(false);
@@ -231,6 +363,11 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
   }, [online]);
 
   const local = useMemo(() => (foods && q.trim().length >= 2 ? searchFoods(foods, q) : []), [foods, q]);
+  const mealHits = useMemo(() => {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const text = (m) => `${m.name} ${m.items.map((it) => it.name).join(" ")}`.toLowerCase();
+    return (words.length ? meals.filter((m) => words.every((w) => text(m).includes(w))) : meals).slice(0, 6);
+  }, [meals, q]);
   const myHits = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const list = myFoods.map(myFoodToPick);
@@ -328,6 +465,28 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
         </div>
       )}
 
+      {mealHits.length > 0 && onAddMeal && (
+        <div style={st.resultGroup}>
+          <span style={st.groupLabel}>Meals · one tap adds them all</span>
+          <ul style={st.resultList}>
+            {mealHits.map((m) => {
+              const t = mealTotals(m.items);
+              return (
+                <li key={m.id} style={st.mineRow}>
+                  <button type="button" onClick={() => onAddMeal(m)} aria-label={`Add meal ${m.name}`} style={{ ...st.result, flex: 1, minWidth: 0 }}>
+                    <span style={st.resultName}>{m.name}</span>
+                    <span style={st.resultMeta}>{m.items.map((it) => it.name.replace(/\s*\(.*\)$/, "").split(",")[0]).join(" + ")}</span>
+                    <span style={st.resultMeta}>{t.kcal} kcal · P {fmtG(t.protein)} g · {m.items.length} food{m.items.length === 1 ? "" : "s"}</span>
+                  </button>
+                  {onRemoveMeal && (
+                    <button type="button" aria-label={`Remove meal ${m.name}`} onClick={() => { if (window.confirm(`Remove the meal ${m.name}? Days you've already logged keep their foods.`)) onRemoveMeal(m.id); }} style={st.deleteBtn}>×</button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {myHits.length > 0 && (
         <div style={st.resultGroup}>
           <span style={st.groupLabel}>My foods</span>
@@ -443,6 +602,7 @@ function EditFood({ entry, onSave, onCancel }) {
   const hasPortion = entry.portion && entry.qty;
   const portionG = hasPortion ? entry.grams / entry.qty : null;
   const [name, setName] = useState(entry.name);
+  const [slot, setSlot] = useState(SLOT_IDS.has(entry.slot) ? entry.slot : "");
   const [unit, setUnit] = useState(hasPortion ? "portion" : "g");
   const [qty, setQty] = useState(String(hasPortion ? entry.qty : entry.grams || ""));
   const [nums, setNums] = useState({ kcal: String(entry.kcal ?? ""), protein: String(entry.protein ?? ""), carbs: String(entry.carbs ?? ""), fat: String(entry.fat ?? "") });
@@ -453,6 +613,7 @@ function EditFood({ entry, onSave, onCancel }) {
   const save = (ev) => {
     ev.preventDefault();
     const base = { ...entry, name: name.trim() || entry.name };
+    if (slot) base.slot = slot;
     delete base.id;
     if (scalable) {
       if (!(grams > 0)) return;
@@ -466,7 +627,16 @@ function EditFood({ entry, onSave, onCancel }) {
 
   return (
     <form onSubmit={save} style={{ ...st.addBox, marginTop: -2 }} aria-label={`Edit ${entry.name}`}>
-      <label style={st.fieldLabel}>Name<input value={name} onChange={(e) => setName(e.target.value)} style={st.input} /></label>
+      <div style={st.labelGrid}>
+        <label style={st.fieldLabel}>Name<input value={name} onChange={(e) => setName(e.target.value)} style={st.input} /></label>
+        <label style={st.fieldLabel}>
+          Meal
+          <select aria-label="Meal" value={slot} onChange={(e) => setSlot(e.target.value)} style={st.input}>
+            {!slot && <option value="">Choose…</option>}
+            {SLOTS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+      </div>
       {scalable ? (
         <>
           <div style={st.btnRow}>
@@ -925,6 +1095,12 @@ const st = {
   flash: { fontSize: 13, color: plum },
   labelGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 },
   nutTable: { display: "flex", flexDirection: "column", gap: 4 },
+  slot: { display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${line}`, paddingTop: 10 },
+  slotHead: { display: "flex", alignItems: "center", gap: 8 },
+  slotToggle: { flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, minHeight: 36, padding: 0, background: "none", border: "none", color: ink, textAlign: "left", cursor: "pointer" },
+  chev: { flex: "none", color: inkFaint, transition: "transform 0.15s ease" },
+  slotTitle: { fontFamily: condensed, fontWeight: 700, fontSize: 16, letterSpacing: "0.05em", textTransform: "uppercase", color: ink },
+  slotSum: { fontFamily: mono, fontSize: 11, color: inkFaint },
   nutRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6, alignItems: "center" },
   nutHead: { fontFamily: mono, fontSize: 11, fontWeight: 600, color: inkFaint },
   nutName: { fontFamily: mono, fontSize: 11, color: ink },
