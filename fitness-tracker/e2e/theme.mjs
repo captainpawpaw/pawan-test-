@@ -67,7 +67,7 @@ await A.addInitScript(() => {
   for (const [k, v] of Object.entries(months)) localStorage.setItem('fitness-tracker:month:' + k, JSON.stringify(v));
   localStorage.setItem('seeded', '1');
 });
-const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitemradio', { name }).click(); };
+const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^Theme/ }).click(); await p.getByRole('menuitemradio', { name }).click(); };
 const bg = (p, sel) => p.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
 await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
 check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'Classic by default');
@@ -81,7 +81,12 @@ check(mf.name === 'Training Ledger' && mf.icons.length === 3, 'manifest names th
 await pa.locator('header').screenshot({ path: 'logo-header-classic.png' });
 check(await bg(pa, 'body') === 'rgb(237, 232, 222)', 'classic paper: ' + await bg(pa, 'body'));
 await pa.getByRole('button', { name: 'Menu' }).click();
-check(await pa.getByRole('menuitemradio', { name: 'Classic' }).getAttribute('aria-checked') === 'true', 'menu shows Classic ticked');
+check(await pa.getByRole('menuitemradio').count() === 0 && (await pa.getByRole('menuitem', { name: /^Theme/ }).innerText()).includes('Classic'), 'the menu lists Theme, showing the current one, with its options in a sub-menu');
+await pa.getByRole('menuitem', { name: /^Theme/ }).click();
+check(await pa.getByRole('menuitemradio', { name: 'Classic' }).getAttribute('aria-checked') === 'true', 'the Theme sub-menu shows Classic ticked');
+await pa.getByRole('menuitem', { name: 'Theme' }).filter({ hasText: '‹' }).click();
+check(await pa.getByRole('menuitemradio').count() === 0 && await pa.getByRole('menuitem', { name: /^Training split/ }).count() === 1, 'Back returns to the main menu');
+await pa.getByRole('menuitem', { name: /^Theme/ }).click();
 const mb = await pa.getByRole('menu').boundingBox(), hb = await pa.getByRole('button', { name: 'Menu' }).boundingBox();
 check(mb.y > hb.y + hb.height && mb.y < hb.y + hb.height + 20, 'menu drops down under the button');
 await pa.screenshot({ path: 'theme-menu-classic.png' });

@@ -44,16 +44,19 @@ check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() ==
 await p.locator('.ft-section').first().getByRole('button', { name: 'Cancel' }).click();
 // choose Upper/Lower in the menu, beside the themes
 await p.getByRole('button', { name: 'Menu' }).click();
+check((await p.getByRole('menuitem', { name: /^Training split/ }).innerText()).includes('Default'), 'the menu shows the split, beside Theme');
+await p.getByRole('menuitem', { name: /^Training split/ }).click();
 const splitGroup = p.getByRole('group', { name: 'Training split' });
-check(await splitGroup.getByRole('menuitemradio', { name: 'Default' }).getAttribute('aria-checked') === 'true', 'Default is chosen to start with');
-check(await p.getByRole('group', { name: 'Theme' }).count() === 1, 'its own section in the menu, after Theme');
+check(await splitGroup.getByRole('menuitemradio', { name: 'Default' }).getAttribute('aria-checked') === 'true', 'its sub-menu has Default ticked to start with');
 await p.screenshot({ path: 'split-menu.png', fullPage: true });
 await splitGroup.getByRole('menuitemradio', { name: /^Upper\/Lower/ }).click();
 check(await p.getByRole('menu').count() === 0, 'one tap picks it and closes the menu');
 const pr = await p.evaluate(() => JSON.parse(localStorage.getItem('fitness-tracker:profile')));
 check(pr.split.id === 'upper-lower' && pr.split.sets === 4 && pr.split.reps === 8, 'stored in the profile (syncs), with Upper/Lower\'s 4 × 8');
 await p.getByRole('button', { name: 'Menu' }).click();
-check(await splitGroup.getByRole('menuitemradio', { name: /^Upper\/Lower/ }).getAttribute('aria-checked') === 'true', 'the menu shows it ticked');
+check((await p.getByRole('menuitem', { name: /^Training split/ }).innerText()).includes('Upper/Lower'), 'the menu shows it');
+await p.getByRole('menuitem', { name: /^Training split/ }).click();
+check(await splitGroup.getByRole('menuitemradio', { name: /^Upper\/Lower/ }).getAttribute('aria-checked') === 'true', 'and ticks it in the sub-menu');
 await p.keyboard.press('Escape');
 const settings = p.getByRole('region', { name: 'Training split settings' });
 // Monday: Upper A, with upper-body exercises you've logged
@@ -75,6 +78,7 @@ await goTo('WED');
 check((await plan().innerText()).includes('Rest day'), 'Wednesday is a rest day');
 // change the first set to 60%
 await p.getByRole('button', { name: 'Menu' }).click();
+await p.getByRole('menuitem', { name: /^Training split/ }).click();
 await p.getByRole('menuitem', { name: 'Adjust sets & reps…' }).click();
 check((await settings.innerText()).includes('Upper/Lower') && await settings.getByLabel('Sets').inputValue() === '4', 'Adjust shows the chosen split\'s numbers');
 await settings.getByLabel('First set %').fill('60');

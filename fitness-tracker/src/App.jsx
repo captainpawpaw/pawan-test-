@@ -1097,6 +1097,9 @@ function LogoMark({ size = 22 }) {
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
 function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onClose, buttonRef }) {
   const ref = useRef(null);
+  // "main", or a sub-menu: "theme" or "split".
+  const [view, setView] = useState("main");
+  const cameFrom = useRef(null);
   // Drop down from just under the ☰ button, right-aligned with it.
   const [pos, setPos] = useState(null);
   React.useLayoutEffect(() => {
@@ -1110,9 +1113,14 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onC
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
   }, [buttonRef]);
+  // Focus: the ticked choice in a sub-menu; back on the main menu, the item it was opened from.
   useEffect(() => {
-    if (pos) ref.current?.querySelector('[aria-labelledby="menu-theme-heading"] [aria-checked="true"]')?.focus();
-  }, [Boolean(pos)]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!pos) return;
+    const el = view === "main"
+      ? (cameFrom.current && ref.current?.querySelector(`[data-sub="${cameFrom.current}"]`)) || ref.current?.querySelector('[role^="menuitem"]')
+      : ref.current?.querySelector('[aria-checked="true"]') || ref.current?.querySelector('[role^="menuitem"]');
+    el?.focus();
+  }, [Boolean(pos), view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const away = (e) => {
       if (!ref.current?.contains(e.target) && !buttonRef.current?.contains(e.target)) onClose();
@@ -1120,59 +1128,91 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onC
     document.addEventListener("pointerdown", away);
     return () => document.removeEventListener("pointerdown", away);
   }, [onClose, buttonRef]);
+  const open = (sub) => { cameFrom.current = sub; setView(sub); };
+  const back = () => setView("main");
   const onKeyDown = (e) => {
     const items = [...ref.current.querySelectorAll('[role^="menuitem"]')];
     const i = items.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); onClose(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "ArrowLeft" && view !== "main") { e.preventDefault(); back(); }
+    else if (e.key === "ArrowRight" && document.activeElement?.dataset.sub) { e.preventDefault(); open(document.activeElement.dataset.sub); }
     else if (e.key === "Tab") onClose();
   };
+  const chev = <span aria-hidden="true" style={styles.menuChev}>›</span>;
+  const subItem = (sub, label, value) => (
+    <button type="button" role="menuitem" aria-haspopup="menu" data-sub={sub} onClick={() => open(sub)} style={styles.menuItem}>
+      <span style={{ flex: 1 }}>{label}</span>
+      <span style={styles.menuValue}>{value}</span>
+      {chev}
+    </button>
+  );
+  const backItem = (label) => (
+    <button type="button" role="menuitem" onClick={back} style={{ ...styles.menuItem, ...styles.menuBack }}>
+      <span aria-hidden="true">‹</span>
+      <span style={{ flex: 1 }}>{label}</span>
+    </button>
+  );
+  const splitName = (SPLITS.find((sp) => sp.id === split) || SPLITS[0]).name.split(" ·")[0];
   return (
-    <div id="app-menu" ref={ref} role="menu" aria-label="Menu" onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
-      <div style={styles.menuHeading} id="menu-theme-heading">Theme</div>
-      <div role="group" aria-labelledby="menu-theme-heading">
-        {THEME_NAMES.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="menuitemradio"
-            aria-checked={theme === t}
-            onClick={() => onTheme(t)}
-            style={{ ...styles.menuItem, ...(theme === t ? styles.menuItemOn : {}) }}
-          >
-            <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
-              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
-              <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
-            </span>
-            <span style={{ flex: 1 }}>{THEMES[t].label}</span>
-            {theme === t && <span aria-hidden="true">✓</span>}
+    <div id="app-menu" ref={ref} role="menu" aria-label={view === "theme" ? "Theme" : view === "split" ? "Training split" : "Menu"} onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
+      {view === "main" && (
+        <>
+          {subItem("theme", "Theme", THEMES[theme]?.label)}
+          {subItem("split", "Training split", splitName)}
+          <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
+            <span style={{ flex: 1 }}>Weekly weigh-in…</span>
           </button>
-        ))}
-      </div>
-      <div style={styles.menuHeading} id="menu-split-heading">Training split</div>
-      <div role="group" aria-labelledby="menu-split-heading">
-        {SPLITS.map((sp) => (
-          <button
-            key={sp.id}
-            type="button"
-            role="menuitemradio"
-            aria-checked={split === sp.id}
-            onClick={() => onSplit(sp.id)}
-            style={{ ...styles.menuItem, ...(split === sp.id ? styles.menuItemOn : {}) }}
-          >
-            <span style={{ flex: 1 }}>{sp.name}</span>
-            {split === sp.id && <span aria-hidden="true">✓</span>}
-          </button>
-        ))}
-        <button type="button" role="menuitem" onClick={onAdjustSplit} style={{ ...styles.menuItem, color: inkFaint }}>
-          <span style={{ flex: 1 }}>Adjust sets &amp; reps…</span>
-        </button>
-      </div>
-      <div style={styles.menuHeading}>Reminders</div>
-      <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
-        <span style={{ flex: 1 }}>Weekly weigh-in…</span>
-      </button>
+        </>
+      )}
+      {view === "theme" && (
+        <>
+          {backItem("Theme")}
+          <div role="group" aria-label="Theme">
+            {THEME_NAMES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="menuitemradio"
+                aria-checked={theme === t}
+                onClick={() => onTheme(t)}
+                style={{ ...styles.menuItem, ...(theme === t ? styles.menuItemOn : {}) }}
+              >
+                <span aria-hidden="true" style={{ ...styles.themeSwatch, background: THEMES[t].swatch, borderColor: THEMES[t].vars.ink }}>
+                  <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.rust }} />
+                  <span style={{ ...styles.themeSwatchDot, background: THEMES[t].vars.teal }} />
+                </span>
+                <span style={{ flex: 1 }}>{THEMES[t].label}</span>
+                {theme === t && <span aria-hidden="true">✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {view === "split" && (
+        <>
+          {backItem("Training split")}
+          <div role="group" aria-label="Training split">
+            {SPLITS.map((sp) => (
+              <button
+                key={sp.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={split === sp.id}
+                onClick={() => onSplit(sp.id)}
+                style={{ ...styles.menuItem, ...(split === sp.id ? styles.menuItemOn : {}) }}
+              >
+                <span style={{ flex: 1 }}>{sp.name}</span>
+                {split === sp.id && <span aria-hidden="true">✓</span>}
+              </button>
+            ))}
+            <button type="button" role="menuitem" onClick={onAdjustSplit} style={{ ...styles.menuItem, color: inkFaint }}>
+              <span style={{ flex: 1 }}>Adjust sets &amp; reps…</span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2322,6 +2362,9 @@ const styles = {
   menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
   menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
   menuItemOn: { fontWeight: 600, background: paper },
+  menuValue: { fontSize: 12, color: inkFaint, whiteSpace: "nowrap" },
+  menuChev: { fontSize: 16, color: inkFaint, marginLeft: 2 },
+  menuBack: { color: inkFaint, borderBottom: `1px solid ${line}`, borderRadius: 0, marginBottom: 4 },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
   brand: { display: "flex", alignItems: "center", gap: 8, paddingTop: 2 },
