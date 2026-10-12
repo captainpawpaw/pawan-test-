@@ -42,19 +42,20 @@ await p.getByRole('option', { name: /Back Squat/ }).first().click();
 check(await p.getByLabel('Sets').inputValue() === '3' && await p.getByLabel('Reps').inputValue() === '10', 'Default fills 3 × 10');
 check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 120 kg, first set 85 kg', 'and the first set at 70%');
 await p.locator('.ft-section').first().getByRole('button', { name: 'Cancel' }).click();
-// choose Upper/Lower
+// choose Upper/Lower in the menu, beside the themes
 await p.getByRole('button', { name: 'Menu' }).click();
-await p.getByRole('menuitem', { name: 'Training split…' }).click();
-const settings = p.getByRole('region', { name: 'Training split settings' });
-check(await settings.getByRole('radio', { name: /^Default/ }).isChecked(), 'Default is chosen to start with');
-await settings.getByRole('radio', { name: /^Upper\/Lower/ }).check();
-check(await settings.getByLabel('Sets').inputValue() === '4' && await settings.getByLabel('Reps').inputValue() === '8', 'Upper/Lower suggests 4 × 8');
-await p.screenshot({ path: 'split-settings.png', fullPage: true });
-await settings.getByRole('button', { name: 'Save' }).click();
-check((await settings.innerText()).includes('Saved: Upper/Lower · 4 days, 4 × 8, first set 70%.'), 'saved');
+const splitGroup = p.getByRole('group', { name: 'Training split' });
+check(await splitGroup.getByRole('menuitemradio', { name: 'Default' }).getAttribute('aria-checked') === 'true', 'Default is chosen to start with');
+check(await p.getByRole('group', { name: 'Theme' }).count() === 1, 'its own section in the menu, after Theme');
+await p.screenshot({ path: 'split-menu.png', fullPage: true });
+await splitGroup.getByRole('menuitemradio', { name: /^Upper\/Lower/ }).click();
+check(await p.getByRole('menu').count() === 0, 'one tap picks it and closes the menu');
 const pr = await p.evaluate(() => JSON.parse(localStorage.getItem('fitness-tracker:profile')));
-check(pr.split.id === 'upper-lower' && pr.split.sets === 4, 'stored in the profile (syncs)');
-await settings.getByRole('button', { name: 'Close' }).click();
+check(pr.split.id === 'upper-lower' && pr.split.sets === 4 && pr.split.reps === 8, 'stored in the profile (syncs), with Upper/Lower\'s 4 × 8');
+await p.getByRole('button', { name: 'Menu' }).click();
+check(await splitGroup.getByRole('menuitemradio', { name: /^Upper\/Lower/ }).getAttribute('aria-checked') === 'true', 'the menu shows it ticked');
+await p.keyboard.press('Escape');
+const settings = p.getByRole('region', { name: 'Training split settings' });
 // Monday: Upper A, with upper-body exercises you've logged
 await goTo('MON');
 let t = await plan().innerText();
@@ -74,8 +75,10 @@ await goTo('WED');
 check((await plan().innerText()).includes('Rest day'), 'Wednesday is a rest day');
 // change the first set to 60%
 await p.getByRole('button', { name: 'Menu' }).click();
-await p.getByRole('menuitem', { name: 'Training split…' }).click();
+await p.getByRole('menuitem', { name: 'Adjust sets & reps…' }).click();
+check((await settings.innerText()).includes('Upper/Lower') && await settings.getByLabel('Sets').inputValue() === '4', 'Adjust shows the chosen split\'s numbers');
 await settings.getByLabel('First set %').fill('60');
+await p.screenshot({ path: 'split-settings.png' });
 await settings.getByRole('button', { name: 'Save' }).click();
 await settings.getByRole('button', { name: 'Close' }).click();
 await goTo('TUE');

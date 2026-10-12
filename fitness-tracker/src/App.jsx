@@ -11,7 +11,7 @@ import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
 import { strengthHistory, lastSession } from "./lastTime";
 import { SplitSettings, DayPlan } from "./Split";
-import { activeSplit, sessionOn, suggestFor } from "./splits";
+import { SPLITS, activeSplit, sessionOn, suggestFor } from "./splits";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
@@ -799,7 +799,7 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setSplitOpen(false); setWeighInOpen(true); closeMenu(); }} onSplit={() => { setWeighInOpen(false); setSplitOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setSplitOpen(false); setWeighInOpen(true); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps, firstPct: sp.firstPct }); closeMenu(); }} onAdjustSplit={() => { setWeighInOpen(false); setSplitOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
       {splitOpen ? (
         <SplitSettings setting={profile.split} onSave={saveSplit} onClose={() => setSplitOpen(false)} />
@@ -1095,7 +1095,7 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onWeighIn, onSplit, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onClose, buttonRef }) {
   const ref = useRef(null);
   // Drop down from just under the ☰ button, right-aligned with it.
   const [pos, setPos] = useState(null);
@@ -1111,7 +1111,7 @@ function AppMenu({ theme, onTheme, onWeighIn, onSplit, onClose, buttonRef }) {
     return () => window.removeEventListener("resize", place);
   }, [buttonRef]);
   useEffect(() => {
-    if (pos) ref.current?.querySelector('[aria-checked="true"]')?.focus();
+    if (pos) ref.current?.querySelector('[aria-labelledby="menu-theme-heading"] [aria-checked="true"]')?.focus();
   }, [Boolean(pos)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const away = (e) => {
@@ -1150,10 +1150,25 @@ function AppMenu({ theme, onTheme, onWeighIn, onSplit, onClose, buttonRef }) {
           </button>
         ))}
       </div>
-      <div style={styles.menuHeading}>Training</div>
-      <button type="button" role="menuitem" onClick={onSplit} style={styles.menuItem}>
-        <span style={{ flex: 1 }}>Training split…</span>
-      </button>
+      <div style={styles.menuHeading} id="menu-split-heading">Training split</div>
+      <div role="group" aria-labelledby="menu-split-heading">
+        {SPLITS.map((sp) => (
+          <button
+            key={sp.id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={split === sp.id}
+            onClick={() => onSplit(sp.id)}
+            style={{ ...styles.menuItem, ...(split === sp.id ? styles.menuItemOn : {}) }}
+          >
+            <span style={{ flex: 1 }}>{sp.name}</span>
+            {split === sp.id && <span aria-hidden="true">✓</span>}
+          </button>
+        ))}
+        <button type="button" role="menuitem" onClick={onAdjustSplit} style={{ ...styles.menuItem, color: inkFaint }}>
+          <span style={{ flex: 1 }}>Adjust sets &amp; reps…</span>
+        </button>
+      </div>
       <div style={styles.menuHeading}>Reminders</div>
       <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
         <span style={{ flex: 1 }}>Weekly weigh-in…</span>
@@ -2303,7 +2318,7 @@ const styles = {
   header: { marginBottom: 4 },
   headerRight: { display: "flex", alignItems: "flex-start", gap: 8, marginLeft: "auto" },
   menuBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, flex: "none", color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
-  menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 230, display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
+  menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 250, maxHeight: "calc(100dvh - 90px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
   menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
   menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
   menuItemOn: { fontWeight: 600, background: paper },
