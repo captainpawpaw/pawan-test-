@@ -71,7 +71,7 @@ await A.addInitScript(() => {
   sample.limits = async () => ({ maxPromptBytes: 262144, images: { maxCount: 4, maxInputBytes: 20e6, mediaTypes: ['image/png', 'image/jpeg'] } });
   sample.json = async (prompt, opts) => {
     window.__prompts.push({ prompt, images: [].concat(opts.images || []).length });
-    if (prompt.includes('nutrition information label')) return { name: 'Protein Granola', brand: 'Testbrand', per100: { kcal: 412, protein: 22.5, carbs: 48, fat: 13.1, fibre: 6.4, sugar: 9.8 }, servingGrams: 40, barcode: '5012345678900', note: '' };
+    if (prompt.includes('nutrition information label')) return { name: 'Protein Granola', brand: 'Testbrand', perServing: { kcal: 165, protein: 9, carbs: 19.2, fat: 5.2, fibre: 2.6, sugar: 3.9 }, servingLabel: '1 bowl', per100: { kcal: 412, protein: 22.5, carbs: 48, fat: 13.1, fibre: 6.4, sugar: 9.8 }, servingGrams: 40, barcode: '5012345678900', note: '' };
     return { items: [ { name: 'Chicken tikka masala', grams: 350, kcal: 520, protein: 38, carbs: 18, fat: 32, fibre: 3, sugar: 9 }, { name: 'Pilau rice', grams: 200, kcal: 300, protein: 6, carbs: 60, fat: 5 } ], note: 'Assumed a restaurant portion.' };
   };
   const downloads = { save: async (req) => { window.__saved.push({ filename: req.filename, size: String(req.data).length }); } };
@@ -113,7 +113,8 @@ await pa.getByRole('button', { name: 'Read label' }).click();
 await pa.getByText('Check the details').waitFor();
 const lp = (await pa.evaluate(() => window.__prompts)).at(-1);
 check(lp.images === 2 && lp.prompt.includes('per 100 g'), 'Claude gets both photos');
-check(await pa.getByLabel('Name', { exact: true }).inputValue() === 'Protein Granola' && await pa.getByLabel('Calories (kcal)', { exact: true }).inputValue() === '412' && await pa.getByLabel('Serving size (g, optional)').inputValue() === '40', 'Claude\'s reading fills the form');
+check(await pa.getByLabel('Name', { exact: true }).inputValue() === 'Protein Granola' && await pa.getByLabel('Calories (kcal) per bowl').inputValue() === '165' && await pa.getByLabel('Calories (kcal) per 100 g').inputValue() === '412' && await pa.getByLabel('Serving weight (g)').inputValue() === '40', 'Claude\'s reading fills the form, serving first');
+check(lp.prompt.includes('single serving matters most'), 'Claude is told the serving comes first');
 await pa.getByRole('button', { name: 'Save to My foods' }).click();
 await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).waitFor({ timeout: 5000 }).catch(() => {});
 check(await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).count() === 1 && external === 0, 'saved to My foods, nothing sent outside');

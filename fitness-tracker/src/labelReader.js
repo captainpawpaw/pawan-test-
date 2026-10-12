@@ -4,7 +4,7 @@
 // /ocr/), any barcode in the photos is decoded, and Open Food Facts fills in
 // the name and anything the label photo missed.
 
-import { parseNutritionText, parseNutritionWords, combineParses } from "./labelParse.js";
+import { parseNutritionText, parseNutritionWords, combineParses, guessName } from "./labelParse.js";
 import { getSample, getImageLimits } from "./claudeRead";
 import { lookupBarcode, onlineLookupsAllowed, NUTRIENTS } from "./food";
 
@@ -82,15 +82,6 @@ function ocrWorker() {
   return workerPromise;
 }
 
-// The biggest line of text on a photo is usually the product name.
-function nameFromLines(lines) {
-  const cands = (lines || [])
-    .map((l) => ({ text: l.text.replace(/[^\p{L}\p{N}&'’ -]/gu, " ").replace(/\s+/g, " ").trim(), h: l.bbox.y1 - l.bbox.y0, conf: l.confidence }))
-    .filter((l) => l.text.length >= 3 && /\p{L}{3}/u.test(l.text) && l.conf > 55 && !/nutrition|typical|energy|per 100|ingredients/i.test(l.text));
-  cands.sort((a, b) => b.h - a.h);
-  return cands[0]?.text ? cands[0].text.replace(/\b\p{L}/gu, (c) => c.toUpperCase()).slice(0, 60) : "";
-}
-
 const counted = (r) => Object.keys(r.per100).length;
 
 export async function readLabelOnDevice(files, { onProgress } = {}) {
@@ -109,7 +100,7 @@ export async function readLabelOnDevice(files, { onProgress } = {}) {
     const { data } = await worker.recognize(img, {}, { text: true, blocks: true });
     const lines = (data.blocks || []).flatMap((b) => (b.paragraphs || []).flatMap((p) => p.lines || []));
     const words = lines.flatMap((l) => l.words || []).map((w) => ({ text: w.text, ...w.bbox }));
-    reads.push({ text: data.text || "", lines, parsed: combineParses(parseNutritionWords(words), parseNutritionText(data.text || "")) });
+    reads.push({ text: data.text || "", words, parsed: combineParses(parseNutritionWords(words), parseNutritionText(data.text || "")) });
   }
   onOcrProgress = null;
 
@@ -117,10 +108,14 @@ export async function readLabelOnDevice(files, { onProgress } = {}) {
   const best = reads.reduce((a, b) => (!a || counted(b.parsed) > counted(a.parsed) ? b : a), null);
   const parsed = best?.parsed || parseNutritionText("");
   const front = reads.filter((r) => r !== best);
-  let name = nameFromLines((front[0] || best || {}).lines);
+  let name = guessName((front[0] || best || {}).words);
   barcode = barcode || parsed.barcode;
 
-  const out = { name, brand: "", per100: { ...parsed.per100 }, servingG: parsed.servingG, barcode, sources: ["label"], kcalEstimated: parsed.kcalEstimated, text: best?.text || "" };
+  const out = {
+    name, brand: "", per100: { ...parsed.per100 }, perServing: { ...(parsed.perServing || {}) },
+    servingG: parsed.servingG, servingGDerived: Boolean(parsed.servingGDerived), servingLabel: parsed.servingLabel || null,
+    barcode, sources: ["label"], kcalEstimated: parsed.kcalEstimated, text: best?.text || "",
+  };
 
   // Barcode known: Open Food Facts gives the name, brand and anything the photo missed.
   if (barcode && onlineLookupsAllowed()) {
@@ -132,21 +127,23 @@ export async function readLabelOnDevice(files, { onProgress } = {}) {
         out.name = (m ? m[1] : p.name) || out.name;
         out.brand = m ? m[2] : "";
         for (const k of NUTRIENTS) if (out.per100[k] == null && p.per100?.[k] != null) out.per100[k] = p.per100[k];
-        if (!out.servingG && p.portions?.[0]?.g) out.servingG = p.portions[0].g;
+        if (!out.servingG && p.portions?.[0]?.g) { out.servingG = p.portions[0].g; out.servingLabel = out.servingLabel || "1 serving"; }
+        // Gaps in the serving column, from the product's per-100 g values.
+        if (out.servingG) for (const k of NUTRIENTS) if (out.perServing[k] == null && out.per100[k] != null) out.perServing[k] = k === "kcal" ? Math.round(out.per100[k] * out.servingG / 100) : r1(out.per100[k] * out.servingG / 100);
         out.sources.push("off");
         out.kcalEstimated = out.kcalEstimated && !p.per100?.kcal;
       }
     } catch { /* offline: keep what the photo gave */ }
   }
-  out.missing = NUTRIENTS.filter((k) => out.per100[k] == null);
+  out.missing = NUTRIENTS.filter((k) => out.per100[k] == null && out.perServing[k] == null);
   return out;
 }
 
 /* ---------- Claude ---------- */
 const CLAUDE_RULES = `The photos show a packaged food: the front of the pack and its nutrition information label (maybe also the barcode).
 Read them and reply with only JSON in this shape:
-{"name":"Product name as on the pack","brand":"Brand or empty","per100":{"kcal":0,"protein":0,"carbs":0,"fat":0,"fibre":0,"sugar":0},"servingGrams":null,"barcode":null,"note":"one short sentence on anything unclear, or empty"}
-Rules: per100 values are per 100 g (or 100 ml); if the label only gives values per serving, convert using the serving size. carbs is total carbohydrate, sugar is "of which sugars". Use null for any value the photos don't show. Don't guess values that aren't on the label.`;
+{"name":"Product name as on the pack","brand":"Brand or empty","perServing":{"kcal":0,"protein":0,"carbs":0,"fat":0,"fibre":0,"sugar":0},"servingLabel":"1 average slice","servingGrams":null,"per100":{"kcal":0,"protein":0,"carbs":0,"fat":0,"fibre":0,"sugar":0},"barcode":null,"note":"one short sentence on anything unclear, or empty"}
+Rules: the single serving matters most. perServing is the label's per-serving column exactly as printed (per slice, bar, portion…); servingLabel names it ("1 average slice", "1 bar"); servingGrams is its weight in grams if printed, else work it out from the two columns. per100 is the per 100 g (or 100 ml) column. If energy is only in kJ, give kcal = kJ ÷ 4.184. carbs is total carbohydrate, sugar is "of which sugars". Use null for anything the photos don't show; don't guess values that aren't on the label.`;
 
 export async function claudeLabelAvailable() {
   return Boolean(await getSample());
@@ -164,19 +161,26 @@ export async function readLabelWithClaude(files, { signal } = {}) {
     imgs.push(img);
   }
   const data = await sample.json(CLAUDE_RULES, { signal, images: imgs, modelTier: "default" });
-  const per100 = {};
-  for (const k of NUTRIENTS) {
-    const v = Number(data?.per100?.[k]);
-    if (data?.per100?.[k] != null && Number.isFinite(v) && v >= 0) per100[k] = k === "kcal" ? Math.round(v) : r1(v);
-  }
+  const take = (obj) => {
+    const out = {};
+    for (const k of NUTRIENTS) {
+      const v = Number(obj?.[k]);
+      if (obj?.[k] != null && Number.isFinite(v) && v >= 0) out[k] = k === "kcal" ? Math.round(v) : r1(v);
+    }
+    return out;
+  };
+  const per100 = take(data?.per100), perServing = take(data?.perServing);
+  const servingG = Number(data?.servingGrams) > 0 ? r1(data.servingGrams) : null;
+  if (servingG) for (const k of NUTRIENTS) if (per100[k] == null && perServing[k] != null) per100[k] = k === "kcal" ? Math.round(perServing[k] / servingG * 100) : r1(perServing[k] / servingG * 100);
   return {
     name: String(data?.name || "").trim().slice(0, 80),
     brand: String(data?.brand || "").trim().slice(0, 60),
-    per100,
-    servingG: Number(data?.servingGrams) > 0 ? r1(data.servingGrams) : null,
+    per100, perServing,
+    servingG,
+    servingLabel: String(data?.servingLabel || "").trim().slice(0, 40) || (servingG ? "1 serving" : null),
     barcode: /^\d{8,14}$/.test(String(data?.barcode || "")) ? String(data.barcode) : null,
     sources: ["claude"],
     note: typeof data?.note === "string" ? data.note.trim() : "",
-    missing: NUTRIENTS.filter((k) => per100[k] == null),
+    missing: NUTRIENTS.filter((k) => per100[k] == null && perServing[k] == null),
   };
 }
