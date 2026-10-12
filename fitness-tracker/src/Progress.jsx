@@ -5,6 +5,7 @@ import {
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
   metricsFor, bucketize, bucketizeWeightReps, bucketizeScore, niceTicks, niceRange, compact, parseIso, daysOnTarget,
 } from "./progress";
+import { bwText, bwValue, bwUnitLabel } from "./units";
 
 const ink = C.ink;
 const inkFaint = C.inkFaint;
@@ -36,7 +37,7 @@ function writeSaved(v) {
   try { window.localStorage.setItem(SEL_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings }) {
+export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg" }) {
   const [months, setMonths] = useState(null);
   const [selection, setSelection] = useState(() => readSaved()); // { kind, value }
   const [metric, setMetric] = useState(null);
@@ -48,7 +49,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
   }, [loadAll, version]);
 
   const rows = useMemo(() => flattenMonths(months || {}), [months]);
-  const bodyRows = useMemo(() => weights.filter((w) => Number(w.kg) > 0).map((w) => ({ date: w.date, type: "body", name: "Body weight", e: { kg: Number(w.kg) } })), [weights]);
+  const bodyRows = useMemo(() => weights.filter((w) => Number(w.kg) > 0).map((w) => ({ date: w.date, type: "body", name: "Body weight", e: { kg: bwValue(Number(w.kg), bwUnit), rawKg: Number(w.kg) } })), [weights, bwUnit]);
 
   // Choices: exercises and tags that have something logged.
   const { exercises, tags, foodDays } = useMemo(() => {
@@ -173,6 +174,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
 
       {activeMetric && (
         <Chart
+          bwUnit={bwUnit}
           key={`${selectValue}|${activeMetric}`}
           rows={selRows}
           metric={activeMetric}
@@ -187,8 +189,8 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
 }
 
 /* ---------- chart ---------- */
-function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
-  const m = METRICS[metric];
+function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg" }) {
+  const m = metric === "bodyweight" ? { ...METRICS[metric], unit: bwUnitLabel(bwUnit) } : METRICS[metric];
   const color = colorFor(m.type);
   const boxRef = useRef(null);
   const [width, setWidth] = useState(360);
@@ -418,11 +420,13 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
           (() => {
             const ins = rows.filter((r) => { const t = parseIso(r.date).getTime(); return t >= view.start && t < view.end; });
             const last = ins[ins.length - 1], first = ins[0];
-            const change = last && first && ins.length > 1 ? Math.round((last.e.kg - first.e.kg) * 10) / 10 : null;
+            // Change in kg, or in lb for both lb and st & lb.
+            const perKg = bwUnit === "kg" ? 1 : 1 / 0.45359237, changeUnit = bwUnit === "kg" ? "kg" : "lb";
+            const change = last && first && ins.length > 1 ? Math.round((last.e.rawKg - first.e.rawKg) * perKg * 10) / 10 : null;
             return (
               <>
-                <Tile label="Latest weigh-in" value={last ? fmt(last.e.kg, "kg") : "–"} sub={last ? periodLabel(parseIso(last.date), "day", true) : "No data in view"} />
-                <Tile label="Change in view" value={change == null ? "–" : `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmt(Math.abs(change), "kg")}`} sub={change == null ? "needs two weigh-ins" : `since ${periodLabel(parseIso(first.date), "day")}`} />
+                <Tile label="Latest weigh-in" value={last ? bwText(last.e.rawKg, bwUnit) : "–"} sub={last ? periodLabel(parseIso(last.date), "day", true) : "No data in view"} />
+                <Tile label="Change in view" value={change == null ? "–" : `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmt(Math.abs(change), changeUnit)}`} sub={change == null ? "needs two weigh-ins" : `since ${periodLabel(parseIso(first.date), "day")}`} />
                 <Tile label="Weigh-ins in view" value={String(ins.length)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
               </>
             );
