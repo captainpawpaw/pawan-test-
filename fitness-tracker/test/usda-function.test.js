@@ -23,3 +23,12 @@ test("needs a key, and keeps it out of the response", async () => {
   assert.ok(!body.includes("SECRET"));
   assert.equal(JSON.parse(body).foods[0].per100.kcal, 143);
 });
+
+test("a pasted key with spaces or quotes still works", async () => {
+  let called = "";
+  globalThis.fetch = async (url) => { called = url; return new Response(JSON.stringify({ foods: [] }), { headers: { "content-type": "application/json" } }); };
+  await onRequestGet({ request: new Request("https://x/api/usda?q=oats"), env: { USDA_API_KEY: '  "SECRET2"\n' } });
+  assert.ok(called.includes("api_key=SECRET2&"), called);
+  const blank = await onRequestGet({ request: new Request("https://x/api/usda?q=oats"), env: { USDA_API_KEY: "  " } });
+  assert.equal(blank.status, 503);
+});
