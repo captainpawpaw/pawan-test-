@@ -66,5 +66,29 @@ await swipe(ib.x + ib.width - 10, ib.y + ib.height / 2, ib.x + 10, ib.y + ib.hei
 check(await tab() === 'LOG', 'a swipe on a text box stays put');
 await swipe(5, 300, 250, 300);
 check(await tab() === 'LOG', 'a swipe from the screen edge stays put');
+// the date heading: swipe or tap ‹ › for the previous or next day
+await p.keyboard.press('Escape');
+const label = async () => (await p.locator('[data-dayswipe] > span').first().innerText()).trim();
+const fmtDay = (d) => `${d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()} ${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'long' }).toUpperCase().slice(0, 3)}`;
+const today = new Date(); const plus = (n) => { const d = new Date(today); d.setDate(d.getDate() + n); return d; };
+check(await label() === fmtDay(today), 'the heading shows today: ' + await label());
+const hb = await p.locator('[data-dayswipe]').boundingBox();
+const hy = hb.y + hb.height / 2;
+await swipe(260, hy, 80, hy);
+check(await label() === fmtDay(plus(1)) && await tab() === 'LOG', 'swipe left on the date: next day, same tab');
+await swipe(80, hy, 260, hy); await swipe(80, hy, 260, hy);
+check(await label() === fmtDay(plus(-1)), 'swipe right on the date: previous day');
+await p.screenshot({ path: 'day-swipe.png' });
+await p.getByRole('button', { name: 'Next day' }).click();
+check(await label() === fmtDay(today), 'the › button: next day');
+// across a month boundary
+for (let i = 0; i < 32 && (await label()) !== fmtDay(plus(-today.getDate())); i++) await p.getByRole('button', { name: 'Previous day' }).click();
+check(await label() === fmtDay(plus(-today.getDate())), 'the ‹ button steps back into last month: ' + await label());
+const mt = await p.locator('.ft-masthead-title').innerText();
+check(mt.toUpperCase().startsWith(plus(-today.getDate()).toLocaleDateString('en-US', { month: 'long' }).toUpperCase()), 'and the month changes with it: ' + mt);
+await p.getByRole('button', { name: 'Next day' }).click();
+check(await label() === fmtDay(plus(1 - today.getDate())), 'and forward again into this month');
+await swipe(320, 600, 80, 610);
+check(await tab() === 'FOOD', 'swiping below the heading still changes tab');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

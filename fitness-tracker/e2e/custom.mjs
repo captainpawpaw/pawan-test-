@@ -135,7 +135,7 @@ await pb.screenshot({ path: 'sync-notice.png' });
 await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('5'); await pa.getByLabel('Reps').fill('5'); await pa.getByLabel('Max weight (kg)').fill('140');
 await pa.getByRole('button', { name: 'Log a set' }).click(); await pa.waitForTimeout(2500); await waitSynced(pa);
-await pb.getByText('SAT 10 OCT').or(pb.locator('h2, div').filter({ hasText: /^[A-Z]{3} \d+ [A-Z]{3}$/ }).first()).first().click();
+await pb.locator('[data-dayswipe] > span').first().click(); // tap the date heading
 await waitSynced(pb);
 check((await pb.locator('body').innerText()).includes('5×5 · max 140kg'), 'first tap anywhere syncs and shows the other device\'s entry');
 check(!(await pb.locator('body').innerText()).includes('Tap anywhere to sync'), 'notice goes away');
