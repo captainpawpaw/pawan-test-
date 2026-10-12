@@ -169,6 +169,7 @@ await pa.getByLabel('Name').fill('Protein bar'); await pa.getByRole('spinbutton'
 await pa.getByRole('button', { name: 'Add to day' }).click();
 check(!(await pa.locator('body').innerText()).includes('Describe a meal for Claude'), 'Claude option hidden on the website');
 await pa.getByRole('button', { name: 'Done adding' }).click();
+await pa.locator('.ft-card section[aria-label] button[aria-controls^="food-"][aria-expanded="false"]:not([disabled])').first().click(); // open the folded part
 
 t = await pa.locator('body').innerText();
 // 248 + 2 eggs 143 + yogurt 165 + chocolate 240 + bar 200 = 996
