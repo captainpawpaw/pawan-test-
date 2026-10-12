@@ -102,6 +102,7 @@ t = await pa.locator('body').innerText();
 check(t.includes('150 kcal'), 'changing grams rescales the estimate');
 await pa.getByRole('button', { name: 'Add 2 items' }).click();
 await pa.getByRole('button', { name: 'Done adding' }).click();
+await pa.locator('.ft-card section[aria-label] button[aria-controls^="food-"][aria-expanded="false"]:not([disabled])').first().click(); // open the folded part
 t = await pa.locator('body').innerText();
 check(t.includes('Chicken tikka masala') && t.includes('≈ estimate') && t.includes('670'), 'estimate added and marked: ' + (t.match(/\d[\d,]* kcal/g) || []).slice(0, 4).join(' '));
 // label photos: Claude reads them; saved to My foods

@@ -28,20 +28,14 @@ const fmtG = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigi
 // A day's food in four parts. Entries carry slot: breakfast | lunch | dinner | snacks.
 export const SLOTS = [["breakfast", "Breakfast"], ["lunch", "Lunch"], ["dinner", "Dinner"], ["snacks", "Snacks"]];
 const SLOT_IDS = new Set(SLOTS.map(([id]) => id));
-const OPEN_KEY = "fitness-tracker:food-open";
 
 export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targets, onSaveTargets, saveError, myFoods = [], onSaveMyFood, onRemoveMyFood, meals = [], onSaveMeal, onRemoveMeal }) {
   const [addingSlot, setAddingSlot] = useState(null);
-  // Parts fold to one line until opened; which ones are open is remembered on this device.
-  const [openSlots, setOpenSlots] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); }
-  });
-  const setOpen = (slot, open) => setOpenSlots((cur) => {
-    const next = new Set(cur);
-    if (open) next.add(slot); else next.delete(slot);
-    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...next])); } catch { /* private mode */ }
-    return next;
-  });
+  // Parts stay folded to one line unless in use: one open at a time, and
+  // a part folds again when you're done adding to it.
+  const [openSlot, setOpenSlot] = useState(null);
+  const setOpen = (slot, open) => setOpenSlot((cur) => (open ? slot : cur === slot ? null : cur));
+  const finishAdding = (slot) => { setAddingSlot(null); setOpen(slot, false); };
   const [savingMealSlot, setSavingMealSlot] = useState(null);
   const [mealMsg, setMealMsg] = useState({ slot: null, text: "" });
   const [editingId, setEditingId] = useState(null);
@@ -85,13 +79,13 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
         const items = list.filter((e) => e.slot === slot);
         const sub = sumFood(items);
         const adding = addingSlot === slot;
-        const open = adding || (openSlots.has(slot) && items.length > 0);
+        const open = adding || (openSlot === slot && items.length > 0);
         return (
           <section key={slot} aria-label={label} style={st.slot}>
             <div style={st.slotHead}>
               <button
                 type="button"
-                onClick={() => items.length && setOpen(slot, !openSlots.has(slot))}
+                onClick={() => { if (!items.length) return; if (adding) finishAdding(slot); else setOpen(slot, openSlot !== slot); }}
                 aria-expanded={items.length ? open : undefined}
                 aria-controls={`food-${slot}`}
                 disabled={!items.length}
@@ -110,7 +104,7 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
                 </span>
               </button>
               <button
-                onClick={() => { if (adding) setAddingSlot(null); else { setAddingSlot(slot); setOpen(slot, true); } }}
+                onClick={() => { if (adding) finishAdding(slot); else { setAddingSlot(slot); setOpen(slot, true); } }}
                 aria-expanded={adding}
                 aria-label={adding ? `Close adding to ${label}` : `+ Add to ${label}`}
                 style={{ ...st.addBtn, color: adding ? C.onFill : plum, background: adding ? plum : "transparent" }}
@@ -123,7 +117,7 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
                 slotLabel={label}
                 recent={recent}
                 onAdd={(foods) => onAdd(foods.map((f) => ({ ...f, slot })))}
-                onDone={() => setAddingSlot(null)}
+                onDone={() => finishAdding(slot)}
                 myFoods={myFoods} onSaveMyFood={onSaveMyFood} onRemoveMyFood={onRemoveMyFood}
                 meals={meals} onRemoveMeal={onRemoveMeal}
               />
