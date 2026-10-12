@@ -45,7 +45,9 @@ export function mapFood(f) {
 
 export async function onRequestGet({ request, env, waitUntil }) {
   const q = (new URL(request.url).searchParams.get("q") || "").trim().slice(0, 100);
-  if (!env.USDA_API_KEY) return json({ error: "USDA_API_KEY is not set" }, 503);
+  // Pasted keys sometimes carry spaces or quote marks.
+  const key = String(env.USDA_API_KEY || "").trim().replace(/^["']+|["']+$/g, "").trim();
+  if (!key) return json({ error: "USDA_API_KEY is not set" }, 503);
   if (q.length < 2) return json({ foods: [] });
 
   const cache = typeof caches !== "undefined" ? caches.default : null;
@@ -53,14 +55,18 @@ export async function onRequestGet({ request, env, waitUntil }) {
   const hit = cache && (await cache.match(cacheKey));
   if (hit) return hit;
 
-  const url = `${FDC}?api_key=${encodeURIComponent(env.USDA_API_KEY)}&query=${encodeURIComponent(q)}&pageSize=25&dataType=Foundation,SR%20Legacy,Branded`;
+  const url = `${FDC}?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(q)}&pageSize=25&dataType=Foundation,SR%20Legacy,Branded`;
   let res;
   try {
-    res = await fetch(url, { headers: { accept: "application/json" } });
+    res = await fetch(url, { headers: { accept: "application/json", "user-agent": "TrainingLedger/1.0 (+https://training-ledger.pages.dev)" } });
   } catch {
     return json({ error: "Couldn't reach USDA" }, 502);
   }
-  if (!res.ok) return json({ error: `USDA answered ${res.status}` }, 502);
+  if (!res.ok) {
+    // USDA's reason, for diagnosing (the key is blanked out).
+    const why = (await res.text().catch(() => "")).split(key).join("…").replace(/\s+/g, " ").slice(0, 300);
+    return json({ error: `USDA answered ${res.status}`, detail: why }, 502);
+  }
   const data = await res.json();
   const foods = (data.foods || []).map(mapFood).filter(Boolean);
   const out = json({ foods }, 200, { "cache-control": "public, max-age=86400" });

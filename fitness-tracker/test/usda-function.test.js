@@ -23,3 +23,20 @@ test("needs a key, and keeps it out of the response", async () => {
   assert.ok(!body.includes("SECRET"));
   assert.equal(JSON.parse(body).foods[0].per100.kcal, 143);
 });
+
+test("a pasted key with spaces or quotes still works", async () => {
+  let called = "";
+  globalThis.fetch = async (url) => { called = url; return new Response(JSON.stringify({ foods: [] }), { headers: { "content-type": "application/json" } }); };
+  await onRequestGet({ request: new Request("https://x/api/usda?q=oats"), env: { USDA_API_KEY: '  "SECRET2"\n' } });
+  assert.ok(called.includes("api_key=SECRET2&"), called);
+  const blank = await onRequestGet({ request: new Request("https://x/api/usda?q=oats"), env: { USDA_API_KEY: "  " } });
+  assert.equal(blank.status, 503);
+});
+
+test("USDA's reason is passed on, without the key", async () => {
+  globalThis.fetch = async (url) => new Response(`{"error":{"code":"API_KEY_INVALID","message":"bad key SECRET3 in ${url.length}"}}`, { status: 403 });
+  const res = await onRequestGet({ request: new Request("https://x/api/usda?q=rice"), env: { USDA_API_KEY: "SECRET3" } });
+  const body = await res.json();
+  assert.equal(res.status, 502);
+  assert.ok(body.detail.includes("API_KEY_INVALID") && !JSON.stringify(body).includes("SECRET3"));
+});
