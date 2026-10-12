@@ -73,3 +73,11 @@ test("My foods merge by id; the newest edit (or removal) wins", () => {
   assert.ok(!m["my:2"].removed);
   assert.equal(m["my:3"].name, "Skyr");
 });
+
+test("weigh-ins from two devices are both kept; the newer side wins a shared day", () => {
+  const a = { bodyweight: { weights: [{ date: "2026-10-01", kg: 80 }, { date: "2026-10-05", kg: 79.5 }], at: 5 } };
+  const b = { bodyweight: { weights: [{ date: "2026-10-05", kg: 79.8 }, { date: "2026-10-12", kg: 79 }], at: 9 } };
+  const w = mergeProfile(a, b).bodyweight.weights;
+  assert.deepEqual(w.map((x) => [x.date, x.kg]), [["2026-10-01", 80], ["2026-10-05", 79.8], ["2026-10-12", 79]]);
+  assert.deepEqual(mergeProfile(b, a).bodyweight.weights, w);
+});

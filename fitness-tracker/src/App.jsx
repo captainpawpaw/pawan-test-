@@ -7,6 +7,8 @@ import Progress from "./Progress";
 import FoodLog from "./FoodLog";
 import { sumFood } from "./food";
 import Backup from "./Backup";
+import { WeighInPrompt, WeighInSettings } from "./WeighIn";
+import { weighInDue, describeWeighIn } from "./weighin";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
@@ -349,6 +351,27 @@ export default function App() {
     const date = todayIso();
     const nextWeights = [...weights.filter((w) => w.date !== date), { date, kg }].sort((a, b) => a.date.localeCompare(b.date));
     const next = { ...profile, bodyweight: { weights: nextWeights, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+    return Boolean(res);
+  };
+
+  // Weekly weigh-in: asks for your weight at the day and time you set.
+  const weighIn = profile.weighin || null;
+  const [weighInOpen, setWeighInOpen] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = () => setClock(Date.now());
+    const id = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, []);
+  const weighInDueAt = useMemo(() => weighInDue(weighIn, weights, new Date(clock)), [weighIn, weights, clock]);
+  const saveWeighIn = async (patch) => {
+    const cur = profile.weighin || {};
+    const changed = ["on", "day", "time"].some((k) => k in patch && patch[k] !== cur[k]);
+    const next = { ...profile, weighin: { ...cur, ...patch, ...(changed ? { since: Date.now() } : {}), at: Date.now() } };
     setProfile(next);
     const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
     if (res) drive.scheduleSync();
@@ -742,8 +765,20 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setWeighInOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
+      {weighInOpen ? (
+        <WeighInSettings setting={weighIn} onSave={saveWeighIn} onClose={() => setWeighInOpen(false)} />
+      ) : weighInDueAt && (
+        <WeighInPrompt
+          key={weighInDueAt.getTime()}
+          setting={weighIn}
+          lastKg={weights.length ? weights[weights.length - 1].kg : null}
+          onSave={saveBodyweight}
+          onSkip={() => saveWeighIn({ skipped: weighInDueAt.getTime() })}
+          onSettings={() => setWeighInOpen(true)}
+        />
+      )}
 
       <div className="ft-tabs" style={styles.tabRow}>
         {TABS.map(([id, label]) => (
@@ -767,7 +802,7 @@ export default function App() {
         className={slideDir ? `ft-slide-${slideDir}` : undefined}
       >
       {activeTab === "progress" ? (
-        <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} />
+        <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => setWeighInOpen(true)} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -1014,7 +1049,7 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, onClose, buttonRef }) {
   const ref = useRef(null);
   // Drop down from just under the ☰ button, right-aligned with it.
   const [pos, setPos] = useState(null);
@@ -1040,7 +1075,7 @@ function AppMenu({ theme, onTheme, onClose, buttonRef }) {
     return () => document.removeEventListener("pointerdown", away);
   }, [onClose, buttonRef]);
   const onKeyDown = (e) => {
-    const items = [...ref.current.querySelectorAll('[role="menuitemradio"]')];
+    const items = [...ref.current.querySelectorAll('[role^="menuitem"]')];
     const i = items.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); onClose(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
@@ -1069,6 +1104,10 @@ function AppMenu({ theme, onTheme, onClose, buttonRef }) {
           </button>
         ))}
       </div>
+      <div style={styles.menuHeading}>Reminders</div>
+      <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
+        <span style={{ flex: 1 }}>Weekly weigh-in…</span>
+      </button>
     </div>
   );
 }

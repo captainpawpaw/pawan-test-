@@ -54,8 +54,20 @@ export function mergeTags(a = {}, b = {}) {
 // Imported exercises: { [exerciseName]: { ...details, at, removed? } }, same rule.
 export const mergeExercises = mergeTags;
 
-// Settings: { bodyweight: { weights: [{ date, kg }], at } }, same rule per setting.
-export const mergeProfile = mergeTags;
+// Settings: { bodyweight: { weights: [{ date, kg }], at }, weighin: {...}, ... },
+// same rule per setting, except weigh-ins from both sides are kept (the newer
+// side wins a day weighed on both).
+export function mergeProfile(a = {}, b = {}) {
+  const out = mergeTags(a, b);
+  const wa = a.bodyweight, wb = b.bodyweight;
+  if (wa?.weights && wb?.weights) {
+    const [older, newer] = (wa.at || 0) > (wb.at || 0) ? [wb, wa] : [wa, wb];
+    const byDate = new Map();
+    for (const w of [...older.weights, ...newer.weights]) if (w?.date) byDate.set(w.date, w);
+    out.bodyweight = { ...newer, weights: [...byDate.values()].sort((x, y) => x.date.localeCompare(y.date)) };
+  }
+  return out;
+}
 
 // Foods saved from photos of their labels: { [id]: { name, per100, ..., at, removed? } }, same rule.
 export const mergeMyFoods = mergeTags;
