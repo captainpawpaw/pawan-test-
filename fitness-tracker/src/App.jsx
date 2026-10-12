@@ -9,6 +9,7 @@ import { sumFood } from "./food";
 import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
+import { strengthHistory, lastSession } from "./lastTime";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
 
 /* ---------- date helpers ---------- */
@@ -421,6 +422,16 @@ export default function App() {
     }
     return out;
   }, []);
+
+  // Every logged strength session, for "last time" when you log an exercise
+  // again. This month comes from what's on screen, so it's always current.
+  const [allMonths, setAllMonths] = useState({});
+  useEffect(() => {
+    let live = true;
+    loadAllMonths().then((m) => { if (live) setAllMonths(m); }).catch(() => {});
+    return () => { live = false; };
+  }, [loadAllMonths, dataVersion, key]); // and again on changing month, to pick up edits made in the last one
+  const history = useMemo(() => strengthHistory({ ...allMonths, [monthKey(cursor)]: monthData }), [allMonths, monthData, cursor]);
 
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
@@ -984,6 +995,7 @@ export default function App() {
               onEdit={(id, e) => editEntry("strength", id, e)}
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
+              lastFor={(name) => lastSession(history, name, `${key}-${selected}`)}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
                 <StrengthFooter
                   entries={dayEntries.strength}
@@ -1236,7 +1248,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight }) {
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, lastFor }) {
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
@@ -1296,8 +1308,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       {open && (
         <form ref={formRef} onSubmit={submit} style={styles.form}>
           {fields.map((f) => f.options ? (
+            <React.Fragment key={f.key}>
             <ExercisePicker
-              key={f.key}
               field={f}
               value={vals[f.key] || ""}
               onChange={(v) => setVals((cur) => ({ ...cur, [f.key]: v }))}
@@ -1315,6 +1327,14 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               tagMap={tagMap || {}}
               accent={accent}
             />
+            {lastFor && !editingId && vals[f.key] && (
+              <LastTime
+                last={lastFor(vals[f.key])}
+                accent={accent}
+                onWarmUp={(last) => setVals((v) => ({ ...v, weight: String(last.warmUp), ...(last.bw ? { bw: true } : {}), ...(v.reps ? {} : last.reps ? { reps: String(last.reps) } : {}) }))}
+              />
+            )}
+            </React.Fragment>
           ) : f.bodyweightToggle ? (
             <div key={f.key} style={styles.fieldLabel}>
               <div style={styles.weightHead}>
@@ -1390,6 +1410,27 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
         )}
       </div>
       {footer && <div style={{ ...styles.footer, color: accent }}>{footer}</div>}
+    </div>
+  );
+}
+
+// "Last time" for the exercise being logged: the previous session's top set,
+// and a warm-up weight 30% lighter.
+function LastTime({ last, accent, onWarmUp }) {
+  if (!last) return null;
+  const d = new Date(Number(last.date.slice(0, 4)), Number(last.date.slice(5, 7)) - 1, Number(last.date.slice(8, 10)));
+  const when = `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${d.getDate()} ${d.toLocaleDateString("en-GB", { month: "short" })}`;
+  const load = last.bw ? (last.weight > 0 ? `body weight + ${kgText(last.weight)}` : "body weight") : kgText(last.weight);
+  const warm = last.warmUp == null ? null : last.bw ? `body weight + ${kgText(last.warmUp)}` : kgText(last.warmUp);
+  return (
+    <div role="status" aria-label="Last time" style={{ ...styles.lastTime, borderColor: accent }}>
+      <span>
+        <strong>Last time</strong> ({when}): max {load} × {last.reps || 0} reps{last.sets ? `, ${last.sets} set${last.sets === 1 ? "" : "s"}` : ""}.
+        {warm && <> Warm up with <strong>{warm}</strong> (30% lighter).</>}
+      </span>
+      {warm && (
+        <button type="button" onClick={() => onWarmUp(last)} style={{ ...styles.lastTimeBtn, borderColor: accent, color: accent }}>Use warm-up</button>
+      )}
     </div>
   );
 }
@@ -2767,6 +2808,8 @@ const styles = {
     borderBottom: `2px solid ${ink}`,
     paddingBottom: 6,
   },
+  lastTime: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 13, lineHeight: 1.45, color: ink, background: C.field, border: "1px solid", borderLeftWidth: 3, borderRadius: 3, padding: "8px 10px" },
+  lastTimeBtn: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, background: "transparent", border: "1px solid", borderRadius: 3, padding: "6px 10px", minHeight: 32 },
   dayNav: { display: "inline-flex", gap: 6, marginLeft: "auto", alignSelf: "center" },
   dayNavBtn: { background: "none", border: `1px solid ${line}`, borderRadius: 4, width: 34, height: 34, fontSize: 18, lineHeight: 1, color: ink, padding: 0 },
   errorTag: {
