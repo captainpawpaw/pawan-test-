@@ -163,7 +163,7 @@ export default function App() {
   const onSwipeStart = (e) => {
     const t = e.touches[0];
     if (e.touches.length !== 1 || t.clientX < 30 || t.clientX > window.innerWidth - 20 || swipeBlocked(e.target)) { swipe.current = null; return; }
-    swipe.current = { x: t.clientX, y: t.clientY, at: Date.now() };
+    swipe.current = { x: t.clientX, y: t.clientY, at: Date.now(), day: Boolean(e.target.closest?.("[data-dayswipe]")) };
   };
   const onSwipeEnd = (e) => {
     const s0 = swipe.current;
@@ -171,7 +171,9 @@ export default function App() {
     const t = e.changedTouches[0];
     if (!s0 || !t) return;
     const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
-    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - s0.at > 700) return;
+    if (Math.abs(dx) < (s0.day ? 40 : 70) || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - s0.at > 700) return;
+    // On the date heading: the previous or next day instead of another tab.
+    if (s0.day) { goDayRef.current?.(dx < 0 ? 1 : -1); return; }
     const i = TABS.findIndex(([id]) => id === activeTab);
     const next = TABS[i + (dx < 0 ? 1 : -1)];
     if (next) goTab(next[0]);
@@ -648,6 +650,21 @@ export default function App() {
     setSelected(isSameMonth(next) ? todayDayNum() : "01");
   };
 
+  // Previous or next day, crossing into the next month when needed. The day
+  // slides in from the side it came from.
+  const dayRef = useRef(null);
+  const goDayRef = useRef(null);
+  const goDay = (delta) => {
+    const d = new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected) + delta);
+    if (d.getMonth() !== cursor.getMonth() || d.getFullYear() !== cursor.getFullYear()) setCursor(new Date(d.getFullYear(), d.getMonth(), 1));
+    setSelected(pad2(d.getDate()));
+    const el = dayRef.current;
+    if (el?.animate && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      el.animate([{ opacity: 0, transform: `translateX(${delta > 0 ? 28 : -28}px)` }, { opacity: 1, transform: "none" }], { duration: 220, easing: "ease" });
+    }
+  };
+  goDayRef.current = goDay;
+
   const selectedLabel = () => {
     const dow = new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected)).toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
     return `${dow} ${Number(selected)} ${MONTH_NAMES[cursor.getMonth()].slice(0, 3)}`;
@@ -871,11 +888,15 @@ export default function App() {
       {loading ? (
         <div style={styles.loading}>Loading ledger…</div>
       ) : (
-        <>
-          <div style={styles.selectedHeader}>
-            <span>{selectedLabel()}</span>
+        <div ref={dayRef}>
+          <div data-dayswipe style={styles.selectedHeader}>
+            <span aria-live="polite">{selectedLabel()}</span>
             {saveError && <span style={styles.errorTag}>Not saved — try again</span>}
             {newExerciseNote && <span role="status" style={styles.newExerciseNote}>{newExerciseNote}</span>}
+            <span style={styles.dayNav}>
+              <button type="button" aria-label="Previous day" onClick={() => goDay(-1)} style={styles.dayNavBtn}>‹</button>
+              <button type="button" aria-label="Next day" onClick={() => goDay(1)} style={styles.dayNavBtn}>›</button>
+            </span>
           </div>
 
           {activeTab === "food" ? (
@@ -966,7 +987,7 @@ export default function App() {
             />
           </div>
           )}
-        </>
+        </div>
       )}
       </>
       )}
@@ -2703,9 +2724,12 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "baseline",
+    gap: 10,
     borderBottom: `2px solid ${ink}`,
     paddingBottom: 6,
   },
+  dayNav: { display: "inline-flex", gap: 6, marginLeft: "auto", alignSelf: "center" },
+  dayNavBtn: { background: "none", border: `1px solid ${line}`, borderRadius: 4, width: 34, height: 34, fontSize: 18, lineHeight: 1, color: ink, padding: 0 },
   errorTag: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 11,
