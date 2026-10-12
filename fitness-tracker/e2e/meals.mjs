@@ -65,46 +65,83 @@ async function manual(p, name, kcal, protein, grams) {
   await p.getByRole('button', { name: 'Add to day' }).click();
 }
 
+// an entry from before the split (no meal set), two days ago
+await A.addInitScript(() => {
+  if (localStorage.getItem('seeded')) return;
+  const pad = (n) => String(n).padStart(2, '0'); const d = new Date(); d.setDate(d.getDate() - 2);
+  const mk = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  const cur = JSON.parse(localStorage.getItem('fitness-tracker:month:' + mk) || '{}');
+  cur[pad(d.getDate())] = { strength: [], cardio: [], food: [{ id: 'old1', name: 'Old toast', grams: 40, kcal: 100, protein: 3, carbs: 18, fat: 1, fibre: 1, sugar: 2 }] };
+  localStorage.setItem('fitness-tracker:month:' + mk, JSON.stringify(cur));
+  localStorage.setItem('seeded', '1');
+});
+const part = (p, name) => p.getByRole('region', { name, exact: true });
+
 await pa.goto('http://localhost:4190/'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
-check(await pa.getByRole('button', { name: 'Save as meal' }).count() === 0, 'no Save as meal on an empty day');
-await pa.getByRole('button', { name: '+ Add' }).last().click();
+const heads = await pa.locator('.ft-card section[aria-label]').evaluateAll(ss => ss.map(s => s.getAttribute('aria-label')));
+check(heads.join(',') === 'Breakfast,Lunch,Dinner,Snacks', 'the day is split into four parts: ' + heads.join(','));
+check(await pa.getByRole('button', { name: /Save .* as a meal/ }).count() === 0, 'no Save as meal on an empty day');
+await pa.getByRole('button', { name: '+ Add to Breakfast' }).click();
 await manual(pa, 'Porridge oats', 150, 5, 40);
 await manual(pa, 'Skyr', 95, 16, 150);
 await manual(pa, 'Banana', 105, 1.3, 120);
 await manual(pa, 'Coffee', 5, 0, 250);
 await pa.getByRole('button', { name: 'Done adding' }).click();
-// save three of the four as a meal
-await pa.getByRole('button', { name: 'Save as meal' }).click();
-check(await pa.getByRole('button', { name: 'Save meal' }).isDisabled(), 'needs a name');
-await pa.getByLabel('Meal name').fill('Breakfast');
+let bt = await part(pa, 'Breakfast').innerText();
+check(bt.includes('Porridge oats') && bt.includes('Coffee') && bt.includes('355 kcal · P 22.3 g'), 'foods land in Breakfast, with its subtotal');
+check(!(await part(pa, 'Lunch').innerText()).includes('Skyr'), 'other parts stay empty');
+// move one to another part
+await pa.getByRole('button', { name: 'Edit Coffee' }).click();
+await pa.getByLabel('Meal', { exact: true }).selectOption('snacks');
+await pa.getByRole('button', { name: 'Save changes' }).click();
+check((await part(pa, 'Snacks').innerText()).includes('Coffee') && !(await part(pa, 'Breakfast').innerText()).includes('Coffee'), 'editing moves a food to another part');
+// save breakfast as a meal: name filled in
+await pa.getByRole('button', { name: 'Save breakfast as a meal' }).click();
+check(await pa.getByLabel('Meal name').inputValue() === 'Breakfast', 'meal name starts as the part');
 const boxes = pa.getByRole('group', { name: 'Foods in the meal' }).getByRole('checkbox');
-check(await boxes.count() === 4 && (await boxes.evaluateAll(bs => bs.every(x => x.checked))), 'every food ticked to start');
-await pa.getByRole('group', { name: 'Foods in the meal' }).locator('label', { hasText: 'Coffee' }).getByRole('checkbox').uncheck();
-check((await body(pa)).includes('3 foods · 350 kcal · P 22.3 g'), 'totals follow the ticks');
+check(await boxes.count() === 3 && (await boxes.evaluateAll(bs => bs.every(x => x.checked))), 'the part\'s foods, all ticked');
+check((await body(pa)).includes('3 foods · 350 kcal · P 22.3 g'), 'meal totals');
 await pa.screenshot({ path: 'meal-save.png', fullPage: true });
 await pa.getByRole('button', { name: 'Save meal' }).click();
 check((await body(pa)).includes('Saved Breakfast (3 foods).'), 'meal saved');
-// another day: one tap adds it all
+await pa.screenshot({ path: 'food-parts.png', fullPage: true });
+// another day: add the meal to Lunch in one tap
 await pa.getByRole('button', { name: 'Calendar', exact: true }).click();
 await pa.locator('#month-calendar').getByRole('button', { name: /^1$/ }).first().click();
-await pa.getByRole('button', { name: '+ Add' }).last().click();
+await pa.getByRole('button', { name: '+ Add to Lunch' }).click();
 const mealsY = (await pa.getByText(/^Meals · one tap adds them all$/i).boundingBox())?.y, recentY = (await pa.getByText(/^Recent$/i).boundingBox())?.y;
 check(mealsY != null && recentY != null && mealsY < recentY && (await body(pa)).includes('Porridge oats + Skyr + Banana'), 'Meals listed first when adding');
 await pa.screenshot({ path: 'meal-pick.png', fullPage: true });
 await pa.getByRole('button', { name: 'Add meal Breakfast' }).click();
-let t = await body(pa);
-check(t.includes('Added Breakfast: 3 foods.'), 'one tap adds the meal');
+check((await body(pa)).includes('Added Breakfast: 3 foods.'), 'one tap adds the meal');
 await pa.getByRole('button', { name: 'Done adding' }).click();
-t = await body(pa);
-check(t.includes('Porridge oats') && t.includes('Skyr') && t.includes('Banana') && !t.includes('Coffee') && /350\s*kcal/.test(t), 'the day has the three foods: ' + (t.match(/\d[\d,]* kcal/g) || []).slice(0, 2).join(' '));
-check(t.includes('· Breakfast'), 'foods show which meal they came from');
+const lt = await part(pa, 'Lunch').innerText();
+check(lt.includes('Porridge oats') && lt.includes('Skyr') && lt.includes('Banana') && lt.includes('350 kcal') && !(await part(pa, 'Breakfast').innerText()).includes('Skyr'), 'the meal lands in the part it was added to');
+check(lt.includes('· Breakfast'), 'foods show which meal they came from');
+let t = await body(pa);
+check(/350\s*kcal/.test(t), 'day total counts it');
 // search finds meals by name or by a food in them
-await pa.getByRole('button', { name: '+ Add' }).last().click();
+await pa.getByRole('button', { name: '+ Add to Dinner' }).click();
 await pa.getByLabel('Search foods').fill('skyr');
 check(await pa.getByRole('button', { name: 'Add meal Breakfast' }).count() === 1, 'search finds the meal by a food in it');
 await pa.getByLabel('Search foods').fill('lunch');
 check(await pa.getByRole('button', { name: 'Add meal Breakfast' }).count() === 0, 'and leaves it out otherwise');
 await pa.getByLabel('Search foods').fill('');
+// a day from before the split: Not sorted, until moved
+const d2 = new Date(); d2.setDate(d2.getDate() - 2);
+const p2 = await A.newPage();
+await p2.goto('http://localhost:4190/'); await p2.getByRole('button', { name: 'FOOD', exact: true }).click();
+if (d2.getMonth() !== new Date().getMonth()) await p2.getByRole('button', { name: 'Previous month' }).click();
+await p2.getByRole('button', { name: 'Calendar', exact: true }).click();
+await p2.locator('#month-calendar').getByRole('button', { name: new RegExp('^' + d2.getDate() + '$') }).first().click();
+check((await part(p2, 'Not sorted').innerText()).includes('Old toast'), 'older food shows under Not sorted');
+await p2.getByRole('button', { name: 'Edit Old toast' }).click();
+await p2.getByLabel('Meal', { exact: true }).selectOption('breakfast');
+await p2.getByRole('button', { name: 'Save changes' }).click();
+check(await part(p2, 'Not sorted').count() === 0 && (await part(p2, 'Breakfast').innerText()).includes('Old toast'), 'and moves into a part when edited');
+await p2.close();
+await pa.getByRole('button', { name: 'Close adding to Dinner' }).click();
+await pa.getByRole('button', { name: '+ Add to Dinner' }).click();
 // syncs to another device and survives reload
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(Object.values(book().meals || {}).some(m => m.name === 'Breakfast' && m.items.length === 3 && !m.items[0].id), 'meal saved to Drive');
