@@ -371,9 +371,14 @@ export default function App() {
     if (res) drive.scheduleSync();
   };
 
+  // The panel opened from the menu, shown above the tabs: "weighin" (its
+  // settings), "split" (sets and reps) or "backup". One at a time.
+  const [panel, setPanel] = useState(null);
+  const openPanel = (name) => { setPanel(name); window.scrollTo?.({ top: 0, behavior: "smooth" }); };
+  const closePanel = () => setPanel(null);
+
   // Weekly weigh-in: asks for your weight at the day and time you set.
   const weighIn = profile.weighin || null;
-  const [weighInOpen, setWeighInOpen] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const tick = () => setClock(Date.now());
@@ -384,7 +389,6 @@ export default function App() {
   const weighInDueAt = useMemo(() => weighInDue(weighIn, weights, new Date(clock)), [weighIn, weights, clock]);
   // Training split: the day's session, and the sets, reps and first-set % to use.
   const split = useMemo(() => activeSplit(profile.split), [profile.split]);
-  const [splitOpen, setSplitOpen] = useState(false);
   const saveSplit = async (value) => {
     const next = { ...profile, split: { ...value, at: Date.now() } };
     setProfile(next);
@@ -810,12 +814,14 @@ export default function App() {
           <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
         </div>
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { setSplitOpen(false); setWeighInOpen(true); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps, firstPct: sp.firstPct }); closeMenu(); }} onAdjustSplit={() => { setWeighInOpen(false); setSplitOpen(true); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps, firstPct: sp.firstPct }); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
-      {splitOpen ? (
-        <SplitSettings setting={profile.split} onSave={saveSplit} onClose={() => setSplitOpen(false)} />
-      ) : weighInOpen ? (
-        <WeighInSettings setting={weighIn} onSave={saveWeighIn} onClose={() => setWeighInOpen(false)} />
+      {panel === "backup" ? (
+        <Backup onClose={closePanel} />
+      ) : panel === "split" ? (
+        <SplitSettings setting={profile.split} onSave={saveSplit} onClose={closePanel} />
+      ) : panel === "weighin" ? (
+        <WeighInSettings setting={weighIn} onSave={saveWeighIn} onClose={closePanel} />
       ) : weighInDueAt && (
         <WeighInPrompt
           key={weighInDueAt.getTime()}
@@ -825,7 +831,7 @@ export default function App() {
           onUnit={saveBwUnit}
           onSave={saveBodyweight}
           onSkip={() => saveWeighIn({ skipped: weighInDueAt.getTime() })}
-          onSettings={() => setWeighInOpen(true)}
+          onSettings={() => openPanel("weighin")}
         />
       )}
 
@@ -851,7 +857,7 @@ export default function App() {
         className={slideDir ? `ft-slide-${slideDir}` : undefined}
       >
       {activeTab === "progress" ? (
-        <Progress bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => setWeighInOpen(true)} />
+        <Progress bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -1089,7 +1095,6 @@ export default function App() {
       </>
       )}
       </div>
-      <Backup />
     </div>
   );
 }
@@ -1111,7 +1116,7 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onBackup, onClose, buttonRef }) {
   const ref = useRef(null);
   // "main", or a sub-menu: "theme" or "split".
   const [view, setView] = useState("main");
@@ -1179,6 +1184,10 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onC
           {subItem("split", "Training split", splitName)}
           <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
             <span style={{ flex: 1 }}>Weekly weigh-in…</span>
+          </button>
+          <div role="separator" style={styles.menuRule} />
+          <button type="button" role="menuitem" onClick={onBackup} style={styles.menuItem}>
+            <span style={{ flex: 1 }}>Back up or move your data…</span>
           </button>
         </>
       )}
@@ -2376,6 +2385,7 @@ const styles = {
   menuItemOn: { fontWeight: 600, background: paper },
   menuValue: { fontSize: 12, color: inkFaint, whiteSpace: "nowrap" },
   menuChev: { fontSize: 16, color: inkFaint, marginLeft: 2 },
+  menuRule: { height: 1, background: line, margin: "4px 8px" },
   menuBack: { color: inkFaint, borderBottom: `1px solid ${line}`, borderRadius: 0, marginBottom: 4 },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
