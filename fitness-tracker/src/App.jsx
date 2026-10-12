@@ -18,6 +18,19 @@ const MONTH_NAMES = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","A
 // Weeks start on Monday.
 const DOW = ["M","T","W","T","F","S","S"];
 
+const TABS = [["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]];
+
+// Things that use a sideways drag themselves: typing, sliders, the chart,
+// anything scrolling sideways, and the calendar sidebar.
+function swipeBlocked(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    if (n.matches?.("input, textarea, select, [data-noswipe], .ft-cal-drawer, .ft-cal-tab, [contenteditable='true']")) return true;
+    const ox = getComputedStyle(n).overflowX;
+    if ((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return true;
+  }
+  return false;
+}
+
 function buildGrid(d) {
   const year = d.getFullYear(), month = d.getMonth();
   const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
@@ -111,6 +124,32 @@ export default function App() {
   const [baseExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
   const [exercisesLoading, setExercisesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("log");
+  // Swipe left or right to move between tabs (touch only). Swipes that start
+  // on something that drags or scrolls sideways itself are left alone.
+  const [slideDir, setSlideDir] = useState(null);
+  const swipe = useRef(null);
+  const goTab = (id) => {
+    const from = TABS.findIndex(([t]) => t === activeTab), to = TABS.findIndex(([t]) => t === id);
+    if (to < 0 || to === from) return;
+    setSlideDir(to > from ? "left" : "right");
+    setActiveTab(id);
+  };
+  const onSwipeStart = (e) => {
+    const t = e.touches[0];
+    if (e.touches.length !== 1 || t.clientX < 30 || t.clientX > window.innerWidth - 20 || swipeBlocked(e.target)) { swipe.current = null; return; }
+    swipe.current = { x: t.clientX, y: t.clientY, at: Date.now() };
+  };
+  const onSwipeEnd = (e) => {
+    const s0 = swipe.current;
+    swipe.current = null;
+    const t = e.changedTouches[0];
+    if (!s0 || !t) return;
+    const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - s0.at > 700) return;
+    const i = TABS.findIndex(([id]) => id === activeTab);
+    const next = TABS[i + (dx < 0 ? 1 : -1)];
+    if (next) goTab(next[0]);
+  };
   const [prefill, setPrefill] = useState(null);
   // The month calendar is a sidebar that slides out from the left: open while
   // its tab is hovered (mouse), or tapped/clicked open; picking a day tucks it
@@ -599,7 +638,7 @@ export default function App() {
   };
 
   return (
-    <div className="ft-page" style={styles.page}>
+    <div className="ft-page" style={styles.page} onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} onTouchCancel={() => { swipe.current = null; }}>
       <style>{`${THEME_CSS}
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; }
@@ -611,10 +650,16 @@ export default function App() {
         }
         :root { --ft-cal-w: min(340px, calc(100vw - 52px)); }
         .ft-cal-backdrop { animation: ft-fade 0.2s ease; }
+        /* Sideways swipes change tabs, not browser history. */
+        html, body { overscroll-behavior-x: none; }
+        .ft-slide-left { animation: ft-slide-left 0.22s ease; }
+        .ft-slide-right { animation: ft-slide-right 0.22s ease; }
+        @keyframes ft-slide-left { from { opacity: 0; transform: translateX(28px); } }
+        @keyframes ft-slide-right { from { opacity: 0; transform: translateX(-28px); } }
         @keyframes ft-fade { from { opacity: 0; } }
         @media (prefers-reduced-motion: reduce) {
           .ft-bar, .ft-cal-tab, .ft-cal-drawer { transition: none !important; }
-          .ft-cal-backdrop { animation: none; }
+          .ft-cal-backdrop, .ft-slide-left, .ft-slide-right { animation: none; }
         }
         /* iPhone Safari zooms in on any text box under 16px when it's tapped,
            which leaves the page zoomed and shifted sideways. */
@@ -662,10 +707,11 @@ export default function App() {
       <SyncNotice />
 
       <div className="ft-tabs" style={styles.tabRow}>
-        {[["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]].map(([id, label]) => (
+        {TABS.map(([id, label]) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => goTab(id)}
+            aria-current={activeTab === id ? "page" : undefined}
             style={{
               ...styles.tabBtn,
               color: activeTab === id ? ink : inkFaint,
@@ -677,6 +723,10 @@ export default function App() {
         ))}
       </div>
 
+      <div
+        key={activeTab}
+        className={slideDir ? `ft-slide-${slideDir}` : undefined}
+      >
       {activeTab === "progress" ? (
         <Progress loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} />
       ) : activeTab === "exercises" ? (
@@ -895,6 +945,7 @@ export default function App() {
       )}
       </>
       )}
+      </div>
       <Backup />
     </div>
   );

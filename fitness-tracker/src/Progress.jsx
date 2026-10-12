@@ -443,6 +443,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
       )}
       <div
         ref={boxRef}
+        data-noswipe
         tabIndex={0}
         role="img"
         aria-label={`${m.label} for ${title}, ${SCALE_LABEL[scale].toLowerCase()}. Drag to move through time, pinch or use plus and minus to zoom, arrow keys to step through values.`}
