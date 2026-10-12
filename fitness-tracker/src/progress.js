@@ -88,6 +88,7 @@ export const METRICS = {
   protein: { label: "Protein", unit: "g", agg: "avg", type: "food", form: "column", target: "protein" },
   carbs: { label: "Carbs", unit: "g", agg: "avg", type: "food", form: "column" },
   fat: { label: "Fat", unit: "g", agg: "avg", type: "food", form: "column" },
+  bodyweight: { label: "Body weight", unit: "kg", agg: "avg", type: "body", form: "line" },
 };
 export const FOOD_METRICS = ["kcal", "protein", "carbs", "fat"];
 
@@ -122,6 +123,7 @@ export function entryValue(metric, row, bwOn) {
     case "sets": return sets > 0 ? sets : null;
     case "minutes": { const v = Number(e.duration) || 0; return v > 0 ? v : null; }
     case "distance": { const v = Number(e.distance) || 0; return v > 0 ? v : null; }
+    case "bodyweight": { const v = Number(e.kg); return v > 0 ? v : null; }
     case "kcal": case "protein": case "carbs": case "fat": { const v = Number(e[metric]); return v >= 0 ? v : null; }
     default: return null;
   }
@@ -130,6 +132,7 @@ export function entryValue(metric, row, bwOn) {
 // Which metrics make sense for a selection, in display order.
 export function metricsFor(rows) {
   if (rows.length && rows.every((r) => r.type === "food")) return FOOD_METRICS;
+  if (rows.length && rows.every((r) => r.type === "body")) return ["bodyweight"];
   const hasStrength = rows.some((r) => r.type === "strength");
   const hasCardio = rows.some((r) => r.type === "cardio");
   const names = new Set(rows.map((r) => r.name));

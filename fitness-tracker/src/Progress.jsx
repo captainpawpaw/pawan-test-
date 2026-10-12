@@ -16,7 +16,7 @@ const rust = C.rust;
 const teal = C.teal;
 const plum = C.plum;
 const blue = C.blue; // reps, beside rust weight (checked for colour-blind separation)
-const colorFor = (type) => (type === "cardio" ? teal : type === "food" ? plum : rust);
+const colorFor = (type) => (type === "cardio" ? teal : type === "food" ? plum : type === "body" ? blue : rust);
 const mono = "'IBM Plex Mono', monospace";
 const condensed = C.display;
 
@@ -36,7 +36,7 @@ function writeSaved(v) {
   try { window.localStorage.setItem(SEL_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
+export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings }) {
   const [months, setMonths] = useState(null);
   const [selection, setSelection] = useState(() => readSaved()); // { kind, value }
   const [metric, setMetric] = useState(null);
@@ -48,6 +48,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
   }, [loadAll, version]);
 
   const rows = useMemo(() => flattenMonths(months || {}), [months]);
+  const bodyRows = useMemo(() => weights.filter((w) => Number(w.kg) > 0).map((w) => ({ date: w.date, type: "body", name: "Body weight", e: { kg: Number(w.kg) } })), [weights]);
 
   // Choices: exercises and tags that have something logged.
   const { exercises, tags, foodDays } = useMemo(() => {
@@ -68,18 +69,21 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
     if (selection?.kind === "tag" && tags.some(([t]) => t === selection.value)) return selection;
     if (selection?.kind === "food" && foodDays) return selection;
     if (selection?.kind === "all" && exercises.length) return selection;
+    if (selection?.kind === "body" && bodyRows.length) return selection;
     if (exercises.length) return { kind: "exercise", value: exercises[0][0] };
-    return foodDays ? { kind: "food", value: "all" } : null;
-  }, [selection, exercises, tags, foodDays]);
+    if (foodDays) return { kind: "food", value: "all" };
+    return bodyRows.length ? { kind: "body", value: "weight" } : null;
+  }, [selection, exercises, tags, foodDays, bodyRows.length]);
 
   const selRows = useMemo(() => {
     if (!sel) return [];
     if (sel.kind === "food") return rows.filter((r) => r.type === "food");
+    if (sel.kind === "body") return bodyRows;
     if (sel.kind === "exercise") return rows.filter((r) => r.name === sel.value && r.type !== "food");
     if (sel.kind === "all") return rows.filter((r) => r.type === "strength");
     const names = new Set(Object.entries(tagMap).filter(([, v]) => (v?.tags || []).includes(sel.value)).map(([n]) => n));
     return rows.filter((r) => names.has(r.name) && r.type !== "food");
-  }, [sel, rows, tagMap]);
+  }, [sel, rows, tagMap, bodyRows]);
 
   const metricOptions = useMemo(() => metricsFor(selRows), [selRows]);
   const activeMetric = metricOptions.includes(metric) ? metric : metricOptions[0] || null;
@@ -91,7 +95,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
   };
 
   if (months === null) return <div style={s.empty}>Loading your log…</div>;
-  if (!rows.length) {
+  if (!rows.length && !bodyRows.length) {
     return (
       <div style={s.empty}>
         <strong style={{ color: ink }}>Nothing logged yet.</strong> Log a few sets in the Log tab and your progress will chart here.
@@ -118,6 +122,11 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
             <option value="food:all">Calories & macros ({foodDays} day{foodDays === 1 ? "" : "s"})</option>
           </optgroup>
         )}
+        {bodyRows.length > 0 && (
+          <optgroup label="Body">
+            <option value="body:weight">Body weight ({bodyRows.length} weigh-in{bodyRows.length === 1 ? "" : "s"})</option>
+          </optgroup>
+        )}
         {exercises.length > 0 && (
           <optgroup label="Overall">
             <option value="all:strength">All exercises</option>
@@ -134,6 +143,13 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
           </optgroup>
         )}
       </select>
+
+      {sel?.kind === "body" && (
+        <p style={s.weighIn}>
+          {weighInText ? `Weekly weigh-in: ${weighInText}.` : "No weekly weigh-in set."}{" "}
+          <button type="button" onClick={onWeighInSettings} style={s.weighInBtn}>{weighInText ? "Change" : "Set one up"}</button>
+        </p>
+      )}
 
       {metricOptions.length > 1 && (
         <div role="group" aria-label="Measure" style={s.chips}>
@@ -163,7 +179,7 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets }) {
           bwOn={bwOn}
           target={activeMetric === "score" ? 100 : METRICS[activeMetric].target ? Number(targets?.[METRICS[activeMetric].target]) || null : null}
           targetLabel={activeMetric === "score" ? "Start = 100" : null}
-          title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.kind === "all" ? "All exercises" : sel.value}
+          title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.kind === "body" ? "Body weight" : sel.kind === "all" ? "All exercises" : sel.value}
         />
       )}
     </div>
@@ -398,6 +414,19 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
             <Tile label="Change since start" value={latest ? `${latest.value >= 100 ? "+" : "−"}${fmtNum(Math.abs(latest.value - 100))}%` : "–"} sub="start = your first two weeks = 100" badge={latest && latest.value >= 110 ? milestone(latest.value) : null} />
             <Tile label={`Best ${periodWord} in view`} value={best ? fmtNum(best.value) : "–"} sub={best ? periodLabel(best.start, scale, true) : ""} />
           </>
+        ) : m.type === "body" ? (
+          (() => {
+            const ins = rows.filter((r) => { const t = parseIso(r.date).getTime(); return t >= view.start && t < view.end; });
+            const last = ins[ins.length - 1], first = ins[0];
+            const change = last && first && ins.length > 1 ? Math.round((last.e.kg - first.e.kg) * 10) / 10 : null;
+            return (
+              <>
+                <Tile label="Latest weigh-in" value={last ? fmt(last.e.kg, "kg") : "–"} sub={last ? periodLabel(parseIso(last.date), "day", true) : "No data in view"} />
+                <Tile label="Change in view" value={change == null ? "–" : `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmt(Math.abs(change), "kg")}`} sub={change == null ? "needs two weigh-ins" : `since ${periodLabel(parseIso(first.date), "day")}`} />
+                <Tile label="Weigh-ins in view" value={String(ins.length)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
+              </>
+            );
+          })()
         ) : m.agg === "avg" ? (
           <>
             <Tile label={scale === "day" ? "Average day in view" : `Average day, latest ${periodWord}`} value={latest ? fmt(scale === "day" ? avgInView : latest.value, m.unit) : "–"} sub={latest && scale !== "day" ? periodLabel(latest.start, scale, true) : `${foodDaysInView} day${foodDaysInView === 1 ? "" : "s"} logged`} />
@@ -419,8 +448,8 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel }) {
 
       <div style={s.chartHead}>
         <div style={{ minWidth: 0 }}>
-          <div style={s.chartTitle}>{m.label} · {title}</div>
-          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (kg) and reps per set` : <>{m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
+          <div style={s.chartTitle}>{m.label === title ? title : `${m.label} · ${title}`}</div>
+          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (kg) and reps per set` : <>{m.type === "body" ? (scale === "day" ? "Each weigh-in" : `Average weigh-in per ${periodWord}`) : m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
         </div>
         <div role="group" aria-label="Time scale" style={s.scaleRow}>
           {SCALES.map((sc) => (
@@ -635,6 +664,8 @@ const s = {
   wrap: { display: "flex", flexDirection: "column", gap: 10, marginTop: 16 },
   empty: { marginTop: 24, fontSize: 14, color: inkFaint, lineHeight: 1.5 },
   label: { fontFamily: mono, fontSize: 11, color: inkFaint, letterSpacing: "0.06em" },
+  weighIn: { margin: "0", fontSize: 13, color: inkFaint },
+  weighInBtn: { fontFamily: mono, fontSize: 12, color: ink, background: "transparent", border: "none", textDecoration: "underline", padding: "6px 2px", minHeight: 32 },
   select: { fontFamily: C.sans, fontSize: 15, padding: "8px 10px", border: `1px solid ${line}`, borderRadius: 4, background: C.field, color: ink, width: "100%" },
   chips: { display: "flex", flexWrap: "wrap", gap: 6 },
   chip: { fontFamily: mono, fontSize: 12, border: "1px solid", borderRadius: 999, padding: "5px 12px" },
