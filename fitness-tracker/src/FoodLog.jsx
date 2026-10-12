@@ -305,6 +305,28 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
       />
       {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
       {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
+      {online && (
+        // Always here, above the suggestions: search Open Food Facts for branded products.
+        <div style={st.resultGroup}>
+          <button type="button" disabled={q.trim().length < 2 || (off.q === q && off.state === "busy")} onClick={searchOff} style={{ ...st.secondaryBtn, width: "100%", textAlign: "center" }}>
+            {q.trim().length >= 2 ? <>Search branded products for “{q.trim()}”</> : "Search branded products (type a name above)"}
+          </button>
+          {off.q === q && off.state === "busy" ? (
+            <span style={st.note}>Searching Open Food Facts…</span>
+          ) : off.q === q && off.state === "error" ? (
+            <span style={st.error}>Couldn't reach Open Food Facts. Try again in a minute.</span>
+          ) : off.q === q && off.state === "done" ? (
+            off.list.length ? (
+              <>
+                <ResultList items={off.list} label="Branded products (Open Food Facts)" />
+                <span style={st.note}>Product data © Open Food Facts contributors, ODbL. Check the label if a value looks wrong.</span>
+              </>
+            ) : (
+              <span style={st.note}>No branded products found.</span>
+            )
+          ) : null}
+        </div>
+      )}
 
       {myHits.length > 0 && (
         <div style={st.resultGroup}>
@@ -331,25 +353,6 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
       <ResultList items={local.slice(0, 15)} label="Foods (UK CoFID and USDA)" />
       <ResultList items={usdaShown} label="More from USDA online" />
       {q.trim().length >= 2 && foods && !local.length && !recentHits.length && <span style={st.note}>No match in the built-in list.</span>}
-
-      {online && q.trim().length >= 2 && (
-        <div style={st.resultGroup}>
-          {off.q !== q || off.state === "idle" ? (
-            <button type="button" onClick={searchOff} style={st.secondaryBtn}>Search branded products for “{q.trim()}”</button>
-          ) : off.state === "busy" ? (
-            <span style={st.note}>Searching Open Food Facts…</span>
-          ) : off.state === "error" ? (
-            <span style={st.error}>Couldn't reach Open Food Facts. Try again in a minute.</span>
-          ) : off.list.length ? (
-            <>
-              <ResultList items={off.list} label="Branded products (Open Food Facts)" />
-              <span style={st.note}>Product data © Open Food Facts contributors, ODbL. Check the label if a value looks wrong.</span>
-            </>
-          ) : (
-            <span style={st.note}>No branded products found.</span>
-          )}
-        </div>
-      )}
 
       <div style={st.optionRow}>
         <button type="button" onClick={() => onMode("label")} style={st.secondaryBtn}>Photograph a label</button>
