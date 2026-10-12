@@ -95,3 +95,18 @@ test("real reader output, low-res photo: dropped decimals fixed by the serving c
   const r = parseNutritionWords(fixture("ocr-label-small.json"));
   assert.deepEqual(r.per100, LABEL);
 });
+
+test("real supermarket screenshot: serving column first, slice weight worked out", () => {
+  const r = parseNutritionWords(fixture("ocr-asda-bread.json"));
+  assert.equal(r.servingLabel, "1 average slice");
+  assert.equal(r.servingG, 48);
+  assert.equal(r.servingGDerived, true);
+  assert.deepEqual(r.perServing, { kcal: 112, fat: 0.4, carbs: 21.2, sugar: 1.1, fibre: 1.4, protein: 4.9 });
+  assert.equal(r.basis, "serving");
+});
+
+import { guessName } from "../src/labelParse.js";
+test("product name from the front: the title, not the shop's logo", () => {
+  assert.equal(guessName(fixture("ocr-asda-front.json")), "Jason's White");
+  assert.equal(guessName(fixture("ocr-pack-front.json")), "Crunchy Granola");
+});

@@ -316,7 +316,7 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
                   {f.thumb ? <img src={f.thumb} alt="" style={st.mineThumb} /> : <span aria-hidden="true" style={st.mineThumb} />}
                   <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                     <span style={st.resultName}>{f.name}</span>
-                    <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g</span>
+                    <span style={st.resultMeta}>{f.portions[0]?.values ? `${f.portions[0].values.kcal} kcal · P ${fmtG(f.portions[0].values.protein)} g per ${f.portions[0].label.replace(/^1\s+/, "")}` : `${f.per100.kcal} kcal · P ${fmtG(f.per100.protein)} g per 100 g`}</span>
                   </span>
                 </button>
                 {onRemoveMyFood && (
@@ -372,12 +372,17 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood }) {
   );
 }
 
+function servingTimes(values, qty) {
+  return Object.fromEntries(NUTRIENTS.map((k) => [k, k === "kcal" ? Math.round((values[k] || 0) * qty) : Math.round((values[k] || 0) * qty * 10) / 10]));
+}
+
 function AmountStep({ food, onAdd, onBack }) {
   const units = useMemo(() => [{ g: 1, label: "g" }, ...(food.portions || [])], [food]);
   const [unit, setUnit] = useState(food.portions?.length && food.source !== "usda" && food.source !== "cofid" ? 1 : 0);
   const [qty, setQty] = useState(food.lastGrams && unit === 0 ? String(food.lastGrams) : unit === 0 ? "100" : "1");
   const grams = (Number(qty) || 0) * units[unit].g;
-  const vals = scale(food.per100, grams);
+  // A saved serving carries the label's own numbers: use them as printed.
+  const vals = units[unit].values ? servingTimes(units[unit].values, Number(qty) || 0) : scale(food.per100, grams);
 
   const submit = (ev) => {
     ev.preventDefault();
@@ -398,7 +403,7 @@ function AmountStep({ food, onAdd, onBack }) {
     <form onSubmit={submit} style={st.stack}>
       <div>
         <div style={st.pickedName}>{food.name}</div>
-        <div style={st.note}>{SOURCE_LABEL[food.source] || ""} · {food.per100.kcal} kcal per 100 g</div>
+        <div style={st.note}>{SOURCE_LABEL[food.source] || ""} · {food.portions?.[0]?.values ? `${food.portions[0].values.kcal} kcal per ${food.portions[0].label.replace(/^1\s+/, "")} · ` : ""}{food.per100.kcal} kcal per 100 g</div>
       </div>
       <div style={st.btnRow}>
         <label style={{ ...st.fieldLabel, flex: "0 0 90px" }}>
@@ -653,7 +658,11 @@ function LabelCapture({ onSave, onSaved, onBack }) {
     name: r.name || "",
     brand: r.brand || "",
     servingG: r.servingG ? String(r.servingG) : "",
+    servingGDerived: Boolean(r.servingGDerived),
+    servingLabel: r.servingLabel || "1 serving",
     barcode: r.barcode || "",
+    // Two columns, as on the label: per serving (first) and per 100 g.
+    ...Object.fromEntries(LABEL_FIELDS.map(([k]) => [`s_${k}`, r.perServing?.[k] != null ? String(r.perServing[k]) : ""])),
     ...Object.fromEntries(LABEL_FIELDS.map(([k]) => [k, r.per100?.[k] != null ? String(r.per100[k]) : ""])),
     missing: r.missing || [],
     sources: r.sources || [],
@@ -695,20 +704,37 @@ function LabelCapture({ onSave, onSaved, onBack }) {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const num = (v) => (v === "" || v == null ? null : Number(v));
-  const valid = form && form.name.trim() && num(form.kcal) >= 0 && num(form.kcal) != null;
+  // Both columns filled out from each other where the serving weight allows.
+  const columns = (f) => {
+    const g = num(f.servingG) > 0 ? num(f.servingG) : null;
+    const serving = {}, per100 = {};
+    for (const [k] of LABEL_FIELDS) {
+      const sv = num(f[`s_${k}`]), pv = num(f[k]);
+      const round = (v) => (k === "kcal" ? Math.round(v) : Math.round(v * 10) / 10);
+      serving[k] = sv != null ? sv : pv != null && g ? round((pv * g) / 100) : null;
+      per100[k] = pv != null ? pv : sv != null && g ? round((sv / g) * 100) : null;
+    }
+    return { g, serving, per100 };
+  };
+  const cols = form ? columns(form) : null;
+  const hasServing = form && LABEL_FIELDS.some(([k]) => form[`s_${k}`] !== "");
+  const needsGrams = form && hasServing && !cols.g;
+  const valid = form && form.name.trim() && (cols.per100.kcal != null || cols.serving.kcal != null) && !needsGrams;
 
   const save = async (addNow) => {
     if (!valid || saving) return;
     setSaving(true);
     try {
-      const per100 = Object.fromEntries(LABEL_FIELDS.map(([k]) => [k, Math.max(0, num(form[k]) || 0)]));
-      const servingG = num(form.servingG) > 0 ? num(form.servingG) : null;
+      const { g, serving, per100 } = columns(form);
+      const zero = (o) => Object.fromEntries(LABEL_FIELDS.map(([k]) => [k, Math.max(0, o[k] || 0)]));
       const thumb = photos[0] ? await thumbnail(photos[0].file).catch(() => null) : null;
+      const label = form.servingLabel.trim() || "1 serving";
       const saved = await onSave({
         name: form.name.trim().slice(0, 80),
         brand: form.brand.trim().slice(0, 60),
-        per100,
-        portions: servingG ? [{ g: servingG, label: "1 serving" }] : [],
+        per100: zero(per100),
+        // The serving, with the label's own numbers, comes first when adding.
+        portions: g ? [{ g, label: label.slice(0, 40), values: zero(serving) }] : [],
         barcode: form.barcode.replace(/\D/g, "") || null,
         thumb,
         from: form.sources.join(",") || "manual",
@@ -721,14 +747,15 @@ function LabelCapture({ onSave, onSaved, onBack }) {
   };
 
   if (form) {
-    const missing = form.missing.filter((k) => form[k] === "");
+    const missing = form.missing.filter((k) => form[k] === "" && form[`s_${k}`] === "");
+    const servingTitle = (form.servingLabel.trim() || "1 serving").replace(/^1\s+/, "");
     return (
       <form onSubmit={(e) => { e.preventDefault(); save(true); }} style={st.stack} aria-label="Check the label details">
         <span style={st.pickedName}>Check the details</span>
         <span style={st.note}>
           {form.sources.includes("claude") ? "Read by Claude from your photos." : form.sources.includes("label") ? "Read from your photos." : ""}
           {form.sources.includes("off") ? " Name and gaps filled from Open Food Facts (barcode " + form.barcode + ")." : ""}
-          {" "}Check them against the label before saving. Values are per 100 g (or 100 ml).{form.note ? ` ${form.note}` : ""}
+          {" "}Check them against the label before saving.{form.note ? ` ${form.note}` : ""}
         </span>
         {status && <span role={status.kind === "error" ? "alert" : "status"} style={status.kind === "error" ? st.error : st.note}>{status.text}</span>}
         {missing.length > 0 && <span role="status" style={st.error}>Not found on the label: {missingLabel(missing)}. Fill these in, or leave blank for 0.</span>}
@@ -736,17 +763,33 @@ function LabelCapture({ onSave, onSaved, onBack }) {
         <label style={st.fieldLabel}>Name<input value={form.name} onChange={set("name")} placeholder="e.g. Crunchy granola" style={st.input} required /></label>
         <label style={st.fieldLabel}>Brand (optional)<input value={form.brand} onChange={set("brand")} placeholder="e.g. Jordans" style={st.input} /></label>
         <div style={st.labelGrid}>
-          {LABEL_FIELDS.map(([k, label]) => (
-            <label key={k} style={st.fieldLabel}>
-              {label}
-              <input type="number" inputMode="decimal" step="any" min="0" value={form[k]} onChange={set(k)} style={{ ...st.input, width: "100%", boxSizing: "border-box", ...(form[k] === "" && form.missing.includes(k) ? { borderColor: C.rust } : {}) }} />
-            </label>
-          ))}
+          <label style={st.fieldLabel}>Serving<input value={form.servingLabel} onChange={set("servingLabel")} placeholder="1 slice" style={{ ...st.input, width: "100%", boxSizing: "border-box" }} /></label>
+          <label style={st.fieldLabel}>
+            Serving weight (g)
+            <input type="number" inputMode="decimal" step="any" min="0" value={form.servingG} onChange={(e) => setForm((f) => ({ ...f, servingG: e.target.value, servingGDerived: false }))} placeholder="48" style={{ ...st.input, width: "100%", boxSizing: "border-box", ...(needsGrams ? { borderColor: C.rust } : {}) }} />
+          </label>
         </div>
-        <div style={st.labelGrid}>
-          <label style={st.fieldLabel}>Serving size (g, optional)<input type="number" inputMode="decimal" step="any" min="0" value={form.servingG} onChange={set("servingG")} placeholder="30" style={{ ...st.input, width: "100%", boxSizing: "border-box" }} /></label>
-          <label style={st.fieldLabel}>Barcode (optional)<input inputMode="numeric" value={form.barcode} onChange={set("barcode")} style={{ ...st.input, width: "100%", boxSizing: "border-box" }} /></label>
+        {form.servingGDerived && form.servingG && <span style={st.note}>The label doesn’t print the serving’s weight; about {form.servingG} g, worked out from its two columns.</span>}
+        {needsGrams && <span role="status" style={st.error}>Add the serving’s weight in grams, so other amounts can be worked out.</span>}
+        <div role="table" aria-label="Nutrition" style={st.nutTable}>
+          <div role="row" style={st.nutRow}>
+            <span role="columnheader" style={st.nutHead}>Typical values</span>
+            <span role="columnheader" style={{ ...st.nutHead, color: plum }}>Per {servingTitle}</span>
+            <span role="columnheader" style={st.nutHead}>Per 100 g</span>
+          </div>
+          {LABEL_FIELDS.map(([k, label]) => {
+            const flag = form.missing.includes(k) && form[k] === "" && form[`s_${k}`] === "" ? { borderColor: C.rust } : {};
+            return (
+              <div role="row" key={k} style={st.nutRow}>
+                <span role="rowheader" style={st.nutName}>{label}</span>
+                <input aria-label={`${label} per ${servingTitle}`} type="number" inputMode="decimal" step="any" min="0" value={form[`s_${k}`]} onChange={set(`s_${k}`)} placeholder={cols.serving[k] != null ? String(cols.serving[k]) : ""} style={{ ...st.input, width: "100%", boxSizing: "border-box", ...flag }} />
+                <input aria-label={`${label} per 100 g`} type="number" inputMode="decimal" step="any" min="0" value={form[k]} onChange={set(k)} placeholder={cols.per100[k] != null ? String(cols.per100[k]) : ""} style={{ ...st.input, width: "100%", boxSizing: "border-box", ...flag }} />
+              </div>
+            );
+          })}
         </div>
+        <span style={st.note}>Grey numbers are worked out from the other column. When you add it, the serving comes first, with these exact numbers.</span>
+        <label style={st.fieldLabel}>Barcode (optional)<input inputMode="numeric" value={form.barcode} onChange={set("barcode")} style={{ ...st.input, width: "100%", boxSizing: "border-box" }} /></label>
         <div style={st.btnRow}>
           <button type="submit" disabled={!valid || saving} style={st.primaryBtn}>Save and add to today</button>
           <button type="button" disabled={!valid || saving} onClick={() => save(false)} style={st.secondaryBtn}>Save to My foods</button>
@@ -878,6 +921,10 @@ const st = {
   video: { width: "100%", maxHeight: 280, background: ink, borderRadius: 4, objectFit: "cover" },
   flash: { fontSize: 13, color: plum },
   labelGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 },
+  nutTable: { display: "flex", flexDirection: "column", gap: 4 },
+  nutRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6, alignItems: "center" },
+  nutHead: { fontFamily: mono, fontSize: 11, fontWeight: 600, color: inkFaint },
+  nutName: { fontFamily: mono, fontSize: 11, color: ink },
   mineRow: { display: "flex", alignItems: "center", gap: 4 },
   mineThumb: { width: 34, height: 34, flex: "none", borderRadius: 3, objectFit: "cover", background: plumSoft },
   note: { fontFamily: mono, fontSize: 11, color: inkFaint },
