@@ -43,7 +43,7 @@ test("allTags counts tags across notes", () => {
 test("validateImport accepts wrapped or bare arrays and drops bad entries", () => {
   const good = { id: "x", body: "hi", pinned: 1, createdAt: 5, updatedAt: 6 };
   assert.deepEqual(validateImport({ notes: [good, { id: 3 }, null] }), [
-    { id: "x", body: "hi", pinned: true, createdAt: 5, updatedAt: 6 },
+    { id: "x", body: "hi", tags: [], pinned: true, createdAt: 5, updatedAt: 6 },
   ]);
   assert.equal(validateImport([good]).length, 1);
   assert.throws(() => validateImport({ foo: 1 }));
@@ -63,4 +63,40 @@ test("applySnapshot keeps local copies of notes with unsaved edits", async () =>
   const dirty = new Set(["a", "new"]);
   const merged = Object.fromEntries(applySnapshot(local, remote, (id) => dirty.has(id)).map((n) => [n.id, n.body]));
   assert.deepEqual(merged, { a: "typing…", b: "from other device", c: "added elsewhere", new: "draft" });
+});
+
+test("normalizeTag cleans user input", async () => {
+  const { normalizeTag } = await import("../src/notes.js");
+  assert.equal(normalizeTag("  #Work Stuff "), "work-stuff");
+  assert.equal(normalizeTag("Q3/plans!"), "q3plans");
+  assert.equal(normalizeTag("#  "), "");
+});
+
+test("addTags adds several comma-separated tags without duplicates; removeTag removes one", async () => {
+  const { addTags, removeTag } = await import("../src/notes.js");
+  const n = note("x", { tags: ["work"] });
+  const added = addTags(n, "Ideas, work, , #Travel");
+  assert.deepEqual(added.tags, ["work", "ideas", "travel"]);
+  assert.equal(addTags(added, "ideas"), added); // nothing new -> same object, no save
+  assert.deepEqual(removeTag(added, "work").tags, ["ideas", "travel"]);
+});
+
+test("search matches tag-field tags and text across all notes", () => {
+  const ns = [
+    note("Meeting notes\nbudget review", { tags: ["work", "finance"] }),
+    note("Packing list #travel", { tags: [] }),
+    note("Old note without tags field"),
+  ];
+  delete ns[2].tags;
+  assert.deepEqual(tagsOf(ns[0]), ["finance", "work"]);
+  assert.equal(filterNotes(ns, "finan").length, 1); // partial tag match
+  assert.equal(filterNotes(ns, "#work").length, 1);
+  assert.equal(filterNotes(ns, "#travel").length, 1); // inline hashtag still counts
+  assert.equal(filterNotes(ns, "note").length, 2); // text across notes
+  assert.equal(filterNotes(ns, "#work budget").length, 1);
+});
+
+test("validateImport keeps and cleans tags", () => {
+  const [n] = validateImport([{ id: "x", body: "b", tags: ["Work", "work", " Big Ideas "] }]);
+  assert.deepEqual(n.tags, ["work", "big-ideas"]);
 });

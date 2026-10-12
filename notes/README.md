@@ -3,13 +3,16 @@
 A simple, fast note-taking app built with React + Vite.
 
 - Notes autosave as you type; the first line becomes the title
-- Search across all notes; add `#tags` anywhere and filter by clicking a tag
+- Give each note as many tags as you like in its tag field (Enter or comma adds one,
+  × or Backspace removes one, existing tags are suggested), or type `#tags` in the text
+- Search covers the text and tags of every note; `#tag` matches a tag exactly, and
+  clicking a tag in the sidebar filters by it (click several to narrow further)
 - Pin important notes to the top
 - Delete with a 6-second undo
 - Export / import all notes as JSON (imports merge, keeping the newer copy of each note)
 - Light and dark themes follow your system setting
 - Works on phones: the list and editor become separate screens
-- Keyboard: `Ctrl/Cmd+Alt+N` new note, `Esc` back to the list (mobile)
+- Keyboard: `Ctrl/Cmd+Alt+N` new note, `/` search, `Esc` back to the list (mobile)
 
 ## Run locally
 

@@ -5,7 +5,28 @@ export function newId() {
 }
 
 export function createNote(now = Date.now()) {
-  return { id: newId(), body: "", pinned: false, createdAt: now, updatedAt: now };
+  return { id: newId(), body: "", tags: [], pinned: false, createdAt: now, updatedAt: now };
+}
+
+// "#Work Stuff " -> "work-stuff". Returns "" for input with no usable characters.
+export function normalizeTag(raw) {
+  return String(raw)
+    .trim()
+    .replace(/^#+/, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]/gu, "")
+    .slice(0, 40);
+}
+
+export function addTags(note, raw) {
+  const added = String(raw).split(",").map(normalizeTag).filter(Boolean);
+  const tags = [...new Set([...(note.tags || []), ...added])];
+  return tags.length === (note.tags || []).length ? note : { ...note, tags };
+}
+
+export function removeTag(note, tag) {
+  return { ...note, tags: (note.tags || []).filter((t) => t !== tag) };
 }
 
 // The title is the first non-empty line, with leading markdown heading marks stripped.
@@ -22,8 +43,9 @@ export function previewOf(note, max = 80) {
   return rest.length > max ? rest.slice(0, max - 1) + "…" : rest;
 }
 
+// A note's tags: the ones added in its tag field plus any #hashtags in the text.
 export function tagsOf(note) {
-  const tags = new Set();
+  const tags = new Set(note.tags || []);
   for (const m of note.body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)) tags.add(m[2].toLowerCase());
   return [...tags].sort();
 }
@@ -33,7 +55,8 @@ export function sortNotes(notes) {
   return [...notes].sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
 }
 
-// Every whitespace-separated term must appear (case-insensitive). "#tag" terms match tags exactly.
+// Every whitespace-separated term must appear in the text or a tag (case-insensitive).
+// "#tag" terms match tags exactly.
 export function filterNotes(notes, query) {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return notes;
@@ -41,7 +64,9 @@ export function filterNotes(notes, query) {
     const body = n.body.toLowerCase();
     const tags = tagsOf(n);
     return terms.every((t) =>
-      t.startsWith("#") && t.length > 1 ? tags.includes(t.slice(1)) : body.includes(t)
+      t.startsWith("#") && t.length > 1
+        ? tags.includes(t.slice(1))
+        : body.includes(t) || tags.some((tag) => tag.includes(t))
     );
   });
 }
@@ -61,6 +86,7 @@ export function validateImport(data) {
     .map((n) => ({
       id: n.id,
       body: n.body,
+      tags: Array.isArray(n.tags) ? [...new Set(n.tags.map(normalizeTag).filter(Boolean))] : [],
       pinned: !!n.pinned,
       createdAt: Number(n.createdAt) || Date.now(),
       updatedAt: Number(n.updatedAt) || Date.now(),

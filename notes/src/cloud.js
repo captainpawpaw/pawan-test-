@@ -29,7 +29,7 @@ function createSync(col) {
     return p;
   }
 
-  const body = (n) => ({ body: n.body, pinned: n.pinned, createdAt: n.createdAt, updatedAt: n.updatedAt });
+  const body = (n) => ({ body: n.body, tags: n.tags || [], pinned: n.pinned, createdAt: n.createdAt, updatedAt: n.updatedAt });
 
   function flush(id) {
     clearTimeout(timers.get(id));

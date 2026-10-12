@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import TagEditor from "./TagEditor.jsx";
 import {
-  allTags, createNote, filterNotes, formatDate, mergeNotes, previewOf, sortNotes,
-  titleOf, validateImport,
+  addTags, allTags, createNote, filterNotes, formatDate, mergeNotes, previewOf, sortNotes,
+  removeTag, tagsOf, titleOf, validateImport,
 } from "./notes.js";
 import { loadNotes, saveNotes } from "./storage.js";
 import { applySnapshot, connectCloud } from "./cloud.js";
@@ -23,6 +24,7 @@ export default function App() {
   const flashTimer = useRef(null);
   const editorRef = useRef(null);
   const fileRef = useRef(null);
+  const searchRef = useRef(null);
   const focusEditor = useRef(false);
 
   // Focus right after the new note's editor commits, so the first keystrokes aren't dropped.
@@ -115,6 +117,19 @@ export default function App() {
     syncRef.current?.saveSoon(note);
   }
 
+  // Tag changes save right away rather than waiting for a typing pause.
+  function changeTags(next) {
+    if (next === active) return;
+    const note = { ...next, updatedAt: Date.now() };
+    setNotes((ns) => ns.map((n) => (n.id === note.id ? note : n)));
+    syncRef.current?.save(note);
+  }
+
+  function toggleTagFilter(t) {
+    const on = query.toLowerCase().split(/\s+/).includes(`#${t}`);
+    setQuery(on ? query.replace(new RegExp(`(^|\\s)#${t}(?=\\s|$)`, "i"), "").trim() : `${query} #${t}`.trim());
+  }
+
   function togglePin() {
     if (!active) return;
     // Pinning shouldn't count as an edit, so keep updatedAt.
@@ -184,6 +199,8 @@ export default function App() {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); addNote(); }
       if (e.key === "Escape") setShowEditor(false);
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+      if (e.key === "/" && !typing) { e.preventDefault(); setShowEditor(false); searchRef.current?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -199,9 +216,12 @@ export default function App() {
           <button className="primary" onClick={addNote} disabled={mode === "connecting"} title="New note (Ctrl+Alt+N)">+ New</button>
         </header>
         <input
+          ref={searchRef}
+          id="search"
           className="search"
           type="search"
-          placeholder="Search notes or #tag"
+          placeholder="Search text and tags (press /)"
+          aria-label="Search all notes"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -213,13 +233,19 @@ export default function App() {
                 <button
                   key={t}
                   className={`chip ${on ? "on" : ""}`}
-                  onClick={() => setQuery(on ? query.replace(new RegExp(`(^|\\s)#${t}(?=\\s|$)`, "i"), "").trim() : `${query} #${t}`.trim())}
+                  onClick={() => toggleTagFilter(t)}
                 >
                   #{t} <span>{c}</span>
                 </button>
               );
             })}
           </div>
+        )}
+        {query.trim() && notes.length > 0 && (
+          <p className="results">
+            {visible.length} of {notes.length} note{notes.length === 1 ? "" : "s"} match
+            <button className="link" onClick={() => setQuery("")}>Clear</button>
+          </p>
         )}
         <ul className="list">
           {visible.map((n) => (
@@ -236,6 +262,9 @@ export default function App() {
                   <span>{formatDate(n.updatedAt)}</span>
                   <span className="item-preview">{previewOf(n) || "No additional text"}</span>
                 </div>
+                {tagsOf(n).length > 0 && (
+                  <div className="item-tags">{tagsOf(n).map((t) => <span key={t}>#{t}</span>)}</div>
+                )}
               </button>
             </li>
           ))}
@@ -264,11 +293,18 @@ export default function App() {
               <button onClick={togglePin} aria-pressed={active.pinned}>{active.pinned ? "★ Unpin" : "☆ Pin"}</button>
               <button className="danger" onClick={deleteActive}>Delete</button>
             </div>
+            <TagEditor
+              key={active.id}
+              tags={active.tags || []}
+              suggestions={tags.map(([t]) => t)}
+              onAdd={(raw) => changeTags(addTags(active, raw))}
+              onRemove={(t) => changeTags(removeTag(active, t))}
+            />
             <textarea
               ref={editorRef}
               value={active.body}
               onChange={(e) => updateActive({ body: e.target.value })}
-              placeholder={"Title on the first line…\n\nAdd #tags anywhere in the text."}
+              placeholder={"Title on the first line…\n\nTag this note above, or type #tags anywhere in the text."}
               spellCheck
             />
           </>
