@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pane Live Wallpaper</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="wall"></canvas>
+<script>
+// The four Pane Desktop wallpapers, drawn on one canvas.
+// pane_wallpaper.py drives this page through window.pane:
+//   pane.apply({wall, accent, fps})  pick wallpaper, accent color and frame-rate cap
+//   pane.pause(true|false)           freeze or resume the animation
+(() => {
+  'use strict';
+  const cv = document.getElementById('wall'), cx = cv.getContext('2d');
+  const cfg = { wall: 'aurora', accent: '#4f8cff', fps: 30 };
+  let W = 0, H = 0, hue = 220, stars = [], running = true, last = 0;
+  const seed = Math.random() * 1000;
+
+  function hexHue(hex) {
+    const n = parseInt(String(hex).replace('#', ''), 16);
+    if (Number.isNaN(n)) return 220;
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; }
+    return (h * 60 + 360) % 360;
+  }
+
+  // Soft gradients don't need high resolution: render at CSS pixels to keep the GPU cool.
+  function size() {
+    W = innerWidth; H = innerHeight;
+    cv.width = W; cv.height = H;
+    stars = [];
+    draw(performance.now());
+  }
+
+  const WALL = {
+    aurora(t) {
+      t += seed * 1000;
+      const g = cx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, `hsl(${hue + 20},50%,8%)`); g.addColorStop(1, `hsl(${hue - 30},45%,4%)`);
+      cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+      cx.globalCompositeOperation = 'lighter';
+      const blobs = [[hue, .28, .32], [hue + 70, .72, .26], [hue - 60, .52, .78], [hue + 160, .16, .82], [hue + 30, .86, .7]];
+      const R = Math.max(W, H);
+      blobs.forEach(([hu, bx, by], i) => {
+        const x = W * (bx + .16 * Math.sin(t * .00011 * (i + 1) + i)), y = H * (by + .13 * Math.cos(t * .00009 * (i + 2) + i * 2));
+        const r = R * (.36 + .07 * Math.sin(t * .00021 + i * 1.7));
+        const rg = cx.createRadialGradient(x, y, 0, x, y, r);
+        rg.addColorStop(0, `hsla(${hu},88%,56%,.38)`); rg.addColorStop(1, `hsla(${hu},88%,56%,0)`);
+        cx.fillStyle = rg; cx.fillRect(0, 0, W, H);
+      });
+      for (let k = 0; k < 3; k++) {
+        cx.beginPath();
+        const base = H * (.3 + .11 * k);
+        for (let x = -20; x <= W + 20; x += 14) {
+          const y = base + Math.sin(x * .0035 + t * .00035 * (k + 1) + k) * H * .07 + Math.sin(x * .011 - t * .0005 + k * 3) * 14;
+          x < 0 ? cx.moveTo(x, y) : cx.lineTo(x, y);
+        }
+        cx.strokeStyle = `hsla(${hue + 60 + k * 40},90%,65%,.07)`; cx.lineWidth = 60 + k * 20; cx.stroke();
+        cx.strokeStyle = `hsla(${hue + 60 + k * 40},95%,75%,.12)`; cx.lineWidth = 2; cx.stroke();
+      }
+      cx.globalCompositeOperation = 'source-over';
+    },
+    bloom(t) {
+      t += seed * 1000;
+      const g = cx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, `hsl(${hue},55%,13%)`); g.addColorStop(1, `hsl(${hue + 15},60%,5%)`);
+      cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+      const ox = W * .5, oy = H * .56, R = Math.min(W, H) * .46 * (1 + .03 * Math.sin(t * .0006));
+      cx.save(); cx.translate(ox, oy); cx.rotate(t * .00004);
+      cx.globalCompositeOperation = 'screen';
+      for (let layer = 0; layer < 2; layer++) {
+        const n = layer ? 6 : 8;
+        for (let i = 0; i < n; i++) {
+          cx.save(); cx.rotate(i * Math.PI * 2 / n + layer * .3 + Math.sin(t * .0003 + i) * .04);
+          const len = R * (layer ? .75 : 1);
+          const lg = cx.createLinearGradient(0, 0, len, 0);
+          lg.addColorStop(0, `hsla(${hue + i * 6},95%,${layer ? 78 : 68}%,.75)`);
+          lg.addColorStop(.6, `hsla(${hue + 20 + i * 6},90%,55%,.35)`);
+          lg.addColorStop(1, `hsla(${hue + 30},90%,45%,0)`);
+          cx.fillStyle = lg; cx.beginPath(); cx.ellipse(len * .5, 0, len * .52, len * (layer ? .16 : .2), 0, 0, Math.PI * 2); cx.fill();
+          cx.restore();
+        }
+      }
+      const core = cx.createRadialGradient(0, 0, 0, 0, 0, R * .3);
+      core.addColorStop(0, 'rgba(255,255,255,.55)'); core.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.fillStyle = core; cx.beginPath(); cx.arc(0, 0, R * .3, 0, Math.PI * 2); cx.fill();
+      cx.restore(); cx.globalCompositeOperation = 'source-over';
+    },
+    stars(t, dt) {
+      if (!stars.length) for (let i = 0; i < 520; i++) stars.push({ x: (Math.random() - .5) * 2, y: (Math.random() - .5) * 2, z: Math.random() });
+      cx.fillStyle = '#03040a'; cx.fillRect(0, 0, W, H);
+      const R = Math.max(W, H);
+      const ng = cx.createRadialGradient(W * .7, H * .3, 0, W * .7, H * .3, R * .6);
+      ng.addColorStop(0, `hsla(${hue + 40},80%,45%,.28)`); ng.addColorStop(1, 'hsla(0,0%,0%,0)');
+      cx.fillStyle = ng; cx.fillRect(0, 0, W, H);
+      const ng2 = cx.createRadialGradient(W * .2, H * .75, 0, W * .2, H * .75, R * .45);
+      ng2.addColorStop(0, `hsla(${hue - 30},80%,45%,.18)`); ng2.addColorStop(1, 'hsla(0,0%,0%,0)');
+      cx.fillStyle = ng2; cx.fillRect(0, 0, W, H);
+      const s = R * .5, step = .0016 * dt / 16.7;
+      for (const p of stars) {
+        p.z -= step;
+        if (p.z <= .02) { p.z = 1; p.x = (Math.random() - .5) * 2; p.y = (Math.random() - .5) * 2; }
+        const px = W / 2 + p.x / p.z * s * .5, py = H / 2 + p.y / p.z * s * .5;
+        if (px < 0 || px > W || py < 0 || py > H) continue;
+        const r = Math.max(.3, (1 - p.z) * 2.2), a = Math.min(1, (1 - p.z) * 1.4);
+        cx.fillStyle = `rgba(${220 + (p.x * 35 | 0)},225,255,${a})`;
+        cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2); cx.fill();
+      }
+    },
+    waves(t) {
+      t += seed * 1000;
+      const g = cx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, `hsl(${hue + 10},45%,10%)`); g.addColorStop(.55, `hsl(${hue},55%,24%)`); g.addColorStop(1, `hsl(${hue - 20},60%,42%)`);
+      cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+      const sun = cx.createRadialGradient(W * .72, H * .36, 0, W * .72, H * .36, H * .35);
+      sun.addColorStop(0, `hsla(${hue + 180},90%,80%,.5)`); sun.addColorStop(1, `hsla(${hue + 180},90%,70%,0)`);
+      cx.fillStyle = sun; cx.fillRect(0, 0, W, H);
+      for (let k = 0; k < 6; k++) {
+        const base = H * (.48 + k * .085), amp = 10 + k * 6, sp = .0004 + k * .00012;
+        cx.beginPath(); cx.moveTo(0, H);
+        for (let x = 0; x <= W + 16; x += 16) {
+          const y = base + Math.sin(x * (.006 - k * .0005) + t * sp + k * 1.3) * amp + Math.sin(x * .017 - t * sp * 1.7 + k) * amp * .35;
+          cx.lineTo(x, y);
+        }
+        cx.lineTo(W, H); cx.closePath();
+        cx.fillStyle = `hsla(${hue - 10 + k * 8},${60 + k * 4}%,${18 + k * 7}%,${.55 + k * .07})`; cx.fill();
+      }
+    }
+  };
+
+  function draw(t, dt = 0) { (WALL[cfg.wall] || WALL.aurora)(t, dt); }
+
+  function loop(t) {
+    if (!running) return;
+    const dt = t - last;
+    if (dt >= 1000 / cfg.fps - 2) {
+      draw(t, Math.min(dt, 100));
+      last = t;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  window.pane = {
+    apply(next) {
+      Object.assign(cfg, next || {});
+      cfg.fps = Math.max(5, Math.min(144, Number(cfg.fps) || 30));
+      hue = hexHue(cfg.accent);
+      stars = [];
+      draw(performance.now());
+      return true;
+    },
+    pause(on) {
+      const run = !on;
+      if (run && !running) { running = true; last = 0; requestAnimationFrame(loop); }
+      running = run;
+      return running;
+    }
+  };
+
+  addEventListener('resize', size);
+  hue = hexHue(cfg.accent);
+  size();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
