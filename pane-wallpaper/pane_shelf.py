@@ -12,6 +12,11 @@ click it.
 
 Each virtual desktop shows only the windows minimized on it.
 
+While an open window overlaps a screen's shelf, that shelf shrinks to a thin
+see-through bar with one colored dot per minimized window. Point at the bar
+to open the shelf again; it shrinks back once the pointer leaves, if a window
+is still in the way.
+
 Thumbnails are color-coded by type: web browsers, File Explorer folders,
 and other apps each get their own border and tint (see KIND_COLORS; the tray
 app lets you change them).
@@ -169,6 +174,9 @@ if sys.platform == "win32":
     QueryFullProcessImageNameW = _sig(kernel32.QueryFullProcessImageNameW, B, wintypes.HANDLE, D,
                                       wintypes.LPWSTR, ctypes.POINTER(D))
     CloseHandle = _sig(kernel32.CloseHandle, B, wintypes.HANDLE)
+    SetWindowLongPtrW = _sig(user32.SetWindowLongPtrW, LONG_PTR, H, I, LONG_PTR)
+    SetLayeredWindowAttributes = _sig(user32.SetLayeredWindowAttributes, B, H, wintypes.COLORREF,
+                                      ctypes.c_ubyte, D)
 
 # Win32 constants
 WM_DESTROY, WM_PAINT, WM_CLOSE, WM_ERASEBKGND = 0x0002, 0x000F, 0x0010, 0x0014
@@ -201,13 +209,18 @@ TRANSPARENT = 1
 NULL_PEN = 8
 DT_CENTER, DT_VCENTER, DT_SINGLELINE, DT_END_ELLIPSIS, DT_NOPREFIX = 0x1, 0x4, 0x20, 0x8000, 0x800
 DWM_TNP_RECTDESTINATION, DWM_TNP_OPACITY, DWM_TNP_VISIBLE, DWM_TNP_SOURCECLIENTAREAONLY = 0x1, 0x4, 0x8, 0x10
-DWMWA_CLOAKED, DWMWA_WINDOW_CORNER_PREFERENCE = 14, 33
+DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_CLOAKED, DWMWA_WINDOW_CORNER_PREFERENCE = 9, 14, 33
+WS_EX_LAYERED, LWA_ALPHA = 0x80000, 0x2
+EVENT_SYSTEM_FOREGROUND, EVENT_OBJECT_SHOW, EVENT_OBJECT_HIDE, EVENT_OBJECT_LOCATIONCHANGE = 0x0003, 0x8002, 0x8003, 0x800B
+BAR_ALPHA = 150         # 0-255: how see-through the shrunk bar is
 DWMWCP_ROUND = 2
 MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY, MONITOR_DEFAULTTONEAREST = 0, 1, 2
 MDT_EFFECTIVE_DPI = 0
 WPF_SETMINPOSITION = 0x1
 ERROR_CLASS_ALREADY_EXISTS = 1410
-TIMER_ID = 1
+TIMER_ID = 1             # the once-a-second check
+TIMER_OVERLAP = 2        # a short delay after windows move, so a drag doesn't re-check 60 times a second
+TIMER_UNPEEK = 3         # a short delay after the pointer leaves an opened-up shelf
 DRAG_START_PX = 6
 SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
                  "Windows.UI.Core.CoreWindow", "XamlExplorerHostIslandWindow"}
@@ -376,6 +389,12 @@ class Panel:
         self.hover = -1
         self.hover_close = False
         self.tracking = False
+        self.all_entries = []      # everything on this screen's shelf, including overflow
+        self.full_rect = None      # where the full shelf sits, in screen coordinates
+        self.collapsed = False     # an open window overlaps the full shelf
+        self.peek = False          # the pointer is on the bar, so show the full shelf anyway
+        self.bar = False           # currently drawn as the thin bar
+        self.dot = 8
         create_window(self, WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE)
         pref = ctypes.c_int(DWMWCP_ROUND)
         self.round_corners = DwmSetWindowAttribute(
@@ -399,8 +418,9 @@ class Panel:
         work = work_rect(self.monitor)
         if work is None:
             entries = []
+        self.all_entries = list(entries)
         if not entries:
-            self.entries, self.rects = [], []
+            self.entries, self.rects, self.full_rect, self.bar = [], [], None, False
             ShowWindow(self.hwnd, SW_HIDE)
             return []
 
@@ -426,6 +446,13 @@ class Panel:
         h = 2 * pad + tile_h
         x = wl + (wr - wl - w) // 2
         y = wb - h - self.px(12)
+        self.full_rect = (x, y, x + w, y + h)
+        dragging_here = self.shelf.drag and self.shelf.drag.panel is self
+        if self.collapsed and not self.peek and not dragging_here:
+            self.show_bar(entries, x + w // 2, y + h)
+            return overflow
+        self.set_alpha(None)
+        self.bar = False
         self.size = (w, h)
         SetWindowPos(self.hwnd, wintypes.HWND(HWND_TOPMOST), x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW)
         if not self.round_corners:
@@ -448,6 +475,43 @@ class Panel:
             self.hover = -1
         InvalidateRect(self.hwnd, None, True)
         return overflow
+
+    def show_bar(self, entries, center_x, bottom):
+        """Shrink to a see-through bar, bottom-aligned inside where the full shelf would be,
+        so pointing at it opens the shelf without the pointer falling off its edge."""
+        for e in entries:
+            if e.thumb_host == self.hwnd:
+                e.place(None)
+        self.dot, step = self.px(8), self.px(14)
+        w = max(self.px(72), len(entries) * step + self.px(24))
+        h = self.px(16)
+        self.entries, self.rects, self.bar = list(entries), [], True
+        self.hover = -1
+        self.size = (w, h)
+        SetWindowPos(self.hwnd, wintypes.HWND(HWND_TOPMOST), center_x - w // 2, bottom - h, w, h,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW)
+        if not self.round_corners:
+            SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, h, h), True)
+        self.set_alpha(BAR_ALPHA)
+        InvalidateRect(self.hwnd, None, True)
+
+    def set_alpha(self, alpha):
+        """See-through (alpha 0-255) for the bar; None makes the window solid again.
+        The full shelf stays an ordinary window so the live previews always draw."""
+        ex = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE)
+        if alpha is None:
+            if ex & WS_EX_LAYERED:
+                SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, ex & ~WS_EX_LAYERED)
+            return
+        if not ex & WS_EX_LAYERED:
+            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED)
+        SetLayeredWindowAttributes(self.hwnd, 0, alpha, LWA_ALPHA)
+
+    def unpeek(self):
+        self.peek = False
+        if self.all_entries:
+            self.show(self.all_entries)
+        self.shelf.update_overlap()
 
     # ---- messages ----
     def on_message(self, msg, wp, lp):
@@ -476,8 +540,17 @@ class Panel:
             drag = self.shelf.drag
             if drag and GetCapture() == self.hwnd:
                 drag.move(cursor_pos())
-            else:
-                self.on_hover(*xy(lp))
+                return 0
+            KillTimer(self.hwnd, TIMER_UNPEEK)
+            if self.bar:  # pointing at the bar: open the full shelf
+                self.peek = True
+                self.show(self.all_entries)
+            self.on_hover(*xy(lp))
+            return 0
+        if msg == WM_TIMER and wp == TIMER_UNPEEK:
+            KillTimer(self.hwnd, TIMER_UNPEEK)
+            if self.peek and not self.contains(cursor_pos()):
+                self.unpeek()
             return 0
         if msg == WM_LBUTTONUP:
             drag = self.shelf.drag
@@ -508,6 +581,8 @@ class Panel:
         if msg == WM_MOUSELEAVE:
             self.tracking = False
             self.set_hover(-1, False)
+            if self.peek:
+                SetTimer(self.hwnd, TIMER_UNPEEK, 400, None)
             return 0
         if msg == WM_DESTROY:
             if self.font:
@@ -521,6 +596,9 @@ class Panel:
         ps = PAINTSTRUCT()
         hdc = BeginPaint(self.hwnd, ctypes.byref(ps))
         try:
+            if self.bar:
+                self.paint_bar(hdc)
+                return
             if not self.rects:
                 return
             br = self.shelf.brushes
@@ -570,6 +648,25 @@ class Panel:
             SelectObject(hdc, old_font)
         finally:
             EndPaint(self.hwnd, ctypes.byref(ps))
+
+    def paint_bar(self, hdc):
+        w, h = self.size
+        FillRect(hdc, ctypes.byref(wintypes.RECT(0, 0, w, h)), self.shelf.brushes["panel"])
+        old_pen = SelectObject(hdc, GetStockObject(NULL_PEN))
+        d, step = self.dot, self.px(14)
+        x = (w - (len(self.entries) * step - (step - d))) // 2
+        y = (h - d) // 2
+        for e in self.entries:
+            c = self.shelf.kind_color(e)
+            SelectObject(hdc, self.shelf.brush(COLORS["muted"] if c is None else c))
+            RoundRect(hdc, x, y, x + d, y + d, d, d)
+            x += step
+        SelectObject(hdc, old_pen)
+
+    def contains(self, pt):
+        r = wintypes.RECT()
+        GetWindowRect(self.hwnd, ctypes.byref(r))
+        return r.left <= pt.x < r.right and r.top <= pt.y < r.bottom
 
     def hit(self, x, y):
         for i, (tile, close) in enumerate(self.rects):
@@ -671,6 +768,7 @@ class Drag:
 
     def cancel(self):
         self.finish()
+        self.shelf.end_peeks()
         self.shelf.layout()
 
     def drop(self, pt):
@@ -679,6 +777,7 @@ class Drag:
         if target and not same_monitor(target, self.entry.monitor):
             move_to_monitor(self.entry.hwnd, self.entry.monitor, target)
             self.entry.monitor = target
+        self.shelf.end_peeks()
         self.shelf.layout()
 
 
@@ -694,8 +793,9 @@ class Shelf:
         self.drag = None
         self.covered_monitor = None
         self.cloaked = set()
-        self.hook = None
+        self.hooks = []
         self._hook_ref = None
+        self.overlap_pending = False
         self.brushes = {}
         self.brush_cache = {}  # COLORREF -> brush, for the color-coded tiles
 
@@ -705,6 +805,13 @@ class Shelf:
             return
         self.thread = threading.Thread(target=self.run, name="PaneShelf", daemon=True)
         self.thread.start()
+
+    def end_peeks(self):
+        """After a drag the pointer may be anywhere: let shelves shrink again if they should."""
+        cur = cursor_pos()
+        for p in self.panels.values():
+            if p.peek and p.hwnd and not p.contains(cur):
+                p.peek = False
 
     def refresh(self):
         """Repaint the shelves, e.g. after the colors changed. Safe to call from any thread."""
@@ -738,8 +845,14 @@ class Shelf:
         for name, color in COLORS.items():
             self.brushes[name] = CreateSolidBrush(color)
         self._hook_ref = WINEVENTPROC(self.on_winevent)
-        self.hook = SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, None,
-                                    self._hook_ref, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS)
+        flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+        for first, last in ((EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND),
+                            (EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND),
+                            (EVENT_OBJECT_SHOW, EVENT_OBJECT_HIDE),
+                            (EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE)):
+            hook = SetWinEventHook(first, last, None, self._hook_ref, 0, 0, flags)
+            if hook:
+                self.hooks.append(hook)
         SetTimer(self.hwnd, TIMER_ID, 1000, None)
         self.add_existing()
 
@@ -750,9 +863,10 @@ class Shelf:
 
     def cleanup(self):
         KillTimer(self.hwnd, TIMER_ID)
-        if self.hook:
-            UnhookWinEvent(self.hook)
-            self.hook = None
+        for hook in self.hooks:
+            UnhookWinEvent(hook)
+        self.hooks.clear()
+        KillTimer(self.hwnd, TIMER_OVERLAP)
         if self.drag:
             self.drag.finish()
             self.drag = None
@@ -832,6 +946,22 @@ class Shelf:
             if panel is None:
                 panel = self.panels[key] = Panel(self, entries[0].monitor)
             panel.show(entries)
+        self.update_overlap()
+
+    def update_overlap(self):
+        """Shrink each screen's shelf to a bar while an open window overlaps it, and grow it back
+        when nothing does."""
+        if not self.hwnd or (self.drag and self.drag.active):
+            return
+        autohide = self.get_cfg().get("shelf_autohide", True)
+        live = [p for p in self.panels.values() if p.hwnd and p.full_rect and p.all_entries]
+        rects = open_window_rects() if autohide and live else []
+        for p in live:
+            l, t, r_, b = p.full_rect
+            want = any(w[0] < r_ and w[2] > l and w[1] < b and w[3] > t for w in rects)
+            if want != p.collapsed:
+                p.collapsed = want
+                p.show(p.all_entries)
 
     # ---- events ----
     def on_winevent(self, hook, event, hwnd, id_object, id_child, thread, time_ms):
@@ -842,17 +972,27 @@ class Shelf:
                 self.add(hwnd)
             elif event == EVENT_SYSTEM_MINIMIZEEND:
                 self.remove(hwnd)
+            elif self.panels and not self.overlap_pending:
+                # A window moved, appeared, disappeared or came to the front: re-check shortly.
+                self.overlap_pending = True
+                SetTimer(self.hwnd, TIMER_OVERLAP, 80, None)
         except Exception as e:
             print(f"shelf hook: {e!r}", file=sys.stderr)
 
     def on_message(self, msg, wp, lp):
         if msg == WM_TIMER:
-            self.tick()
+            if wp == TIMER_OVERLAP:
+                KillTimer(self.hwnd, TIMER_OVERLAP)
+                self.overlap_pending = False
+                self.update_overlap()
+            else:
+                self.tick()
             return 0
         if msg == WM_APP_REFRESH:
             for p in self.panels.values():
                 if p.hwnd:
                     InvalidateRect(p.hwnd, None, False)
+            self.update_overlap()
             return 0
         if msg == WM_APP_SCREENS:
             self.screens_changed()
@@ -902,6 +1042,8 @@ class Shelf:
             changed = True
         if changed:
             self.layout()
+        else:
+            self.update_overlap()
 
     # ---- actions ----
     def bring_back(self, h):
@@ -1048,6 +1190,34 @@ def class_name(h):
     buf = ctypes.create_unicode_buffer(256)
     GetClassNameW(h, buf, 256)
     return buf.value
+
+
+def window_bounds(h):
+    """The visible frame of a window (GetWindowRect includes invisible resize borders)."""
+    r = wintypes.RECT()
+    if DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, ctypes.byref(r), ctypes.sizeof(r)) != 0:
+        GetWindowRect(h, ctypes.byref(r))
+    return r.left, r.top, r.right, r.bottom
+
+
+def open_window_rects():
+    """Screen rectangles of the open (not minimized) app windows on the current desktop."""
+    rects = []
+
+    def visit(h, _):
+        if h in _owners or not IsWindowVisible(h) or IsIconic(h):
+            return True
+        if GetWindowLongPtrW(h, GWL_EXSTYLE) & (WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT):
+            return True  # floating palettes, overlays and notifications don't count
+        if GetWindowTextLengthW(h) == 0 or class_name(h) in SHELL_CLASSES or is_cloaked(h):
+            return True
+        b = window_bounds(h)
+        if b[2] > b[0] and b[3] > b[1]:
+            rects.append(b)
+        return True
+
+    EnumWindows(WNDENUMPROC(visit), 0)
+    return rects
 
 
 def is_cloaked(h):

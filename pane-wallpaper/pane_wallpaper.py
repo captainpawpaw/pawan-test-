@@ -48,6 +48,7 @@ DEFAULTS = {
     "paused": False,
     "auto_pause": True,  # pause while another app is maximized or full screen
     "shelf": True,       # thumbnail shelf for minimized windows
+    "shelf_autohide": True,  # shrink a shelf to a thin bar while an open window overlaps it
     "shelf_colors": True,  # color-code thumbnails: browsers, folders, other apps
     "color_browser": "#4f8cff",
     "color_folder": "#e0b21f",
@@ -424,6 +425,8 @@ class WallpaperApp:
                  checked=lambda it: self.cfg["auto_pause"]),
             item("Thumbnail shelf for minimized windows", lambda icon, it: self.toggle_shelf(),
                  checked=lambda it: self.cfg["shelf"]),
+            item("Shrink the shelf behind open windows", toggle("shelf_autohide"),
+                 checked=lambda it: self.cfg["shelf_autohide"], enabled=lambda it: self.cfg["shelf"]),
             item("Shelf colors", Menu(
                 item("Color-code by type", toggle("shelf_colors"), checked=lambda it: self.cfg["shelf_colors"]),
                 Menu.SEPARATOR,
