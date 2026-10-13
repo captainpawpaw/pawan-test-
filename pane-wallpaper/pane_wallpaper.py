@@ -38,6 +38,8 @@ ACCENTS = [
     ("Teal", "#0f9bab"),
 ]
 FRAME_RATES = [15, 30, 60]
+SHELF_COLORS = ACCENTS + [("Yellow", "#e0b21f"), ("Gray", "#8a90a0")]
+SHELF_KINDS = [("color_browser", "Web browsers"), ("color_folder", "Folders"), ("color_app", "Apps")]
 
 DEFAULTS = {
     "wall": "aurora",
@@ -46,7 +48,11 @@ DEFAULTS = {
     "paused": False,
     "auto_pause": True,  # pause while another app is maximized or full screen
     "shelf": True,       # thumbnail shelf for minimized windows
-    "shelf_swap": True,  # opening from the shelf sends the front window to the shelf
+    "shelf_autohide": True,  # shrink a shelf to a thin bar while an open window overlaps it
+    "shelf_colors": True,  # color-code thumbnails: browsers, folders, other apps
+    "color_browser": "#4f8cff",
+    "color_folder": "#e0b21f",
+    "color_app": "#1f9d63",
 }
 
 
@@ -385,6 +391,8 @@ class WallpaperApp:
             self.icon.icon = self.tray_image()
         if self.icon:
             self.icon.update_menu()
+        if self.shelf:
+            self.shelf.refresh()
 
     def build_menu(self):
         item, Menu = self.pystray.MenuItem, self.pystray.Menu
@@ -417,8 +425,16 @@ class WallpaperApp:
                  checked=lambda it: self.cfg["auto_pause"]),
             item("Thumbnail shelf for minimized windows", lambda icon, it: self.toggle_shelf(),
                  checked=lambda it: self.cfg["shelf"]),
-            item("Swap from the shelf", toggle("shelf_swap"), checked=lambda it: self.cfg["shelf_swap"],
-                 enabled=lambda it: self.cfg["shelf"]),
+            item("Shrink the shelf behind open windows", toggle("shelf_autohide"),
+                 checked=lambda it: self.cfg["shelf_autohide"], enabled=lambda it: self.cfg["shelf"]),
+            item("Shelf colors", Menu(
+                item("Color-code by type", toggle("shelf_colors"), checked=lambda it: self.cfg["shelf_colors"]),
+                Menu.SEPARATOR,
+                *[item(label, Menu(*[item(name, choose(key, hexv), checked=is_set(key, hexv), radio=True)
+                                     for name, hexv in SHELF_COLORS]),
+                       enabled=lambda it: self.cfg["shelf_colors"])
+                  for key, label in SHELF_KINDS],
+            ), enabled=lambda it: self.cfg["shelf"]),
             Menu.SEPARATOR,
             item("Start with Windows", toggle_autostart, checked=lambda it: get_autostart()),
             Menu.SEPARATOR,
