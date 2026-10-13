@@ -12,6 +12,10 @@ click it.
 
 Each virtual desktop shows only the windows minimized on it.
 
+Thumbnails are color-coded by type: web browsers, File Explorer folders,
+and other apps each get their own border and tint (see KIND_COLORS; the tray
+app lets you change them).
+
 The previews are DWM thumbnails, the same live images the taskbar and
 Alt+Tab use. Minimize and restore are picked up with a WinEvent hook, so
 nothing is injected into other apps.
@@ -160,6 +164,11 @@ if sys.platform == "win32":
     DwmGetWindowAttribute = _sig(dwmapi.DwmGetWindowAttribute, ctypes.c_long, H, D, ctypes.c_void_p, D)
     DwmSetWindowAttribute = _sig(dwmapi.DwmSetWindowAttribute, ctypes.c_long, H, D, ctypes.c_void_p, D)
     GetModuleHandleW = _sig(kernel32.GetModuleHandleW, wintypes.HMODULE, wintypes.LPCWSTR)
+    GetWindowThreadProcessId = _sig(user32.GetWindowThreadProcessId, D, H, ctypes.POINTER(D))
+    OpenProcess = _sig(kernel32.OpenProcess, wintypes.HANDLE, D, B, D)
+    QueryFullProcessImageNameW = _sig(kernel32.QueryFullProcessImageNameW, B, wintypes.HANDLE, D,
+                                      wintypes.LPWSTR, ctypes.POINTER(D))
+    CloseHandle = _sig(kernel32.CloseHandle, B, wintypes.HANDLE)
 
 # Win32 constants
 WM_DESTROY, WM_PAINT, WM_CLOSE, WM_ERASEBKGND = 0x0002, 0x000F, 0x0010, 0x0014
@@ -168,6 +177,8 @@ WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONUP = 0x0200, 0x0201, 0x020
 WM_CAPTURECHANGED, WM_MOUSELEAVE = 0x0215, 0x02A3
 WM_DPICHANGED, WM_DISPLAYCHANGE, WM_SETTINGCHANGE = 0x02E0, 0x007E, 0x001A
 WM_APP_SCREENS = 0x8001  # WM_APP + 1: a panel saw the screens change
+WM_APP_REFRESH = 0x8002  # WM_APP + 2: colors changed, repaint
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 MA_NOACTIVATE = 3
 WS_POPUP = 0x80000000
 WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_NOACTIVATE, WS_EX_TRANSPARENT = 0x80, 0x8, 0x08000000, 0x20
@@ -217,6 +228,30 @@ COLORS = {
     "close": rgb(196, 43, 28),
     "close_hover": rgb(232, 64, 48),
 }
+
+# Thumbnail colors by window type. The tray app overrides these with the
+# color_browser / color_folder / color_app settings, and shelf_colors=False turns them off.
+KIND_COLORS = {"browser": "#4f8cff", "folder": "#e0b21f", "app": "#1f9d63"}
+BROWSERS = {
+    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
+    "iexplore.exe", "chromium.exe", "librewolf.exe", "waterfox.exe", "floorp.exe", "zen.exe",
+    "thorium.exe", "browser.exe", "maxthon.exe", "palemoon.exe", "seamonkey.exe", "duckduckgo.exe",
+}
+FOLDER_CLASSES = {"CabinetWClass", "ExploreWClass"}
+
+
+def hex_to_colorref(hexv):
+    v = hexv.lstrip("#")
+    return rgb(int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+
+
+def mix(c, base, t):
+    """Blend COLORREF c into base by t (0..1)."""
+    out = 0
+    for shift in (0, 8, 16):
+        a, b = (c >> shift) & 255, (base >> shift) & 255
+        out |= int(round(b + (a - b) * t)) << shift
+    return out
 
 # One window procedure for the process; it hands each message to the object that owns the window.
 _owners = {}
@@ -281,6 +316,7 @@ class Entry:
         self.has_preview = False
         self.title = window_title(hwnd)
         self.icon = window_icon(hwnd)
+        self.kind = window_kind(hwnd)
 
     def show_in(self, host_hwnd):
         """Make sure the live preview is registered to draw into host_hwnd."""
@@ -497,8 +533,19 @@ class Panel:
             for i, (e, (tile, close)) in enumerate(zip(self.entries, self.rects)):
                 hovered = i == self.hover and dragging is None
                 lifted = e is dragging
-                SelectObject(hdc, br["tile_drag" if lifted else "tile_hover" if hovered else "tile"])
-                RoundRect(hdc, *tile, radius, radius)
+                plain = COLORS["tile_drag" if lifted else "tile_hover" if hovered else "tile"]
+                kind = self.shelf.kind_color(e)
+                if kind is None:
+                    SelectObject(hdc, self.shelf.brush(plain))
+                    RoundRect(hdc, *tile, radius, radius)
+                else:  # a colored border, then the tile tinted with the same color
+                    SelectObject(hdc, self.shelf.brush(mix(kind, plain, 0.45) if lifted else kind))
+                    RoundRect(hdc, *tile, radius, radius)
+                    edge = self.px(2)
+                    tint = mix(kind, plain, 0.10 if lifted else 0.30 if hovered else 0.20)
+                    SelectObject(hdc, self.shelf.brush(tint))
+                    RoundRect(hdc, tile[0] + edge, tile[1] + edge, tile[2] - edge, tile[3] - edge,
+                              radius - edge, radius - edge)
                 l, t, r, b = tile
                 cap_top = b - self.px(30)
                 if (lifted or not e.has_preview) and e.icon:  # no live picture here: show the app's icon
@@ -574,7 +621,14 @@ class Ghost:
         if msg == WM_PAINT:
             ps = PAINTSTRUCT()
             hdc = BeginPaint(self.hwnd, ctypes.byref(ps))
-            FillRect(hdc, ctypes.byref(wintypes.RECT(0, 0, self.w, self.h)), self.shelf.brushes["ghost"])
+            kind = self.shelf.kind_color(self.entry)
+            if kind is None:
+                FillRect(hdc, ctypes.byref(wintypes.RECT(0, 0, self.w, self.h)), self.shelf.brushes["ghost"])
+            else:
+                edge = max(2, int(3 * self.scale))
+                FillRect(hdc, ctypes.byref(wintypes.RECT(0, 0, self.w, self.h)), self.shelf.brush(kind))
+                FillRect(hdc, ctypes.byref(wintypes.RECT(edge, edge, self.w - edge, self.h - edge)),
+                         self.shelf.brush(mix(kind, COLORS["ghost"], 0.25)))
             if not self.has_preview and self.entry.icon:
                 big = int(48 * self.scale)
                 DrawIconEx(hdc, (self.w - big) // 2, (self.h - big) // 2, self.entry.icon, big, big, 0, None, DI_NORMAL)
@@ -643,6 +697,7 @@ class Shelf:
         self.hook = None
         self._hook_ref = None
         self.brushes = {}
+        self.brush_cache = {}  # COLORREF -> brush, for the color-coded tiles
 
     # ---- lifecycle ----
     def start(self):
@@ -650,6 +705,27 @@ class Shelf:
             return
         self.thread = threading.Thread(target=self.run, name="PaneShelf", daemon=True)
         self.thread.start()
+
+    def refresh(self):
+        """Repaint the shelves, e.g. after the colors changed. Safe to call from any thread."""
+        if self.hwnd:
+            PostMessageW(self.hwnd, WM_APP_REFRESH, 0, 0)
+
+    def kind_color(self, e):
+        """The COLORREF for this window's type, or None when color-coding is off."""
+        cfg = self.get_cfg()
+        if not cfg.get("shelf_colors", True):
+            return None
+        try:
+            return hex_to_colorref(cfg.get(f"color_{e.kind}") or KIND_COLORS[e.kind])
+        except (ValueError, KeyError):
+            return hex_to_colorref(KIND_COLORS.get(e.kind, KIND_COLORS["app"]))
+
+    def brush(self, color):
+        b = self.brush_cache.get(color)
+        if b is None:
+            b = self.brush_cache[color] = CreateSolidBrush(color)
+        return b
 
     def stop(self):
         if self.hwnd:
@@ -684,9 +760,10 @@ class Shelf:
             e.release()
         self.entries.clear()
         self.drop_panels()
-        for b in self.brushes.values():
+        for b in list(self.brushes.values()) + list(self.brush_cache.values()):
             DeleteObject(b)
         self.brushes.clear()
+        self.brush_cache.clear()
         self.hwnd = None
 
     def drop_panels(self):
@@ -771,6 +848,11 @@ class Shelf:
     def on_message(self, msg, wp, lp):
         if msg == WM_TIMER:
             self.tick()
+            return 0
+        if msg == WM_APP_REFRESH:
+            for p in self.panels.values():
+                if p.hwnd:
+                    InvalidateRect(p.hwnd, None, False)
             return 0
         if msg == WM_APP_SCREENS:
             self.screens_changed()
@@ -934,6 +1016,32 @@ def cursor_pos():
     pt = wintypes.POINT()
     GetCursorPos(ctypes.byref(pt))
     return pt
+
+
+def process_name(h):
+    """The lower-case .exe name of the process that owns window h, or "" if Windows won't say."""
+    pid = wintypes.DWORD()
+    GetWindowThreadProcessId(h, ctypes.byref(pid))
+    proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+    if not proc:
+        return ""  # e.g. an app running as administrator
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(len(buf))
+        if not QueryFullProcessImageNameW(proc, 0, buf, ctypes.byref(size)):
+            return ""
+        return buf.value.replace("/", "\\").rsplit("\\", 1)[-1].lower()
+    finally:
+        CloseHandle(proc)
+
+
+def window_kind(h):
+    """"folder" for File Explorer windows, "browser" for web browsers, otherwise "app"."""
+    if class_name(h) in FOLDER_CLASSES:
+        return "folder"
+    if process_name(h) in BROWSERS:
+        return "browser"
+    return "app"
 
 
 def class_name(h):

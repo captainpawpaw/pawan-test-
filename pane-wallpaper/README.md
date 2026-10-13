@@ -30,6 +30,7 @@ The app has no window. It lives in the **system tray**: click the **^** arrow at
 - **Pause**: freezes the current frame
 - **Pause while an app is maximized or full screen**: on by default, so games and videos don't share the GPU with your wallpaper
 - **Thumbnail shelf for minimized windows**: on by default (see below)
+- **Shelf colors**: turn color-coding on or off, and pick the color for **Web browsers**, **Folders** and **Apps**
 - **Start with Windows**
 - **Quit**: puts your normal wallpaper back
 
@@ -40,6 +41,7 @@ Minimize any window (the – button, the taskbar, or Win+Down) and a live previe
 - **Click a preview** to bring that window back. Only that window changes: the shelf never minimizes or opens anything on its own.
 - **Hover a preview** and click its **✕**, or **middle-click** it, to close that window.
 - **Drag a preview to another screen** to move that window there. Drop it anywhere on the other screen. The window stays minimized, joins that screen's shelf, and opens on that screen when you click it. It keeps the same position relative to the screen's corner, shrinking to fit if the new screen is smaller. A window that was maximized comes back maximized on its new screen.
+- **Colors by type:** each thumbnail has a colored border and tint showing what it is. By default web browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi and others) are **blue**, File Explorer folders are **yellow**, and every other app is **green**. Change any of them, or turn the colors off, under **Shelf colors** in the tray menu.
 - **Virtual desktops:** each desktop's shelf shows only the windows minimized on that desktop.
 - Windows that were already minimized when the app started show up on the shelf straight away.
 - A screen's shelf hides while a game or video is full screen on that screen.
