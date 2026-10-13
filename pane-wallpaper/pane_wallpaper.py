@@ -5,6 +5,9 @@ your real Windows desktop background, behind your desktop icons. A tray icon
 lets you switch wallpaper, change the accent color, cap the frame rate, pause,
 and start it with Windows.
 
+It also runs the thumbnail shelf (pane_shelf.py): minimized windows show up as
+live previews above the taskbar, and clicking one brings that window back.
+
 How it works: the wallpaper is a small web page (wallpaper.html) shown in an
 Edge WebView2 window. That window is then re-parented into the desktop's
 wallpaper layer (the "WorkerW" window that Explorer puts between the
@@ -42,6 +45,8 @@ DEFAULTS = {
     "fps": 30,
     "paused": False,
     "auto_pause": True,  # pause while another app is maximized or full screen
+    "shelf": True,       # thumbnail shelf for minimized windows
+    "shelf_swap": True,  # opening from the shelf sends the front window to the shelf
 }
 
 
@@ -303,6 +308,7 @@ class WallpaperApp:
         self.paused_now = None
         self.stop = threading.Event()
         self.icon = None
+        self.shelf = None
 
     # ---- talking to the page ----
     def push(self):
@@ -409,13 +415,36 @@ class WallpaperApp:
             item("Pause", toggle("paused"), checked=lambda it: self.cfg["paused"]),
             item("Pause while an app is maximized or full screen", toggle("auto_pause"),
                  checked=lambda it: self.cfg["auto_pause"]),
+            item("Thumbnail shelf for minimized windows", lambda icon, it: self.toggle_shelf(),
+                 checked=lambda it: self.cfg["shelf"]),
+            item("Swap from the shelf", toggle("shelf_swap"), checked=lambda it: self.cfg["shelf_swap"],
+                 enabled=lambda it: self.cfg["shelf"]),
+            Menu.SEPARATOR,
             item("Start with Windows", toggle_autostart, checked=lambda it: get_autostart()),
             Menu.SEPARATOR,
             item("Quit", lambda icon, it: self.quit()),
         )
 
+    # ---- thumbnail shelf ----
+    def start_shelf(self):
+        import pane_shelf
+        self.shelf = pane_shelf.Shelf(lambda: self.cfg)
+        self.shelf.start()
+
+    def toggle_shelf(self):
+        on = not self.cfg["shelf"]
+        self.update(shelf=on)
+        if on:
+            self.start_shelf()
+        elif self.shelf:
+            self.shelf.stop()
+            self.shelf = None
+
     def quit(self):
         self.stop.set()
+        if self.shelf:
+            self.shelf.stop()
+            self.shelf = None
         if self.icon:
             try:
                 self.icon.stop()
@@ -439,6 +468,8 @@ class WallpaperApp:
 
         self.icon = self.pystray.Icon("PaneLiveWallpaper", self.tray_image(), APP_NAME, self.build_menu())
         self.icon.run_detached()
+        if self.cfg["shelf"]:
+            self.start_shelf()
         try:
             self.webview.start(lambda: threading.Thread(target=self.setup, daemon=True).start(),
                                gui="edgechromium")
