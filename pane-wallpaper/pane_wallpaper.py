@@ -46,7 +46,6 @@ DEFAULTS = {
     "paused": False,
     "auto_pause": True,  # pause while another app is maximized or full screen
     "shelf": True,       # thumbnail shelf for minimized windows
-    "shelf_swap": True,  # opening from the shelf sends the front window to the shelf
 }
 
 
@@ -417,8 +416,6 @@ class WallpaperApp:
                  checked=lambda it: self.cfg["auto_pause"]),
             item("Thumbnail shelf for minimized windows", lambda icon, it: self.toggle_shelf(),
                  checked=lambda it: self.cfg["shelf"]),
-            item("Swap from the shelf", toggle("shelf_swap"), checked=lambda it: self.cfg["shelf_swap"],
-                 enabled=lambda it: self.cfg["shelf"]),
             Menu.SEPARATOR,
             item("Start with Windows", toggle_autostart, checked=lambda it: get_autostart()),
             Menu.SEPARATOR,

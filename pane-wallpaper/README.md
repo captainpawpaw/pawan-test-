@@ -30,7 +30,6 @@ The app has no window. It lives in the **system tray**: click the **^** arrow at
 - **Pause**: freezes the current frame
 - **Pause while an app is maximized or full screen**: on by default, so games and videos don't share the GPU with your wallpaper
 - **Thumbnail shelf for minimized windows**: on by default (see below)
-- **Swap from the shelf**: when you bring a window back from the shelf, the window you were using goes onto the shelf in its place
 - **Start with Windows**
 - **Quit**: puts your normal wallpaper back
 
@@ -38,7 +37,7 @@ The app has no window. It lives in the **system tray**: click the **^** arrow at
 
 Minimize any window (the – button, the taskbar, or Win+Down) and a live preview of it appears in a shelf centered above the taskbar **of the screen that window was on**. Each screen has its own shelf. Windows still plays its usual minimize animation, and the window keeps its taskbar button too.
 
-- **Click a preview** to bring that window back.
+- **Click a preview** to bring that window back. Only that window changes: the shelf never minimizes or opens anything on its own.
 - **Hover a preview** and click its **✕**, or **middle-click** it, to close that window.
 - **Drag a preview to another screen** to move that window there. Drop it anywhere on the other screen. The window stays minimized, joins that screen's shelf, and opens on that screen when you click it. It keeps the same position relative to the screen's corner, shrinking to fit if the new screen is smaller. A window that was maximized comes back maximized on its new screen.
 - **Virtual desktops:** each desktop's shelf shows only the windows minimized on that desktop.

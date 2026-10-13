@@ -2,9 +2,9 @@
 
 When you minimize a window anywhere in Windows, a live preview of it appears
 in a shelf just above the taskbar of the screen the window was on. Click a
-preview to bring that window back. With "swap" on, the window you were using
-takes its place on the shelf. Hover a preview and click its x (or
-middle-click the preview) to close that window.
+preview to bring that window back; nothing else is minimized or restored
+for you. Hover a preview and click its x (or middle-click the preview) to
+close that window.
 
 Drag a preview to another screen to move the window there. It stays
 minimized, joins that screen's shelf, and opens on that screen when you
@@ -823,15 +823,12 @@ class Shelf:
 
     # ---- actions ----
     def bring_back(self, h):
-        front = GetForegroundWindow()
+        """Restore just this window. Other windows are left exactly as they are."""
         if IsIconic(h):
             ShowWindow(h, SW_RESTORE)
         # Our click counts as the last input, so Windows lets us hand focus over.
         if not SetForegroundWindow(h):
             SwitchToThisWindow(h, True)
-        swap = self.get_cfg().get("shelf_swap", True)
-        if swap and front and front != h and not IsIconic(front) and self.trackable(front):
-            ShowWindow(front, SW_MINIMIZE)
 
     def close_window(self, h):
         PostMessageW(h, WM_CLOSE, 0, 0)
