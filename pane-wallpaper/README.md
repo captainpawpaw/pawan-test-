@@ -36,12 +36,14 @@ The app has no window. It lives in the **system tray**: click the **^** arrow at
 
 ## Thumbnail shelf
 
-Minimize any window (the – button, the taskbar, or Win+Down) and a live preview of it appears in a shelf centered above the taskbar. Windows still plays its usual minimize animation, and the window keeps its taskbar button too.
+Minimize any window (the – button, the taskbar, or Win+Down) and a live preview of it appears in a shelf centered above the taskbar **of the screen that window was on**. Each screen has its own shelf. Windows still plays its usual minimize animation, and the window keeps its taskbar button too.
 
 - **Click a preview** to bring that window back.
 - **Hover a preview** and click its **✕**, or **middle-click** it, to close that window.
+- **Drag a preview to another screen** to move that window there. Drop it anywhere on the other screen. The window stays minimized, joins that screen's shelf, and opens on that screen when you click it. It keeps the same position relative to the screen's corner, shrinking to fit if the new screen is smaller. A window that was maximized comes back maximized on its new screen.
+- **Virtual desktops:** each desktop's shelf shows only the windows minimized on that desktop.
 - Windows that were already minimized when the app started show up on the shelf straight away.
-- The shelf hides while a game or video is full screen.
+- A screen's shelf hides while a game or video is full screen on that screen.
 - If an app doesn't give Windows a preview while it's minimized, its tile shows the app's icon instead.
 
 The shelf sits on top of other windows, so it can cover the bottom of a tall window while something is minimized. Turn it off from the tray menu any time. To try the shelf without the wallpaper, run `pyw pane_shelf.py`; it has no tray icon then, so end it from Task Manager.
@@ -54,6 +56,7 @@ The wallpaper is a small web page (`wallpaper.html`) shown in an Edge WebView2 w
 
 ## Limitations
 
-- **Several monitors:** one wallpaper stretches across all of them, and the shelf appears on the main monitor. If more windows are minimized than fit across the screen, the shelf shows the most recent ones.
+- **Several monitors:** one wallpaper stretches across all of them.
+- If more windows are minimized on a screen than fit across it, that screen's shelf shows the most recent ones.
 - **If Explorer restarts** (after a crash, or after some updates), Windows removes the wallpaper layer and the app closes. Start it again from `run.bat` or the exe.
 - The wallpaper layer is undocumented Windows behavior. Microsoft changed it in Windows 11 24H2, and the app handles both the old and new layouts. A future Windows update could change it again.
