@@ -14,14 +14,21 @@ Each window has four steps. Click to go forward, and click **‹** to go back:
    to search project names *and* the notes inside them. **+ New project** adds one.
    Right-click a project to rename or delete it.
 4. **Notes**: type your notes. They save automatically.
+   - Each time you open a project and start typing at the end, a new note begins:
+     a blank line after the last note, then the date and time
+     (e.g. `Wed 14 Oct 2026, 09:41`), then what you type.
+   - **+ Note** at the bottom starts a new dated note straight away.
+   - Clicking into an older note to fix it doesn't add a date.
 
 - **–** shrinks the window back to a dot (or press **Esc**). **×** closes the window.
 - **Drag** the top strip (or the dot) to move a window, onto any monitor.
   Drag the **◢** corner to resize the notes view.
-- When the mouse isn't over a window, it fades so you can see through it.
-  It comes back as soon as you point at it or type in it.
-- **Right-click** the top strip or the dot for: New window, Fade when idle
-  (Off / Light / Medium / Strong), Start with Windows, Close this window, Quit.
+- When the mouse leaves a window, it fades so you can see through it, and
+  **3 seconds later it shrinks back to its dot**. Typing restarts the
+  3 seconds, so it won't disappear while you're writing.
+- **Right-click** the top strip or the dot for: New window, Shrink to dot after
+  (3 / 10 / 30 seconds, or Never), Fade when idle (Off / Light / Medium / Strong),
+  Start with Windows, Close this window, Quit.
 
 ### Several windows
 

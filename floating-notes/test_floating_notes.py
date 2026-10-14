@@ -67,6 +67,24 @@ class FitRectTests(unittest.TestCase):
         self.assertEqual(fn.fit_rect(-500, 100, 300, 300, [self.left, left_of_primary]), (-500, 100))
 
 
+class NewNoteTests(unittest.TestCase):
+    stamp = "Wed 14 Oct 2026, 09:41"
+
+    def test_first_note_has_no_gap(self):
+        self.assertEqual(fn.entry_prefix("", self.stamp), self.stamp + "\n")
+        self.assertEqual(fn.entry_prefix("  \n", self.stamp), self.stamp + "\n")
+
+    def test_blank_line_after_previous_note(self):
+        self.assertEqual(fn.entry_prefix("old note", self.stamp), "\n\n" + self.stamp + "\n")
+        self.assertEqual(fn.entry_prefix("old note\n", self.stamp), "\n" + self.stamp + "\n")
+        self.assertEqual(fn.entry_prefix("old note\n\n", self.stamp), self.stamp + "\n")
+
+    def test_timestamp_format(self):
+        import time
+        t = time.mktime((2026, 10, 14, 9, 41, 0, 0, 0, -1))
+        self.assertEqual(fn.timestamp(t), "Wed 14 Oct 2026, 09:41")
+
+
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()

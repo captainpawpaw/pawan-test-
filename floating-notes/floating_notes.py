@@ -34,6 +34,11 @@ FADE_TICK_MS = 40
 FADE_LEVELS = {"Off": 1.0, "Light": 0.7, "Medium": 0.45, "Strong": 0.2}
 DEFAULT_FADE = "Medium"
 
+# Seconds after the cursor leaves (and typing stops) before a window shrinks back to its dot.
+HIDE_AFTER = {"3 seconds": 3, "10 seconds": 10, "30 seconds": 30, "Never": None}
+DEFAULT_HIDE = "3 seconds"
+TYPING_KEEPS_AWAKE = 2  # seconds a keystroke keeps a window solid with the cursor elsewhere
+
 DOT = 40
 ROOT_SIZE = (200, 120)
 PROJECTS_SIZE = (260, 360)
@@ -108,6 +113,24 @@ def fit_rect(x, y, w, h, areas):
     x = min(max(x, l), max(l, r - w))
     y = min(max(y, t), max(t, b - h))
     return int(x), int(y)
+
+
+def timestamp(t=None):
+    """The date-and-time line that starts each note, e.g. "Wed 14 Oct 2026, 09:41"."""
+    return time.strftime("%a %d %b %Y, %H:%M", time.localtime(t))
+
+
+def entry_prefix(existing, stamp):
+    """Text to append before a new note: a blank line after the previous note, then the stamp line."""
+    if not existing.strip():
+        gap = ""
+    elif existing.endswith("\n\n"):
+        gap = ""
+    elif existing.endswith("\n"):
+        gap = "\n"
+    else:
+        gap = "\n\n"
+    return gap + stamp + "\n"
 
 
 def new_id():
@@ -326,12 +349,15 @@ class NoteWindow:
         self.text = None
         self.status = None
         self._drag = None
+        self.last_active = time.monotonic()  # last hover, drag or keystroke
+        self.last_key = 0.0
 
         w = self.win = tk.Toplevel(app.root)
         w.overrideredirect(True)
         w.attributes("-topmost", True)
         w.configure(bg=self.c["bg"])
         w.bind("<Escape>", lambda e: self.show("dot"))
+        w.bind("<Key>", self.touch_key, add="+")
         self.body = None
         self.show(state.get("view", "dot"), save=False)
 
@@ -341,6 +367,7 @@ class NoteWindow:
         if view == "notes" and not self.app.store.project(self.state.get("project")):
             view = "projects"
         self.state["view"] = view
+        self.last_active = time.monotonic()  # each view gets a fresh countdown before shrinking
         self.text = self.status = None
         if self.body is not None:
             self.body.destroy()
@@ -528,6 +555,8 @@ class NoteWindow:
         self.header(p["name"], back=lambda: self.show("projects"))
         foot = tk.Frame(self.body, bg=self.c["bg"])
         foot.pack(side="bottom", fill="x")  # packed before the text so it never gets squeezed out
+        new_note = self.button(foot, "+ Note", lambda: self.start_note(force=True), font=("Segoe UI", 9))
+        new_note.pack(side="left", padx=(6, 0))
         self.status = tk.Label(foot, text="", bg=self.c["bg"], fg=self.c["muted"], font=("Segoe UI", 8),
                                anchor="w", padx=12)
         self.status.pack(side="left", fill="x", expand=True)
@@ -565,8 +594,40 @@ class NoteWindow:
 
         text.bind("<<Modified>>", changed)
         text.bind("<Button-1>", lambda e: self.win.focus_force(), add="+")
+        self.stamped = False  # a new note (date line) starts on the first keystroke at the end
+        text.bind("<KeyPress>", self.maybe_start_note, add="+")
 
         self.win.after(10, lambda: (self.win.focus_force(), text.focus_set()))
+
+    def start_note(self, force=False):
+        """Add a blank line and today's date and time at the end, ready for a new note."""
+        text = self.text
+        if text is None:
+            return
+        existing = text.get("1.0", "end-1c")
+        text.insert("end", entry_prefix(existing, timestamp()))
+        text.mark_set("insert", "end-1c")
+        text.see("end")
+        self.stamped = True
+        if force:
+            self.win.focus_force()
+            text.focus_set()
+
+    def maybe_start_note(self, e):
+        """Before the first thing typed at the end of the notes, start a dated note."""
+        if self.stamped or self.text is None:
+            return
+        ctrl = bool(e.state & 0x4)
+        typing = (e.char and e.char.isprintable() and not ctrl) or e.keysym in ("Return", "KP_Enter") \
+            or (ctrl and e.keysym.lower() == "v")
+        if not typing:
+            return
+        text = self.text
+        at_end = text.compare("insert", ">=", "end-1c") and not text.tag_ranges("sel")
+        if at_end:
+            self.start_note()
+        else:
+            self.stamped = True  # editing an older note; don't stamp this visit
 
     def reload_notes(self):
         """Another window edited this project; show its text unless we're typing here."""
@@ -659,8 +720,19 @@ class NoteWindow:
         x, y = self.win.winfo_rootx(), self.win.winfo_rooty()
         return x <= px < x + self.win.winfo_width() and y <= py < y + self.win.winfo_height()
 
-    def fade_step(self, idle):
-        awake = self._drag is not None or self.is_hovered() or self.has_focus()
+    def touch_key(self, _e=None):
+        self.last_key = self.last_active = time.monotonic()
+
+    def fade_step(self, idle, hide_after):
+        now = time.monotonic()
+        pointed = self._drag is not None or self.is_hovered()
+        if pointed:
+            self.last_active = now
+        typing = self.has_focus() and now - self.last_key < TYPING_KEEPS_AWAKE
+        if hide_after is not None and self.state["view"] != "dot" and now - self.last_active >= hide_after:
+            self.show("dot")
+            return
+        awake = pointed or typing or (hide_after is None and self.has_focus())
         target = 1.0 if awake else idle
         if abs(self.alpha - target) < 0.02:
             new = target
@@ -675,6 +747,12 @@ class NoteWindow:
     def menu(self, e):
         m = tk.Menu(self.win, tearoff=0)
         m.add_command(label="New window", command=lambda: self.app.new_window(near=self))
+        hide = tk.Menu(m, tearoff=0)
+        hvar = tk.StringVar(value=self.app.store.settings.get("hide", DEFAULT_HIDE))
+        for name in HIDE_AFTER:
+            hide.add_radiobutton(label=name, variable=hvar, value=name,
+                                 command=lambda n=name: self.app.set_setting("hide", n))
+        m.add_cascade(label="Shrink to dot after", menu=hide)
         fade = tk.Menu(m, tearoff=0)
         var = tk.StringVar(value=self.app.store.settings.get("fade", DEFAULT_FADE))
         for name in FADE_LEVELS:
@@ -796,9 +874,10 @@ class App:
 
     def fade_loop(self):
         idle = FADE_LEVELS.get(self.store.settings.get("fade", DEFAULT_FADE), FADE_LEVELS[DEFAULT_FADE])
-        for w in self.windows:
+        hide_after = HIDE_AFTER.get(self.store.settings.get("hide", DEFAULT_HIDE), HIDE_AFTER[DEFAULT_HIDE])
+        for w in list(self.windows):
             try:
-                w.fade_step(idle)
+                w.fade_step(idle, hide_after)
             except tk.TclError:
                 pass
 
