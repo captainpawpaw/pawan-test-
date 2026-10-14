@@ -92,10 +92,16 @@ when you're back online. The app checks the Drive folder every 5 seconds, so cha
 from another PC appear in your open windows on their own.
 
 **Using it on more than one PC:** choose the same Drive folder on each. Notes from
-every PC are merged project by project. If the same project was changed on two PCs
-before they synced, both versions are kept: the newer one under the project's name,
-the other as **“Name (conflict, PC-NAME)”**, so you can copy across anything you need
-and delete the extra. Deleting a project on one PC deletes it on the others.
+every PC are merged project by project. Each PC remembers what it last saw in Drive,
+so it can tell its own edits from edits made elsewhere. If a project was changed on two
+PCs before they synced and one version just has more added at the end, that one is
+kept. Only if both were changed in different ways are both versions kept: the newer
+under the project's name, the other as **“Name (conflict, PC-NAME)”**, so you can copy
+across anything you need and delete the extra. Deleting a project on one PC deletes it
+on the others.
+
+Right-click → Google Drive → **Remove duplicate conflict copies** deletes conflict copies
+whose text is already all in the main project (it never removes text found nowhere else).
 
 **To stop:** right-click → Google Drive → **Stop syncing**. Your notes stay on this PC,
 and the copy in Drive is left as it is.

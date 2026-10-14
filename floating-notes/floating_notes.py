@@ -187,14 +187,39 @@ def device_name():
     return os.environ.get("COMPUTERNAME") or socket.gethostname() or "another PC"
 
 
-def merge_projects(local, remote, deleted_local, deleted_remote, last_synced, device="another PC", now=None):
+def content_key(p):
+    """Fingerprint of a project's name and text, used to tell what changed since the last sync."""
+    import hashlib
+    raw = (p.get("name", "") + "\0" + p.get("text", "")).encode("utf-8")
+    return hashlib.sha1(raw).hexdigest()[:16]
+
+
+CONFLICT_SUFFIX = re.compile(r"( \(conflict, [^)]*\)?)+$")
+
+
+def base_name(name):
+    """'Job (conflict, PC) (conflict, PC)' -> 'Job'."""
+    return CONFLICT_SUFFIX.sub("", name).strip() or name
+
+
+def _extends(a, b):
+    """True if a's text is b's text with more added at the end (the usual way notes grow)."""
+    at, bt = a.get("text", ""), b.get("text", "").rstrip()
+    return at.startswith(bt) and len(at.rstrip()) > len(bt)
+
+
+def merge_projects(local, remote, deleted_local, deleted_remote, base, device="this PC",
+                   remote_device="another PC", now=None):
     """Merge this PC's projects with the Drive copy.
 
-    - A project changed on only one side takes that side's version.
-    - Changed on both sides since the last sync: the newer one wins and the
-      older is kept as a separate "(conflict …)" project, so no text is lost.
-    - Deletions travel as tombstones {id: when}; a project edited after it was
-      deleted elsewhere survives.
+    `base` maps project id -> content_key() of the version this PC last knew
+    was in Drive. For each project:
+    - only one side differs from that version: take that side;
+    - one side is the other with more text added at the end: take the longer;
+    - both changed in different ways: the newer one wins and the other is
+      kept as a separate "(conflict, PC)" project, so no text is lost.
+    Deletions travel as tombstones {id: when}; a project edited after it was
+    deleted elsewhere survives.
 
     Returns (projects, deleted, conflicts) where conflicts names the projects
     that were kept twice.
@@ -210,15 +235,24 @@ def merge_projects(local, remote, deleted_local, deleted_remote, last_synced, de
     for pid in order:
         l, r = lmap.get(pid), rmap.get(pid)
         if l and r and l != r:
-            winner, loser = (l, r) if l.get("updated", 0) >= r.get("updated", 0) else (r, l)
-            base = last_synced.get(pid)
-            both_changed = base is None or (l.get("updated", 0) > base and r.get("updated", 0) > base)
-            if both_changed and l.get("text") != r.get("text") and loser.get("text", "").strip():
-                where = device if loser is l else "another PC"
-                copy_ = dict(loser, id=new_id(), name=f"{loser['name']} (conflict, {where})")
-                out.append(copy_)
-                conflicts.append(loser["name"])
-            p = winner
+            kl, kr, kb = content_key(l), content_key(r), base.get(pid)
+            newer, older = (l, r) if l.get("updated", 0) >= r.get("updated", 0) else (r, l)
+            if kl == kr:
+                p = newer
+            elif kr == kb:
+                p = l
+            elif kl == kb:
+                p = r
+            elif _extends(l, r):
+                p = l
+            elif _extends(r, l):
+                p = r
+            else:
+                p = newer
+                if older.get("text", "").strip():
+                    where = device if older is l else remote_device
+                    out.append(dict(older, id=new_id(), name=f"{base_name(older['name'])} (conflict, {where})"))
+                    conflicts.append(base_name(older["name"]))
         else:
             p = l or r
         if deleted.get(pid, 0) >= p.get("updated", 0):
@@ -227,6 +261,26 @@ def merge_projects(local, remote, deleted_local, deleted_remote, last_synced, de
     cutoff = now - TOMBSTONE_DAYS * 86400
     deleted = {pid: t for pid, t in deleted.items() if t >= cutoff}
     return out, deleted, conflicts
+
+
+def redundant_conflict_copies(projects):
+    """Conflict copies that hold nothing their main project doesn't already have.
+
+    A copy is redundant when its text is the start of (or equal to) the text of
+    the project it was copied from, or exactly repeats an earlier copy.
+    """
+    mains = {p["name"]: p for p in projects if not CONFLICT_SUFFIX.search(p["name"])}
+    seen, out = set(), []
+    for p in projects:
+        if not CONFLICT_SUFFIX.search(p["name"]):
+            continue
+        main = mains.get(base_name(p["name"]))
+        text = p.get("text", "").rstrip()
+        key = (base_name(p["name"]), text)
+        if (main is not None and main.get("text", "").startswith(text)) or key in seen or not text:
+            out.append(p["id"])
+        seen.add(key)
+    return out
 
 
 def drive_folder_candidates():
@@ -244,7 +298,7 @@ def drive_folder_candidates():
 def sync_with_drive(folder, snapshot, last_mtime):
     """Runs on a worker thread. Reads the Drive file, merges, writes it back if needed.
 
-    `snapshot` is a deep copy of {projects, deleted, last_synced}; this never
+    `snapshot` is a deep copy of {projects, deleted, base, keys, dirty}; this never
     touches live app state. Returns a result dict for the main thread.
     """
     if not folder or not os.path.isdir(folder):
@@ -260,7 +314,8 @@ def sync_with_drive(folder, snapshot, last_mtime):
             loaded = json.load(f)
         if not isinstance(loaded, dict) or not isinstance(loaded.get("projects"), list):
             return {"status": "error", "detail": f"{DRIVE_FILE} isn't a Floating Notes file"}
-        remote = {"projects": loaded["projects"], "deleted": loaded.get("deleted", {})}
+        remote = {"projects": loaded["projects"], "deleted": loaded.get("deleted", {}),
+                  "saved_by": loaded.get("saved_by") or "another PC"}
     except FileNotFoundError:
         pass
     except ValueError:
@@ -271,7 +326,7 @@ def sync_with_drive(folder, snapshot, last_mtime):
 
     projects, deleted, conflicts = merge_projects(
         snapshot["projects"], remote["projects"], snapshot["deleted"], remote["deleted"],
-        snapshot["last_synced"], device=device_name())
+        snapshot["base"], device=device_name(), remote_device=remote.get("saved_by", "another PC"))
     if projects != remote["projects"] or deleted != remote["deleted"]:
         body = {"app": APP_NAME, "version": 1, "saved_by": device_name(), "saved_at": time.time(),
                 "projects": projects, "deleted": deleted}
@@ -284,7 +339,7 @@ def sync_with_drive(folder, snapshot, last_mtime):
         except OSError as e:
             return {"status": "error", "detail": f"couldn't write to Drive: {e.strerror or e}"}
     return {"status": "synced", "projects": projects, "deleted": deleted, "conflicts": conflicts,
-            "mtime": mtime, "counter": snapshot["counter"]}
+            "mtime": mtime, "snap_keys": snapshot["keys"]}
 
 
 # --------------------------------------------------------------------------
@@ -302,7 +357,6 @@ class Store:
     def __init__(self, path):
         self.path = path
         self.data = {"projects": [], "windows": [], "settings": {}, "deleted": {}, "sync": {}}
-        self.counter = 0  # bumped on every project change; lets a finished sync tell if it's stale
         self.error = None
         try:
             with open(path, encoding="utf-8") as f:
@@ -975,6 +1029,7 @@ class NoteWindow:
             drive.add_command(label=f"Folder: {folder}", state="disabled")
             drive.add_separator()
             drive.add_command(label="Sync now", command=self.app.sync_now)
+            drive.add_command(label="Remove duplicate conflict copies", command=self.app.tidy_conflict_copies)
             drive.add_command(label="Change folder…", command=lambda: self.app.choose_drive_folder(self.win))
             drive.add_command(label="Stop syncing (keep notes on this PC)", command=self.app.stop_drive_sync)
         else:
@@ -1026,6 +1081,12 @@ class App:
         if store.error:
             messagebox.showwarning(APP_NAME, store.error + "\nIt was renamed to data.json.unreadable.")
 
+        if not store.settings.get("tidied_conflicts"):
+            # Earlier versions could create conflict copies of a project on a single PC.
+            store.settings["tidied_conflicts"] = True
+            self.tidy_conflict_copies()
+            self.save_soon()
+
         self.every(FADE_TICK_MS, "fade", self.fade_loop)
         self.every(3000, "screens", self.watch_screens)
         self.every(SYNC_EVERY_MS, "sync", self.sync_now)
@@ -1071,7 +1132,6 @@ class App:
 
     def data_changed(self, source=None, text_only=False, from_sync=False):
         if not from_sync:
-            self.store.counter += 1
             self._dirty = True
         for w in self.windows:
             if w is source:
@@ -1135,13 +1195,7 @@ class App:
         if self._sync_running:
             return
         self._sync_running = True
-        snapshot = copy.deepcopy({
-            "projects": self.store.projects,
-            "deleted": self.store.data["deleted"],
-            "last_synced": self.store.data["sync"].get("last", {}),
-        })
-        snapshot["counter"] = self.store.counter
-        snapshot["dirty"] = self._dirty
+        snapshot = self.sync_snapshot()
         last_mtime = self.store.data["sync"].get("mtime")
 
         def work():
@@ -1153,6 +1207,14 @@ class App:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def sync_snapshot(self):
+        base = self.store.data["sync"].get("base", {})
+        snapshot = copy.deepcopy({"projects": self.store.projects, "deleted": self.store.data["deleted"],
+                                  "base": base})
+        snapshot["keys"] = {p["id"]: content_key(p) for p in self.store.projects}
+        snapshot["dirty"] = self._dirty
+        return snapshot
+
     def apply_sync_results(self):
         while not self._sync_results.empty():
             r = self._sync_results.get_nowait()
@@ -1161,13 +1223,7 @@ class App:
             self.sync_status = r["status"]
             self.sync_detail = r.get("detail", "")
             if "projects" in r:
-                if r["counter"] != self.store.counter:
-                    continue  # you typed while it ran; the next round includes it
-                changed = self.adopt(r["projects"], r["deleted"])
-                sync = self.store.data["sync"]
-                sync["last"] = {p["id"]: p.get("updated", 0) for p in r["projects"]}
-                sync["mtime"] = r["mtime"]
-                self._dirty = False
+                changed = self.adopt(r)
                 if changed:
                     self.data_changed(from_sync=True)
                 else:
@@ -1180,22 +1236,69 @@ class App:
             if self.sync_status != before or "projects" in r:
                 self.show_status()
 
-    def adopt(self, merged, deleted):
-        """Make the store match a sync result, updating project dicts in place."""
-        local = {p["id"]: p for p in self.store.projects}
-        before = json.dumps([self.store.projects, self.store.data["deleted"]], sort_keys=True)
+    def adopt(self, r):
+        """Apply a finished sync to the store, one project at a time.
+
+        Drive now holds r["projects"]. A project you changed while the sync was
+        running keeps your version (it goes up next round); everything else takes
+        the merged version. Records what Drive holds, so the next round can tell
+        your edits from edits made elsewhere. Returns True if anything changed here.
+        """
+        store, snap_keys = self.store, r["snap_keys"]
+        base = store.data["sync"].setdefault("base", {})
+        before = json.dumps([store.projects, store.data["deleted"]], sort_keys=True)
+        local = {p["id"]: p for p in store.projects}
+        merged_ids = set()
+        still_dirty = False
         new = []
-        for m in merged:
-            p = local.get(m["id"])
+        for m in r["projects"]:
+            pid = m["id"]
+            merged_ids.add(pid)
+            p = local.get(pid)
             if p is None:
-                p = dict(m)
-            elif p != m:
-                p.clear()
-                p.update(m)
+                if pid in store.data["deleted"]:
+                    continue  # deleted here while the sync ran
+                new.append(dict(m))
+                base[pid] = content_key(m)
+                continue
+            mk = content_key(m)
+            if pid in snap_keys and content_key(p) != snap_keys[pid]:
+                # edited while the sync ran: keep yours
+                still_dirty = True
+                if mk == snap_keys[pid]:
+                    base[pid] = mk  # your earlier version is what Drive has now
+            else:
+                if p != m:
+                    p.clear()
+                    p.update(m)
+                base[pid] = mk
             new.append(p)
-        self.store.projects[:] = new
-        self.store.data["deleted"] = dict(deleted)
-        return json.dumps([self.store.projects, self.store.data["deleted"]], sort_keys=True) != before
+        for pid, p in local.items():
+            if pid in merged_ids:
+                continue
+            if pid not in snap_keys or content_key(p) != snap_keys[pid]:
+                new.append(p)  # created or edited while the sync ran
+                still_dirty = True
+            else:
+                base.pop(pid, None)  # deleted elsewhere
+        store.projects[:] = new
+        for pid, t in r["deleted"].items():
+            store.data["deleted"][pid] = max(t, store.data["deleted"].get(pid, 0))
+        store.data["sync"].pop("last", None)  # replaced by "base"
+        store.data["sync"]["mtime"] = r["mtime"]
+        self._dirty = still_dirty
+        return json.dumps([store.projects, store.data["deleted"]], sort_keys=True) != before
+
+    def tidy_conflict_copies(self):
+        """Remove conflict copies that only repeat text their main project already has."""
+        ids = set(redundant_conflict_copies(self.store.projects))
+        for p in [p for p in self.store.projects if p["id"] in ids]:
+            self.store.delete_project(p)
+        if ids:
+            self.notice = (f"Removed {len(ids)} duplicate conflict cop{'y' if len(ids) == 1 else 'ies'}",
+                           time.monotonic() + 30)
+            self.data_changed()
+        return len(ids)
 
     def choose_drive_folder(self, parent):
         current = self.store.settings.get("drive_folder")
@@ -1246,15 +1349,11 @@ class App:
         folder = self.store.settings.get("drive_folder")
         if folder and self._dirty and not self._sync_running:
             # One last sync so notes typed just before quitting reach Drive now.
-            snapshot = copy.deepcopy({"projects": self.store.projects, "deleted": self.store.data["deleted"],
-                                      "last_synced": self.store.data["sync"].get("last", {})})
-            snapshot.update(counter=self.store.counter, dirty=True)
+            snapshot = self.sync_snapshot()
             try:
                 r = sync_with_drive(folder, snapshot, None)
                 if "projects" in r:
-                    self.adopt(r["projects"], r["deleted"])
-                    self.store.data["sync"].update(last={p["id"]: p.get("updated", 0) for p in r["projects"]},
-                                                   mtime=r["mtime"])
+                    self.adopt(r)
             except Exception:
                 pass  # it syncs next time the app starts
         try:

@@ -142,41 +142,69 @@ class MergeTests(unittest.TestCase):
     def p(self, pid, text, updated, name=None):
         return {"id": pid, "name": name or pid, "text": text, "updated": updated}
 
+    def key(self, text, name=None, pid="a"):
+        return fn.content_key(self.p(pid, text, 0, name))
+
     def test_new_projects_from_both_sides(self):
         out, _, conflicts = fn.merge_projects([self.p("a", "x", 1)], [self.p("b", "y", 2)], {}, {}, {})
         self.assertEqual(sorted(p["id"] for p in out), ["a", "b"])
         self.assertEqual(conflicts, [])
 
     def test_changed_on_one_side_takes_that_side(self):
-        base = {"a": 5}
-        out, _, conflicts = fn.merge_projects([self.p("a", "old", 5)], [self.p("a", "new", 9)], {}, {}, base)
-        self.assertEqual(out[0]["text"], "new")
+        base = {"a": self.key("old")}
+        out, _, conflicts = fn.merge_projects([self.p("a", "old", 5)], [self.p("a", "remote edit", 9)], {}, {}, base)
+        self.assertEqual(out[0]["text"], "remote edit")
         self.assertEqual(conflicts, [])
-        out, _, _ = fn.merge_projects([self.p("a", "mine", 9)], [self.p("a", "old", 5)], {}, {}, base)
+        out, _, conflicts = fn.merge_projects([self.p("a", "mine", 9)], [self.p("a", "old", 5)], {}, {}, base)
         self.assertEqual(out[0]["text"], "mine")
+        self.assertEqual(conflicts, [])
 
-    def test_changed_on_both_sides_keeps_both(self):
+    def test_own_earlier_save_is_not_a_conflict(self):
+        """The bug from a single PC: Drive has our own earlier save, local has kept typing."""
+        drive = self.p("a", "note\nhello wor", 10, "Fitness App")
+        local = self.p("a", "note\nhello world, more typing", 12, "Fitness App")
+        out, _, conflicts = fn.merge_projects([local], [drive], {}, {}, {"a": self.key("note")})
+        self.assertEqual(conflicts, [])
+        self.assertEqual([p["text"] for p in out], [local["text"]])
+
+    def test_appended_text_wins_even_without_a_base(self):
+        out, _, conflicts = fn.merge_projects([self.p("a", "abc\nmore", 1)], [self.p("a", "abc", 2)], {}, {}, {})
+        self.assertEqual((out[0]["text"], conflicts), ("abc\nmore", []))
+
+    def test_really_changed_on_both_sides_keeps_both(self):
         out, _, conflicts = fn.merge_projects(
-            [self.p("a", "laptop text", 8, "Job")], [self.p("a", "desktop text", 9, "Job")], {}, {}, {"a": 5},
-            device="LAPTOP")
-        self.assertEqual(len(out), 2)
+            [self.p("a", "base + laptop", 8, "Job")], [self.p("a", "base + desktop", 9, "Job")], {}, {},
+            {"a": self.key("base", "Job")}, device="LAPTOP", remote_device="DESKTOP")
         main = next(p for p in out if p["id"] == "a")
         copy_ = next(p for p in out if p["id"] != "a")
-        self.assertEqual(main["text"], "desktop text")  # newer wins
-        self.assertEqual(copy_["text"], "laptop text")
-        self.assertEqual(copy_["name"], "Job (conflict, LAPTOP)")
+        self.assertEqual(main["text"], "base + desktop")  # newer wins
+        self.assertEqual((copy_["text"], copy_["name"]), ("base + laptop", "Job (conflict, LAPTOP)"))
         self.assertEqual(conflicts, ["Job"])
 
+    def test_conflict_names_do_not_pile_up(self):
+        self.assertEqual(fn.base_name("Job (conflict, another PC) (conflict, another PC)"), "Job")
+
     def test_deletion_travels_but_later_edit_survives(self):
-        out, deleted, _ = fn.merge_projects([self.p("a", "x", 5)], [], {}, {"a": 6}, {"a": 5}, now=10)
+        out, deleted, _ = fn.merge_projects([self.p("a", "x", 5)], [], {}, {"a": 6}, {}, now=10)
         self.assertEqual(out, [])
         self.assertIn("a", deleted)
-        out, _, _ = fn.merge_projects([self.p("a", "edited later", 7)], [], {}, {"a": 6}, {"a": 5}, now=10)
+        out, _, _ = fn.merge_projects([self.p("a", "edited later", 7)], [], {}, {"a": 6}, {}, now=10)
         self.assertEqual(out[0]["text"], "edited later")
 
     def test_old_tombstones_are_pruned(self):
         _, deleted, _ = fn.merge_projects([], [], {"a": 1}, {}, {}, now=1 + 91 * 86400)
         self.assertEqual(deleted, {})
+
+    def test_redundant_conflict_copies(self):
+        projects = [
+            self.p("m", "day 1\nday 2\nday 3", 9, "Fitness App"),
+            self.p("c1", "day 1\nday 2", 5, "Fitness App (conflict, another PC)"),
+            self.p("c2", "day 1", 4, "Fitness App (conflict, another PC) (conflict, another PC)"),
+            self.p("c3", "day 1\nday 2", 6, "Fitness App (conflict, another PC)"),
+            self.p("c4", "something only here", 7, "Fitness App (conflict, another PC)"),
+            self.p("x", "", 1, "Other"),
+        ]
+        self.assertEqual(sorted(fn.redundant_conflict_copies(projects)), ["c1", "c2", "c3"])
 
 
 class DriveSyncTests(unittest.TestCase):
@@ -188,7 +216,8 @@ class DriveSyncTests(unittest.TestCase):
         self.dir.cleanup()
 
     def snap(self, projects, dirty=True):
-        return {"projects": projects, "deleted": {}, "last_synced": {}, "counter": 1, "dirty": dirty}
+        return {"projects": projects, "deleted": {}, "base": {}, "keys": {p["id"]: fn.content_key(p) for p in projects},
+                "dirty": dirty}
 
     def test_offline_when_folder_missing(self):
         r = fn.sync_with_drive(os.path.join(self.drive, "nope"), self.snap([]), None)
