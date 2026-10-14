@@ -30,6 +30,7 @@ The app has no window. It lives in the **system tray**: click the **^** arrow at
 - **Pause**: freezes the current frame
 - **Pause while an app is maximized or full screen**: on by default, so games and videos don't share the GPU with your wallpaper
 - **Thumbnail shelf for minimized windows**: on by default (see below)
+- **Enlarge previews on hover**: on by default (see below)
 - **Shrink the shelf behind open windows**: on by default (see below)
 - **Shelf colors**: turn color-coding on or off, and pick the color for **Web browsers**, **Folders** and **Apps**
 - **Start with Windows**
@@ -40,6 +41,7 @@ The app has no window. It lives in the **system tray**: click the **^** arrow at
 Minimize any window (the – button, the taskbar, or Win+Down) and a live preview of it appears in a shelf centered above the taskbar **of the screen that window was on**. Each screen has its own shelf. Windows still plays its usual minimize animation, and the window keeps its taskbar button too.
 
 - **Click a preview** to bring that window back. Only that window changes: the shelf never minimizes or opens anything on its own.
+- **Rest the pointer on a preview** and, after a moment, a copy **twice the size** pops up just above it, easier to read. Move along the shelf and it follows; move away and it disappears. Click the big copy to bring that window back, or middle-click it to close the window. Turn this off with **Enlarge previews on hover** in the tray menu.
 - **Hover a preview** and click its **✕**, or **middle-click** it, to close that window.
 - **Drag a preview to another screen** to move that window there. Drop it anywhere on the other screen. The window stays minimized, joins that screen's shelf, and opens on that screen when you click it. It keeps the same position relative to the screen's corner, shrinking to fit if the new screen is smaller. A window that was maximized comes back maximized on its new screen.
 - **Out of the way:** while an open window overlaps a screen's shelf (including any maximized window), that shelf shrinks to a thin see-through bar with one colored dot per minimized window. **Point at the bar** to open the full shelf; it shrinks back about half a second after the pointer leaves, if a window is still in the way. Move the window off the shelf and the full shelf comes back by itself. Turn this off with **Shrink the shelf behind open windows** in the tray menu.

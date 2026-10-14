@@ -12,6 +12,10 @@ click it.
 
 Each virtual desktop shows only the windows minimized on it.
 
+Rest the pointer on a preview and a copy twice its size pops up just above
+it, easier to read. Click the big copy to open that window, or middle-click
+it to close the window.
+
 While an open window overlaps a screen's shelf, that shelf shrinks to a thin
 see-through bar with one colored dot per minimized window. Point at the bar
 to open the shelf again; it shrinks back once the pointer leaves, if a window
@@ -221,6 +225,9 @@ ERROR_CLASS_ALREADY_EXISTS = 1410
 TIMER_ID = 1             # the once-a-second check
 TIMER_OVERLAP = 2        # a short delay after windows move, so a drag doesn't re-check 60 times a second
 TIMER_UNPEEK = 3         # a short delay after the pointer leaves an opened-up shelf
+TIMER_ZOOM = 4           # how long the pointer rests on a preview before the big copy appears
+TIMER_ZOOM_WATCH = 5     # while the big copy shows: is the pointer still on it or its tile?
+ZOOM_DELAY_MS = 300
 DRAG_START_PX = 6
 SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
                  "Windows.UI.Core.CoreWindow", "XamlExplorerHostIslandWindow"}
@@ -318,6 +325,29 @@ def register_class():
         raise OSError("Couldn't register the shelf window class.")
 
 
+def place_thumb(thumb, area, opacity=255):
+    """Fit a DWM thumbnail inside area (l, t, r, b) keeping its shape, or hide it when area is None.
+    Returns True when Windows has a picture to show."""
+    props = DWM_THUMBNAIL_PROPERTIES()
+    props.dwFlags = DWM_TNP_VISIBLE | DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY
+    props.opacity = opacity
+    props.fSourceClientAreaOnly = False
+    size = wintypes.SIZE()
+    ok = area is not None and DwmQueryThumbnailSourceSize(thumb, ctypes.byref(size)) == 0
+    # A minimized window that DWM has no picture for reports a tiny caption-sized source.
+    shown = bool(ok and size.cx > 0 and size.cy >= 60)
+    if shown:
+        l, t, r, b = area
+        aw, ah = r - l, b - t
+        s = min(aw / size.cx, ah / size.cy)
+        dw, dh = max(1, int(size.cx * s)), max(1, int(size.cy * s))
+        dx, dy = l + (aw - dw) // 2, t + (ah - dh) // 2
+        props.rcDestination = wintypes.RECT(dx, dy, dx + dw, dy + dh)
+    props.fVisible = shown
+    DwmUpdateThumbnailProperties(thumb, ctypes.byref(props))
+    return shown
+
+
 class Entry:
     """A minimized window, and the screen whose shelf it sits on."""
 
@@ -346,26 +376,7 @@ class Entry:
         if not self.thumb:
             self.has_preview = False
             return
-        props = DWM_THUMBNAIL_PROPERTIES()
-        props.dwFlags = DWM_TNP_VISIBLE | DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY
-        props.opacity = opacity
-        props.fSourceClientAreaOnly = False
-        size = wintypes.SIZE()
-        ok = area is not None and DwmQueryThumbnailSourceSize(self.thumb, ctypes.byref(size)) == 0
-        # A minimized window that DWM has no picture for reports a tiny caption-sized source.
-        if ok and size.cx > 0 and size.cy >= 60:
-            l, t, r, b = area
-            aw, ah = r - l, b - t
-            s = min(aw / size.cx, ah / size.cy)
-            dw, dh = max(1, int(size.cx * s)), max(1, int(size.cy * s))
-            dx, dy = l + (aw - dw) // 2, t + (ah - dh) // 2
-            props.rcDestination = wintypes.RECT(dx, dy, dx + dw, dy + dh)
-            props.fVisible = True
-            self.has_preview = True
-        else:
-            props.fVisible = False
-            self.has_preview = False
-        DwmUpdateThumbnailProperties(self.thumb, ctypes.byref(props))
+        self.has_preview = place_thumb(self.thumb, area, opacity)
 
     def release(self):
         if self.thumb:
@@ -412,6 +423,8 @@ class Panel:
 
     def show(self, entries):
         """Lay out these entries along the bottom of this panel's screen (hide when empty)."""
+        if self.shelf.zoom and self.shelf.zoom.panel is self:
+            self.shelf.hide_zoom()  # the tiles are about to move
         for e in self.entries:
             if e not in entries and e.thumb_host == self.hwnd:
                 e.place(None)
@@ -549,8 +562,16 @@ class Panel:
             return 0
         if msg == WM_TIMER and wp == TIMER_UNPEEK:
             KillTimer(self.hwnd, TIMER_UNPEEK)
-            if self.peek and not self.contains(cursor_pos()):
+            zoom = self.shelf.zoom
+            if zoom and zoom.panel is self and zoom.contains(cursor_pos()):
+                SetTimer(self.hwnd, TIMER_UNPEEK, 400, None)  # still reading the big copy
+            elif self.peek and not self.contains(cursor_pos()):
                 self.unpeek()
+            return 0
+        if msg == WM_TIMER and wp == TIMER_ZOOM:
+            KillTimer(self.hwnd, TIMER_ZOOM)
+            if 0 <= self.hover < len(self.entries) and not self.bar and not self.shelf.drag:
+                self.shelf.show_zoom(self, self.hover)
             return 0
         if msg == WM_LBUTTONUP:
             drag = self.shelf.drag
@@ -683,8 +704,157 @@ class Panel:
 
     def set_hover(self, i, on_close):
         if (i, on_close) != (self.hover, self.hover_close):
+            moved_tile = i != self.hover
             self.hover, self.hover_close = i, on_close
             InvalidateRect(self.hwnd, None, False)
+            if moved_tile and i >= 0 and not self.bar and self.shelf.zoom_enabled():
+                zoom = self.shelf.zoom
+                if zoom and zoom.panel is self:
+                    self.shelf.show_zoom(self, i)  # already zoomed: follow the pointer straight away
+                else:
+                    SetTimer(self.hwnd, TIMER_ZOOM, ZOOM_DELAY_MS, None)
+            elif i < 0:
+                KillTimer(self.hwnd, TIMER_ZOOM)  # the big copy, if any, hides itself when the pointer leaves
+
+    def tile_screen_rect(self, i):
+        r = wintypes.RECT()
+        GetWindowRect(self.hwnd, ctypes.byref(r))
+        l, t, rr, b = self.rects[i][0]
+        return r.left + l, r.top + t, r.left + rr, r.top + b
+
+    def tile_under(self, pt):
+        """Index of the tile under a screen point, or -1."""
+        if not self.contains(pt):
+            return -1
+        r = wintypes.RECT()
+        GetWindowRect(self.hwnd, ctypes.byref(r))
+        return self.hit(pt.x - r.left, pt.y - r.top)[0]
+
+
+class Zoom:
+    """A copy of a thumbnail at twice its size, shown just above it while the pointer rests there.
+    It has its own live preview from Windows, so the tile underneath keeps its picture."""
+
+    def __init__(self, shelf, panel, index):
+        self.shelf, self.panel = shelf, panel
+        self.entry = entry = panel.entries[index]
+        self.index = index
+        self.hwnd = None
+        self.thumb = None
+        self.scale = s = panel.scale
+        px = lambda v: int(round(v * s))  # noqa: E731
+        self.w, self.h = px(440), px(340)       # twice a tile
+        self.inset, self.cap = px(12), px(48)
+        self.font = CreateFontW(-px(17), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+        create_window(self, WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE)
+        pref = ctypes.c_int(DWMWCP_ROUND)
+        if DwmSetWindowAttribute(self.hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref),
+                                 ctypes.sizeof(pref)) != 0:
+            SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, self.w + 1, self.h + 1, px(20), px(20)), True)
+
+        # Centered above its tile, kept on the tile's screen.
+        tl, tt, tr, _ = panel.tile_screen_rect(index)
+        x = (tl + tr) // 2 - self.w // 2
+        y = tt - px(14) - self.h
+        work = work_rect(panel.monitor)
+        if work:
+            x = max(work[0] + px(8), min(x, work[2] - self.w - px(8)))
+            y = max(work[1] + px(8), y)
+        SetWindowPos(self.hwnd, wintypes.HWND(HWND_TOPMOST), x, y, self.w, self.h, SWP_NOACTIVATE | SWP_SHOWWINDOW)
+
+        thumb = wintypes.HANDLE()
+        self.has_preview = False
+        if DwmRegisterThumbnail(self.hwnd, entry.hwnd, ctypes.byref(thumb)) == 0:
+            self.thumb = thumb
+            i = self.inset
+            self.has_preview = place_thumb(thumb, (i, i, self.w - i, self.h - self.cap))
+        SetTimer(self.hwnd, TIMER_ZOOM_WATCH, 120, None)
+
+    def contains(self, pt):
+        r = wintypes.RECT()
+        if not self.hwnd or not GetWindowRect(self.hwnd, ctypes.byref(r)):
+            return False
+        return r.left <= pt.x < r.right and r.top <= pt.y < r.bottom
+
+    def in_gap(self, pt):
+        """The strip between the big copy and its tile, so moving up to it doesn't close it."""
+        r = wintypes.RECT()
+        if not self.hwnd or not GetWindowRect(self.hwnd, ctypes.byref(r)) or self.index >= len(self.panel.rects):
+            return False
+        tile_top = self.panel.tile_screen_rect(self.index)[1]
+        return r.left <= pt.x < r.right and r.bottom <= pt.y < tile_top
+
+    def destroy(self):
+        if self.thumb:
+            DwmUnregisterThumbnail(self.thumb)
+            self.thumb = None
+        if self.hwnd:
+            KillTimer(self.hwnd, TIMER_ZOOM_WATCH)
+            DestroyWindow(self.hwnd)
+        if self.font:
+            DeleteObject(self.font)
+            self.font = None
+
+    def on_message(self, msg, wp, lp):
+        if msg == WM_PAINT:
+            self.paint()
+            return 0
+        if msg == WM_ERASEBKGND:
+            return 1
+        if msg == WM_MOUSEACTIVATE:
+            return MA_NOACTIVATE
+        if msg == WM_TIMER and wp == TIMER_ZOOM_WATCH:
+            pt = cursor_pos()
+            if not self.contains(pt) and not self.in_gap(pt) and self.panel.tile_under(pt) != self.index:
+                self.shelf.hide_zoom()
+            return 0
+        if msg == WM_LBUTTONUP:
+            h = self.entry.hwnd
+            self.shelf.hide_zoom()
+            self.shelf.bring_back(h)
+            return 0
+        if msg == WM_MBUTTONUP:
+            h = self.entry.hwnd
+            self.shelf.hide_zoom()
+            self.shelf.close_window(h)
+            return 0
+        if msg == WM_DESTROY:
+            self.hwnd = None
+            return 0
+        return None
+
+    def paint(self):
+        ps = PAINTSTRUCT()
+        hdc = BeginPaint(self.hwnd, ctypes.byref(ps))
+        try:
+            w, h, s = self.w, self.h, self.scale
+            plain = COLORS["tile_hover"]
+            kind = self.shelf.kind_color(self.entry)
+            if kind is None:
+                FillRect(hdc, ctypes.byref(wintypes.RECT(0, 0, w, h)), self.shelf.brush(plain))
+            else:  # the same colored border and tint as the tile
+                edge = max(2, int(3 * s))
+                FillRect(hdc, ctypes.byref(wintypes.RECT(0, 0, w, h)), self.shelf.brush(kind))
+                FillRect(hdc, ctypes.byref(wintypes.RECT(edge, edge, w - edge, h - edge)),
+                         self.shelf.brush(mix(kind, plain, 0.25)))
+            cap_top = h - self.cap
+            e = self.entry
+            if not self.has_preview and e.icon:
+                big = int(96 * s)
+                DrawIconEx(hdc, (w - big) // 2, (cap_top - big) // 2, e.icon, big, big, 0, None, DI_NORMAL)
+            text_left = int(16 * s)
+            if e.icon:
+                small = int(24 * s)
+                DrawIconEx(hdc, text_left, cap_top + (self.cap - small) // 2, e.icon, small, small, 0, None, DI_NORMAL)
+                text_left += small + int(10 * s)
+            old_font = SelectObject(hdc, self.font)
+            SetBkMode(hdc, TRANSPARENT)
+            SetTextColor(hdc, COLORS["text"])
+            tr = wintypes.RECT(text_left, cap_top, w - int(16 * s), h)
+            DrawTextW(hdc, e.title, -1, ctypes.byref(tr), DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX)
+            SelectObject(hdc, old_font)
+        finally:
+            EndPaint(self.hwnd, ctypes.byref(ps))
 
 
 class Ghost:
@@ -755,6 +925,7 @@ class Drag:
             if abs(pt.x - self.start[0]) < DRAG_START_PX and abs(pt.y - self.start[1]) < DRAG_START_PX:
                 return
             self.active = True
+            self.shelf.hide_zoom()
             self.ghost = Ghost(self.shelf, self.entry, self.panel.scale)
             InvalidateRect(self.panel.hwnd, None, False)
         SetCursor(LoadCursorW(None, ctypes.c_void_p(IDC_SIZEALL)))
@@ -796,6 +967,7 @@ class Shelf:
         self.hooks = []
         self._hook_ref = None
         self.overlap_pending = False
+        self.zoom = None       # the big copy of the preview under the pointer, if showing
         self.brushes = {}
         self.brush_cache = {}  # COLORREF -> brush, for the color-coded tiles
 
@@ -805,6 +977,25 @@ class Shelf:
             return
         self.thread = threading.Thread(target=self.run, name="PaneShelf", daemon=True)
         self.thread.start()
+
+    def zoom_enabled(self):
+        return self.get_cfg().get("shelf_zoom", True)
+
+    def show_zoom(self, panel, index):
+        z = self.zoom
+        if z and z.panel is panel and z.index == index:
+            return
+        self.hide_zoom()
+        if 0 <= index < len(panel.entries) and panel.rects:
+            self.zoom = Zoom(self, panel, index)
+
+    def hide_zoom(self):
+        z, self.zoom = self.zoom, None
+        if z:
+            z.destroy()
+            p = z.panel
+            if p.peek and p.hwnd and not p.contains(cursor_pos()):
+                SetTimer(p.hwnd, TIMER_UNPEEK, 400, None)  # let an opened-up shelf shrink again
 
     def end_peeks(self):
         """After a drag the pointer may be anywhere: let shelves shrink again if they should."""
@@ -867,6 +1058,7 @@ class Shelf:
             UnhookWinEvent(hook)
         self.hooks.clear()
         KillTimer(self.hwnd, TIMER_OVERLAP)
+        self.hide_zoom()
         if self.drag:
             self.drag.finish()
             self.drag = None
@@ -1008,6 +1200,7 @@ class Shelf:
 
     def screens_changed(self):
         """Monitors were added, removed or rearranged: rebuild the panels from scratch."""
+        self.hide_zoom()
         if self.drag:
             self.drag.finish()
             self.drag = None
