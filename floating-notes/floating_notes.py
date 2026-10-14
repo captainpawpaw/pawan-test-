@@ -23,6 +23,7 @@ import copy
 import json
 import os
 import queue
+import re
 import socket
 import sys
 import threading
@@ -51,8 +52,30 @@ PROJECTS_SIZE = (260, 360)
 NOTES_SIZE = (340, 420)
 MIN_NOTES_SIZE = (220, 160)
 
-LIGHT = dict(bg="#f7f7f5", fg="#1f1f1f", muted="#76767a", line="#dcdcd8", hover="#ebebe8", field="#ffffff")
-DARK = dict(bg="#1f1f21", fg="#e9e9e7", muted="#9b9ba0", line="#38383c", hover="#2c2c30", field="#262629")
+# Colour presets. Every colour can also be changed on its own (right-click > Colours…).
+PRESETS = {
+    "White": dict(bg="#ffffff", fg="#1f1f1f", muted="#76767a", stamp="#5b6b86",
+                  line="#dcdcd8", hover="#efeff0", field="#f6f6f7"),
+    "Dark": dict(bg="#1f1f21", fg="#e9e9e7", muted="#9b9ba0", stamp="#8fa3c4",
+                 line="#38383c", hover="#2c2c30", field="#262629"),
+}
+DEFAULT_PRESET = "White"
+COLOR_ROLES = [  # (key, what the person sees in the Colours window)
+    ("bg", "Background"),
+    ("fg", "Note text"),
+    ("muted", "Titles, labels and buttons"),
+    ("stamp", "Date and time lines"),
+    ("line", "Borders and dot outline"),
+    ("hover", "Highlight (hover and selection)"),
+    ("field", "Search and name boxes"),
+]
+
+
+def resolve_colors(settings):
+    """The preset the person picked, with any colours they changed on top."""
+    base = PRESETS.get(settings.get("preset"), PRESETS[DEFAULT_PRESET])
+    custom = settings.get("colors") or {}
+    return {k: custom.get(k, v) for k, v in base.items()}
 
 
 # --------------------------------------------------------------------------
@@ -124,6 +147,14 @@ def fit_rect(x, y, w, h, areas):
 def timestamp(t=None):
     """The date-and-time line that starts each note, e.g. "Wed 14 Oct 2026, 09:41"."""
     return time.strftime("%a %d %b %Y, %H:%M", time.localtime(t))
+
+
+STAMP_LINE = re.compile(r"^\S+ \d{2} \S+ \d{4}, \d{2}:\d{2}$")
+
+
+def stamp_lines(text):
+    """1-based numbers of the lines that are note date-and-time lines."""
+    return [i for i, line in enumerate(text.split("\n"), start=1) if STAMP_LINE.match(line)]
 
 
 def entry_prefix(existing, stamp):
@@ -369,16 +400,31 @@ def work_areas(root):
     return [(0, 0, root.winfo_screenwidth(), root.winfo_screenheight())]
 
 
-def system_uses_dark_mode():
-    if not IS_WINDOWS:
+def run_without_console():
+    """If Python was started with a console window, restart with pythonw and let it close.
+
+    Some launchers (such as the Python install manager's) start the console
+    python.exe, which leaves an empty terminal open while the app runs.
+    Returns True if a windowless copy was started and this one should exit.
+    """
+    if not IS_WINDOWS or getattr(sys, "frozen", False) or "--console" in sys.argv:
         return False
+    import ctypes
+    if not ctypes.windll.kernel32.GetConsoleWindow():
+        return False
+    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    if not os.path.exists(pythonw):
+        ctypes.windll.kernel32.FreeConsole()
+        return False
+    import subprocess
+    flags = 0x00000008 | 0x08000000  # DETACHED_PROCESS | CREATE_NO_WINDOW
     try:
-        import winreg
-        key = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as k:
-            return winreg.QueryValueEx(k, "AppsUseLightTheme")[0] == 0
-    except (ImportError, OSError):
+        subprocess.Popen([pythonw, os.path.abspath(__file__), *sys.argv[1:]],
+                         creationflags=flags, close_fds=True)
+    except OSError:
+        ctypes.windll.kernel32.FreeConsole()
         return False
+    return True
 
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -464,9 +510,12 @@ def listen_for_launches(on_new_window):
 # --------------------------------------------------------------------------
 
 class NoteWindow:
+    @property
+    def c(self):
+        return self.app.colors
+
     def __init__(self, app, state):
         self.app = app
-        self.c = app.colors
         # state is saved as-is: id, x, y (the dot's spot), view, project, w, h (notes size)
         self.state = state
         self.alpha = 1.0
@@ -487,10 +536,11 @@ class NoteWindow:
 
     # ---- layout ---------------------------------------------------------
 
-    def show(self, view, save=True):
+    def show(self, view, save=True, focus=True):
         if view == "notes" and not self.app.store.project(self.state.get("project")):
             view = "projects"
         self.state["view"] = view
+        self._focus_text = focus
         self.last_active = time.monotonic()  # each view gets a fresh countdown before shrinking
         self.text = self.status = None
         if self.body is not None:
@@ -707,6 +757,7 @@ class NoteWindow:
         text.edit_modified(False)
         text.mark_set("insert", "end-1c")
         text.see("end")
+        self.color_stamps()
 
         def changed(_e):
             if not text.edit_modified() or getattr(self, "_loading", False):
@@ -725,7 +776,22 @@ class NoteWindow:
         self.stamped = False  # a new note (date line) starts on the first keystroke at the end
         text.bind("<KeyPress>", self.maybe_start_note, add="+")
 
-        self.win.after(10, lambda: (self.win.focus_force(), text.focus_set()))
+        def focus_notes():
+            if text.winfo_exists():
+                self.win.focus_force()
+                text.focus_set()
+
+        if self._focus_text:
+            self.win.after(10, focus_notes)
+
+    def color_stamps(self):
+        text = self.text
+        if text is None:
+            return
+        text.tag_configure("stamp", foreground=self.c["stamp"], font=("Segoe UI", 9))
+        text.tag_remove("stamp", "1.0", "end")
+        for n in stamp_lines(text.get("1.0", "end-1c")):
+            text.tag_add("stamp", f"{n}.0", f"{n}.end")
 
     def start_note(self, force=False):
         """Add a blank line and today's date and time at the end, ready for a new note."""
@@ -735,6 +801,7 @@ class NoteWindow:
         existing = text.get("1.0", "end-1c")
         text.insert("end", entry_prefix(existing, timestamp()))
         text.mark_set("insert", "end-1c")
+        self.color_stamps()
         text.see("end")
         self.stamped = True
         if force:
@@ -780,6 +847,7 @@ class NoteWindow:
                 self._loading = False
             self.text.mark_set("insert", cursor)
             self.text.yview_moveto(top)
+            self.color_stamps()
 
     def set_status(self, msg):
         if self.status is not None:
@@ -863,7 +931,7 @@ class NoteWindow:
 
     def fade_step(self, idle, hide_after):
         now = time.monotonic()
-        pointed = self._drag is not None or self.is_hovered()
+        pointed = self._drag is not None or self.is_hovered() or self.app.colors_open()
         if pointed:
             self.last_active = now
         typing = self.has_focus() and now - self.last_key < TYPING_KEEPS_AWAKE
@@ -897,6 +965,7 @@ class NoteWindow:
             fade.add_radiobutton(label=name, variable=var, value=name,
                                  command=lambda n=name: self.app.set_setting("fade", n))
         m.add_cascade(label="Fade when idle", menu=fade)
+        m.add_command(label="Colours…", command=lambda: self.app.open_colors(self.win))
         drive = tk.Menu(m, tearoff=0)
         folder = self.app.store.settings.get("drive_folder")
         if folder:
@@ -935,7 +1004,7 @@ class App:
         self.root = tk.Tk()
         self.root.withdraw()
         self.root.title(APP_NAME)
-        self.colors = DARK if system_uses_dark_mode() else LIGHT
+        self.colors = resolve_colors(store.settings)
         # On Windows this color is see-through, which makes the dot round.
         self.key_color = "#ff00fe" if IS_WINDOWS else self.colors["bg"]
         self.areas = work_areas(self.root)
@@ -1194,11 +1263,95 @@ class App:
             pass
         self.root.destroy()
 
+    def set_colors(self, preset=None, role=None, value=None, reset=False):
+        """Change the colours and redraw every window."""
+        settings = self.store.settings
+        if reset:
+            settings.pop("colors", None)
+            settings.pop("preset", None)
+        if preset:
+            settings["preset"] = preset
+            settings.pop("colors", None)
+        if role:
+            settings.setdefault("colors", {})[role] = value
+        self.colors = resolve_colors(settings)
+        if not IS_WINDOWS:
+            self.key_color = self.colors["bg"]
+        for w in self.windows:
+            w.win.configure(bg=self.colors["bg"])
+            w.show(w.state["view"], save=False, focus=False)  # redraw without stealing focus
+        self.save_soon()
+
+    def colors_open(self):
+        """While the Colours window is open, keep notes visible so changes can be seen."""
+        cw = getattr(self, "colors_win", None)
+        try:
+            return cw is not None and bool(cw.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def open_colors(self, parent):
+        if getattr(self, "colors_win", None) is not None and self.colors_win.winfo_exists():
+            self.colors_win.deiconify()
+            self.colors_win.lift()
+            return
+        self.colors_win = ColorsWindow(self, parent).win
+
     def run(self):
         self.root.mainloop()
 
 
+class ColorsWindow:
+    """A plain settings window: one swatch per colour, plus presets."""
+
+    def __init__(self, app, parent):
+        self.app = app
+        win = self.win = tk.Toplevel(app.root)
+        win.title(f"{APP_NAME} colours")
+        win.attributes("-topmost", True)
+        win.resizable(False, False)
+        win.configure(bg="#ffffff", padx=16, pady=12)
+        x, y = parent.winfo_rootx() + 20, parent.winfo_rooty() + 20
+        x, y = fit_rect(x, y, 330, 330, app.areas)
+        win.geometry(f"+{x}+{y}")
+        self.swatches = {}
+        font = ("Segoe UI", 10)
+        tk.Label(win, text="Click a colour to change it.", bg="#ffffff", fg="#555", font=font,
+                 anchor="w").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        for i, (key, label) in enumerate(COLOR_ROLES, start=1):
+            tk.Label(win, text=label, bg="#ffffff", fg="#1f1f1f", font=font, anchor="w").grid(
+                row=i, column=0, sticky="w", pady=3)
+            sw = tk.Label(win, width=6, relief="solid", borderwidth=1, cursor="hand2")
+            sw.grid(row=i, column=1, sticky="e", padx=(16, 0), pady=3)
+            sw.bind("<Button-1>", lambda e, k=key, t=label: self.pick(k, t))
+            self.swatches[key] = sw
+        row = len(COLOR_ROLES) + 1
+        bar = tk.Frame(win, bg="#ffffff")
+        bar.grid(row=row, column=0, columnspan=2, sticky="we", pady=(12, 0))
+        for name in PRESETS:
+            tk.Button(bar, text=name, font=font, command=lambda n=name: self.preset(n)).pack(side="left", padx=(0, 6))
+        tk.Button(bar, text="Done", font=font, command=win.destroy).pack(side="right")
+        self.refresh()
+
+    def refresh(self):
+        for key, sw in self.swatches.items():
+            sw.configure(bg=self.app.colors[key])
+
+    def pick(self, key, label):
+        from tkinter import colorchooser
+        _rgb, chosen = colorchooser.askcolor(color=self.app.colors[key], parent=self.win, title=label)
+        if chosen:
+            self.app.set_colors(role=key, value=chosen)
+            self.refresh()
+
+    def preset(self, name):
+        self.app.set_colors(preset=name)
+        self.refresh()
+
+
 def main():
+    if run_without_console():
+        return  # a windowless copy is starting; this console can close
     if ask_running_app_for_window():
         return  # the running app opened a new window
     enable_dpi_awareness()

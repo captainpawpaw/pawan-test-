@@ -85,6 +85,21 @@ class NewNoteTests(unittest.TestCase):
         self.assertEqual(fn.timestamp(t), "Wed 14 Oct 2026, 09:41")
 
 
+class LookTests(unittest.TestCase):
+    def test_stamp_lines_found(self):
+        text = "old\n\nWed 14 Oct 2026, 09:41\nhello\n\nMi 15 Okt 2026, 10:02\nnot a date: 14 Oct"
+        self.assertEqual(fn.stamp_lines(text), [3, 6])
+
+    def test_white_is_the_default(self):
+        self.assertEqual(fn.resolve_colors({})["bg"], "#ffffff")
+
+    def test_custom_colours_override_the_preset(self):
+        c = fn.resolve_colors({"preset": "Dark", "colors": {"bg": "#ffeedd"}})
+        self.assertEqual(c["bg"], "#ffeedd")
+        self.assertEqual(c["fg"], fn.PRESETS["Dark"]["fg"])
+        self.assertEqual(set(c), {k for k, _ in fn.COLOR_ROLES})
+
+
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()

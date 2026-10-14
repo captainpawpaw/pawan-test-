@@ -28,7 +28,15 @@ Each window has four steps. Click to go forward, and click **‹** to go back:
   3 seconds, so it won't disappear while you're writing.
 - **Right-click** the top strip or the dot for: New window, Shrink to dot after
   (3 / 10 / 30 seconds, or Never), Fade when idle (Off / Light / Medium / Strong),
-  Google Drive, Start with Windows, Close this window, Quit.
+  Colours…, Google Drive, Start with Windows, Close this window, Quit.
+
+### Colours
+
+Windows are white by default. Right-click → **Colours…** to change any of them:
+background, note text, titles/labels/buttons, the date-and-time lines, borders,
+highlight, and the search and name boxes. Click a swatch to pick a colour; changes
+show in every window straight away. **White** and **Dark** reset everything to a
+preset.
 
 ### Several windows
 
@@ -47,6 +55,11 @@ default installer has everything; there's nothing else to install.
 
 - Double-click **`run.bat`**, or
 - run `pyw floating_notes.py`
+
+If Python opens an empty console or terminal window, the app closes it by restarting
+itself with the windowless `pythonw.exe` (some Python installers, such as the Python
+install manager, start the console version). To keep the console for troubleshooting,
+run `py floating_notes.py --console`.
 
 To build a standalone **`FloatingNotes.exe`**, double-click **`build.bat`**. The exe
 ends up in `dist\`.
