@@ -10,10 +10,16 @@ projects. Windows, their positions and what they show are restored the next
 time you start the app. Launching the app again while it's running opens a
 new window instead of a second copy.
 
+Notes are always saved on this PC first (%APPDATA%\\FloatingNotes\\data.json),
+so the app works offline. Optionally they also sync with a file in a Google
+Drive for desktop folder; edits made on different PCs are merged, and if the
+same project changed in two places, both versions are kept.
+
 Standard library only. Run it with `pythonw floating_notes.py`, or build a
-single .exe with build.bat. Data lives in %APPDATA%\\FloatingNotes\\data.json.
+single .exe with build.bat.
 """
 
+import copy
 import json
 import os
 import queue
@@ -23,7 +29,7 @@ import threading
 import time
 import tkinter as tk
 import uuid
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 
 APP_NAME = "Floating Notes"
 PORT = 47653  # localhost only; used so a second launch opens a window in the running app
@@ -138,6 +144,119 @@ def new_id():
 
 
 # --------------------------------------------------------------------------
+# Google Drive sync (pure parts)
+# --------------------------------------------------------------------------
+
+DRIVE_FILE = "Floating Notes.json"
+SYNC_EVERY_MS = 5000
+TOMBSTONE_DAYS = 90
+
+
+def device_name():
+    return os.environ.get("COMPUTERNAME") or socket.gethostname() or "another PC"
+
+
+def merge_projects(local, remote, deleted_local, deleted_remote, last_synced, device="another PC", now=None):
+    """Merge this PC's projects with the Drive copy.
+
+    - A project changed on only one side takes that side's version.
+    - Changed on both sides since the last sync: the newer one wins and the
+      older is kept as a separate "(conflict …)" project, so no text is lost.
+    - Deletions travel as tombstones {id: when}; a project edited after it was
+      deleted elsewhere survives.
+
+    Returns (projects, deleted, conflicts) where conflicts names the projects
+    that were kept twice.
+    """
+    now = time.time() if now is None else now
+    deleted = dict(deleted_remote)
+    for pid, t in deleted_local.items():
+        deleted[pid] = max(t, deleted.get(pid, 0))
+    lmap = {p["id"]: p for p in local}
+    rmap = {p["id"]: p for p in remote}
+    order = [p["id"] for p in local] + [p["id"] for p in remote if p["id"] not in lmap]
+    out, conflicts = [], []
+    for pid in order:
+        l, r = lmap.get(pid), rmap.get(pid)
+        if l and r and l != r:
+            winner, loser = (l, r) if l.get("updated", 0) >= r.get("updated", 0) else (r, l)
+            base = last_synced.get(pid)
+            both_changed = base is None or (l.get("updated", 0) > base and r.get("updated", 0) > base)
+            if both_changed and l.get("text") != r.get("text") and loser.get("text", "").strip():
+                where = device if loser is l else "another PC"
+                copy_ = dict(loser, id=new_id(), name=f"{loser['name']} (conflict, {where})")
+                out.append(copy_)
+                conflicts.append(loser["name"])
+            p = winner
+        else:
+            p = l or r
+        if deleted.get(pid, 0) >= p.get("updated", 0):
+            continue
+        out.append(p)
+    cutoff = now - TOMBSTONE_DAYS * 86400
+    deleted = {pid: t for pid, t in deleted.items() if t >= cutoff}
+    return out, deleted, conflicts
+
+
+def drive_folder_candidates():
+    """Folders Google Drive for desktop usually creates, if present."""
+    found = []
+    if IS_WINDOWS:
+        for letter in "GHIJKLMNOPQRSTUVWXYZDEF":
+            found.append(f"{letter}:\\My Drive")
+    home = os.path.expanduser("~")
+    found += [os.path.join(home, "My Drive"), os.path.join(home, "Google Drive", "My Drive"),
+              os.path.join(home, "Google Drive")]
+    return [f for f in found if os.path.isdir(f)]
+
+
+def sync_with_drive(folder, snapshot, last_mtime):
+    """Runs on a worker thread. Reads the Drive file, merges, writes it back if needed.
+
+    `snapshot` is a deep copy of {projects, deleted, last_synced}; this never
+    touches live app state. Returns a result dict for the main thread.
+    """
+    if not folder or not os.path.isdir(folder):
+        return {"status": "offline"}
+    path = os.path.join(folder, DRIVE_FILE)
+    remote = {"projects": [], "deleted": {}}
+    mtime = None
+    try:
+        mtime = os.stat(path).st_mtime
+        if mtime == last_mtime and not snapshot["dirty"]:
+            return {"status": "synced", "unchanged": True, "mtime": mtime}
+        with open(path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        if not isinstance(loaded, dict) or not isinstance(loaded.get("projects"), list):
+            return {"status": "error", "detail": f"{DRIVE_FILE} isn't a Floating Notes file"}
+        remote = {"projects": loaded["projects"], "deleted": loaded.get("deleted", {})}
+    except FileNotFoundError:
+        pass
+    except ValueError:
+        # Probably mid-download by Google Drive; never overwrite it. Try again next time.
+        return {"status": "error", "detail": "the Drive copy is still downloading or damaged"}
+    except OSError as e:
+        return {"status": "offline", "detail": str(e)}
+
+    projects, deleted, conflicts = merge_projects(
+        snapshot["projects"], remote["projects"], snapshot["deleted"], remote["deleted"],
+        snapshot["last_synced"], device=device_name())
+    if projects != remote["projects"] or deleted != remote["deleted"]:
+        body = {"app": APP_NAME, "version": 1, "saved_by": device_name(), "saved_at": time.time(),
+                "projects": projects, "deleted": deleted}
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(body, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, path)
+            mtime = os.stat(path).st_mtime
+        except OSError as e:
+            return {"status": "error", "detail": f"couldn't write to Drive: {e.strerror or e}"}
+    return {"status": "synced", "projects": projects, "deleted": deleted, "conflicts": conflicts,
+            "mtime": mtime, "counter": snapshot["counter"]}
+
+
+# --------------------------------------------------------------------------
 # Storage
 # --------------------------------------------------------------------------
 
@@ -151,13 +270,14 @@ class Store:
 
     def __init__(self, path):
         self.path = path
-        self.data = {"projects": [], "windows": [], "settings": {}}
+        self.data = {"projects": [], "windows": [], "settings": {}, "deleted": {}, "sync": {}}
+        self.counter = 0  # bumped on every project change; lets a finished sync tell if it's stale
         self.error = None
         try:
             with open(path, encoding="utf-8") as f:
                 loaded = json.load(f)
             if isinstance(loaded, dict):
-                self.data.update({k: loaded[k] for k in ("projects", "windows", "settings") if k in loaded})
+                self.data.update({k: loaded[k] for k in self.data if k in loaded})
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as e:
@@ -178,6 +298,10 @@ class Store:
 
     def project(self, pid):
         return next((p for p in self.projects if p["id"] == pid), None)
+
+    def delete_project(self, p):
+        self.projects.remove(p)
+        self.data["deleted"][p["id"]] = time.time()
 
     def add_project(self, name):
         now = time.time()
@@ -505,7 +629,7 @@ class NoteWindow:
 
         def delete(p):
             if messagebox.askyesno(APP_NAME, f"Delete “{p['name']}” and its notes?", parent=self.win):
-                self.app.store.projects.remove(p)
+                self.app.store.delete_project(p)
                 self.app.data_changed()
 
         foot = tk.Frame(self.body, bg=self.c["bg"])
@@ -560,6 +684,7 @@ class NoteWindow:
         self.status = tk.Label(foot, text="", bg=self.c["bg"], fg=self.c["muted"], font=("Segoe UI", 8),
                                anchor="w", padx=12)
         self.status.pack(side="left", fill="x", expand=True)
+        self.status.configure(text=self.app.status_text() if hasattr(self.app, "sync_status") else "")
         grip = tk.Label(foot, text="◢", bg=self.c["bg"], fg=self.c["line"], cursor="size_nw_se" if IS_WINDOWS else "bottom_right_corner",
                         font=("Segoe UI", 8), padx=2)
         grip.pack(side="right")
@@ -584,11 +709,14 @@ class NoteWindow:
         text.see("end")
 
         def changed(_e):
-            if not text.edit_modified():
+            if not text.edit_modified() or getattr(self, "_loading", False):
                 return
             text.edit_modified(False)
-            p["text"] = text.get("1.0", "end-1c")
-            p["updated"] = time.time()
+            cur = self.app.store.project(p["id"])
+            if cur is None:
+                return
+            cur["text"] = text.get("1.0", "end-1c")
+            cur["updated"] = time.time()
             self.set_status("Editing…")
             self.app.data_changed(source=self, text_only=True)
 
@@ -630,17 +758,27 @@ class NoteWindow:
             self.stamped = True  # editing an older note; don't stamp this visit
 
     def reload_notes(self):
-        """Another window edited this project; show its text unless we're typing here."""
-        if self.text is None or self.has_focus():
+        """Show the project's latest text after another window or PC changed it.
+
+        Everything typed here is already in the store before any other change is
+        applied, so replacing the text loses nothing; the cursor and scroll stay put.
+        """
+        if self.text is None:
             return
         p = self.app.store.project(self.state["project"])
         if p is None:
             return
         if self.text.get("1.0", "end-1c") != p["text"]:
             top = self.text.yview()[0]
-            self.text.delete("1.0", "end")
-            self.text.insert("1.0", p["text"])
-            self.text.edit_modified(False)
+            cursor = self.text.index("insert")
+            self._loading = True
+            try:
+                self.text.delete("1.0", "end")
+                self.text.insert("1.0", p["text"])
+                self.text.edit_modified(False)
+            finally:
+                self._loading = False
+            self.text.mark_set("insert", cursor)
             self.text.yview_moveto(top)
 
     def set_status(self, msg):
@@ -759,6 +897,21 @@ class NoteWindow:
             fade.add_radiobutton(label=name, variable=var, value=name,
                                  command=lambda n=name: self.app.set_setting("fade", n))
         m.add_cascade(label="Fade when idle", menu=fade)
+        drive = tk.Menu(m, tearoff=0)
+        folder = self.app.store.settings.get("drive_folder")
+        if folder:
+            drive.add_command(label=self.app.status_text(), state="disabled")
+            if self.app.sync_detail:
+                drive.add_command(label=self.app.sync_detail[:80], state="disabled")
+            drive.add_command(label=f"Folder: {folder}", state="disabled")
+            drive.add_separator()
+            drive.add_command(label="Sync now", command=self.app.sync_now)
+            drive.add_command(label="Change folder…", command=lambda: self.app.choose_drive_folder(self.win))
+            drive.add_command(label="Stop syncing (keep notes on this PC)", command=self.app.stop_drive_sync)
+        else:
+            drive.add_command(label="Notes are saved on this PC only", state="disabled")
+            drive.add_command(label="Save to Google Drive…", command=lambda: self.app.choose_drive_folder(self.win))
+        m.add_cascade(label="Google Drive", menu=drive)
         if IS_WINDOWS:
             auto = tk.BooleanVar(value=get_autostart())
             m.add_checkbutton(label="Start with Windows", variable=auto,
@@ -789,6 +942,12 @@ class App:
         self.windows = []
         self._save_job = None
         self._timers = {}
+        self.sync_status = "local"  # local | synced | offline | error
+        self.sync_detail = ""
+        self._sync_running = False
+        self._sync_results = queue.Queue()
+        self._dirty = True  # local changes not yet merged with Drive
+        self.notice = None  # (text, until): a message that outlasts the next "Saved"
         self.root.report_callback_exception = self.report_error
 
         for state in list(store.data["windows"]):
@@ -800,6 +959,9 @@ class App:
 
         self.every(FADE_TICK_MS, "fade", self.fade_loop)
         self.every(3000, "screens", self.watch_screens)
+        self.every(SYNC_EVERY_MS, "sync", self.sync_now)
+        self.every(200, "sync-results", self.apply_sync_results)
+        self.root.after(500, self.sync_now)
 
     def every(self, ms, name, fn):
         """Run fn every ms milliseconds until quit."""
@@ -838,7 +1000,10 @@ class App:
         self.store.data["windows"] = [w.state for w in self.windows]
         self.save_soon()
 
-    def data_changed(self, source=None, text_only=False):
+    def data_changed(self, source=None, text_only=False, from_sync=False):
+        if not from_sync:
+            self.store.counter += 1
+            self._dirty = True
         for w in self.windows:
             if w is source:
                 continue
@@ -866,11 +1031,123 @@ class App:
         self._save_job = None
         try:
             self.store.save()
-            msg = "Saved"
+            self.saved_ok = True
         except OSError as e:
-            msg = f"Couldn't save: {e.strerror or e}"
+            self.saved_ok = False
+            for w in self.windows:
+                w.set_status(f"Couldn't save: {e.strerror or e}")
+            return
+        self.show_status()
+        if self._dirty:
+            self.sync_now()
+
+    # ---- Google Drive ---------------------------------------------------
+
+    def status_text(self):
+        if self.notice and time.monotonic() < self.notice[1]:
+            return self.notice[0]
+        return {
+            "local": "Saved on this PC",
+            "synced": "Saved · Google Drive synced",
+            "offline": "Saved on PC · Drive offline",
+            "error": "Saved on PC · Drive sync paused",
+        }[self.sync_status]
+
+    def show_status(self):
+        msg = self.status_text()
         for w in self.windows:
             w.set_status(msg)
+
+    def sync_now(self):
+        folder = self.store.settings.get("drive_folder")
+        if not folder:
+            self.sync_status = "local"
+            return
+        if self._sync_running:
+            return
+        self._sync_running = True
+        snapshot = copy.deepcopy({
+            "projects": self.store.projects,
+            "deleted": self.store.data["deleted"],
+            "last_synced": self.store.data["sync"].get("last", {}),
+        })
+        snapshot["counter"] = self.store.counter
+        snapshot["dirty"] = self._dirty
+        last_mtime = self.store.data["sync"].get("mtime")
+
+        def work():
+            try:
+                result = sync_with_drive(folder, snapshot, last_mtime)
+            except Exception as e:  # never let a sync problem take the app down
+                result = {"status": "error", "detail": str(e)}
+            self._sync_results.put(result)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def apply_sync_results(self):
+        while not self._sync_results.empty():
+            r = self._sync_results.get_nowait()
+            self._sync_running = False
+            before = self.sync_status
+            self.sync_status = r["status"]
+            self.sync_detail = r.get("detail", "")
+            if "projects" in r:
+                if r["counter"] != self.store.counter:
+                    continue  # you typed while it ran; the next round includes it
+                changed = self.adopt(r["projects"], r["deleted"])
+                sync = self.store.data["sync"]
+                sync["last"] = {p["id"]: p.get("updated", 0) for p in r["projects"]}
+                sync["mtime"] = r["mtime"]
+                self._dirty = False
+                if changed:
+                    self.data_changed(from_sync=True)
+                else:
+                    self.save_soon()
+                if r["conflicts"]:
+                    names = ", ".join(f"“{n}”" for n in r["conflicts"])
+                    self.notice = (f"{names} changed on two PCs; kept both", time.monotonic() + 30)
+            elif "mtime" in r:
+                self.store.data["sync"]["mtime"] = r["mtime"]
+            if self.sync_status != before or "projects" in r:
+                self.show_status()
+
+    def adopt(self, merged, deleted):
+        """Make the store match a sync result, updating project dicts in place."""
+        local = {p["id"]: p for p in self.store.projects}
+        before = json.dumps([self.store.projects, self.store.data["deleted"]], sort_keys=True)
+        new = []
+        for m in merged:
+            p = local.get(m["id"])
+            if p is None:
+                p = dict(m)
+            elif p != m:
+                p.clear()
+                p.update(m)
+            new.append(p)
+        self.store.projects[:] = new
+        self.store.data["deleted"] = dict(deleted)
+        return json.dumps([self.store.projects, self.store.data["deleted"]], sort_keys=True) != before
+
+    def choose_drive_folder(self, parent):
+        current = self.store.settings.get("drive_folder")
+        start = current or next(iter(drive_folder_candidates()), os.path.expanduser("~"))
+        folder = filedialog.askdirectory(
+            parent=parent, initialdir=start, mustexist=True,
+            title="Choose a Google Drive folder for your notes (for example My Drive)")
+        if not folder:
+            return
+        self.store.settings["drive_folder"] = os.path.normpath(folder)
+        self.store.data["sync"] = {}  # first sync with this folder: merge everything
+        self._dirty = True
+        self.save_soon()
+        self.sync_now()
+
+    def stop_drive_sync(self):
+        self.store.settings.pop("drive_folder", None)
+        self.store.data["sync"] = {}
+        self.sync_status = "local"
+        self.save_soon()
+        self.show_status()
 
     def fade_loop(self):
         idle = FADE_LEVELS.get(self.store.settings.get("fade", DEFAULT_FADE), FADE_LEVELS[DEFAULT_FADE])
@@ -897,6 +1174,20 @@ class App:
         for job in [self._save_job, *self._timers.values()]:
             if job:
                 self.root.after_cancel(job)
+        folder = self.store.settings.get("drive_folder")
+        if folder and self._dirty and not self._sync_running:
+            # One last sync so notes typed just before quitting reach Drive now.
+            snapshot = copy.deepcopy({"projects": self.store.projects, "deleted": self.store.data["deleted"],
+                                      "last_synced": self.store.data["sync"].get("last", {})})
+            snapshot.update(counter=self.store.counter, dirty=True)
+            try:
+                r = sync_with_drive(folder, snapshot, None)
+                if "projects" in r:
+                    self.adopt(r["projects"], r["deleted"])
+                    self.store.data["sync"].update(last={p["id"]: p.get("updated", 0) for p in r["projects"]},
+                                                   mtime=r["mtime"])
+            except Exception:
+                pass  # it syncs next time the app starts
         try:
             self.store.save()
         except OSError:

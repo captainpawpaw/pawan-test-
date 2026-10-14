@@ -28,7 +28,7 @@ Each window has four steps. Click to go forward, and click **‹** to go back:
   3 seconds, so it won't disappear while you're writing.
 - **Right-click** the top strip or the dot for: New window, Shrink to dot after
   (3 / 10 / 30 seconds, or Never), Fade when idle (Off / Light / Medium / Strong),
-  Start with Windows, Close this window, Quit.
+  Google Drive, Start with Windows, Close this window, Quit.
 
 ### Several windows
 
@@ -53,10 +53,39 @@ ends up in `dist\`.
 
 ## Your data
 
-Everything is saved on your PC in `%APPDATA%\FloatingNotes\data.json` (projects,
-notes, and which windows are open where). It's a plain JSON file, so you can back
-it up by copying it. If it ever becomes unreadable, the app renames it to
+Notes are always saved on your PC first, in `%APPDATA%\FloatingNotes\data.json`
+(projects, notes, and which windows are open where), so the app works with or
+without the internet. If that file ever becomes unreadable, the app renames it to
 `data.json.unreadable` rather than overwriting it, and starts fresh.
+
+### Saving to Google Drive (with offline mode)
+
+1. Install [Google Drive for desktop](https://www.google.com/drive/download/) and sign in.
+   It adds a **Google Drive** drive (usually `G:`) with a **My Drive** folder.
+2. Right-click a Floating Notes window → **Google Drive → Save to Google Drive…**
+   and pick **My Drive** (or any folder inside it).
+
+Your notes are then also kept in **`Floating Notes.json`** in that folder, which Google
+Drive uploads. The status at the bottom of a notes window says where things stand:
+
+| Status | Meaning |
+| --- | --- |
+| Saved · Google Drive synced | Up to date with the Drive folder. |
+| Saved on PC · Drive offline | The Drive folder can't be reached (Drive for desktop isn't running or you're signed out). Keep working; it syncs when the folder is back. |
+| Saved on PC · Drive sync paused | The Drive copy couldn't be read or written, often because Google Drive is still downloading it. It retries every few seconds; right-click → Google Drive shows the reason. |
+
+When your laptop has no internet, Google Drive for desktop keeps the file and uploads it
+when you're back online. The app checks the Drive folder every 5 seconds, so changes
+from another PC appear in your open windows on their own.
+
+**Using it on more than one PC:** choose the same Drive folder on each. Notes from
+every PC are merged project by project. If the same project was changed on two PCs
+before they synced, both versions are kept: the newer one under the project's name,
+the other as **“Name (conflict, PC-NAME)”**, so you can copy across anything you need
+and delete the extra. Deleting a project on one PC deletes it on the others.
+
+**To stop:** right-click → Google Drive → **Stop syncing**. Your notes stay on this PC,
+and the copy in Drive is left as it is.
 
 ## Tests
 
@@ -70,3 +99,5 @@ py -m unittest
   **virtual desktops** (Win+Tab → New desktop) haven't been tested; the windows
   may stay on the desktop where they were opened.
 - These notes are separate from the web Notes app in `notes/`.
+- Google Drive sync works through the Google Drive for desktop folder; the app doesn't
+  sign in to Google itself.
