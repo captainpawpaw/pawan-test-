@@ -10,7 +10,7 @@ There are five wallpapers:
 - **Tide**: layered waves under a low sun
 - **Matrix**: falling green-screen code, in your accent color or rainbow colors. After [Matrix Rain Customizable](https://github.com/bad1dea/lively_matrix) for Lively Wallpaper by parambirs and khuong.
 
-All four are tinted by the accent color you pick.
+All five are tinted by the accent color you pick (Matrix can use rainbow colors instead).
 
 ## Run it
 
