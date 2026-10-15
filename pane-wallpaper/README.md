@@ -2,12 +2,13 @@
 
 The animated Pane Desktop wallpapers, running as your real Windows desktop background, behind your desktop icons. It also adds a **thumbnail shelf**: when you minimize a window, a live preview of it appears above the taskbar, and clicking the preview brings the window back.
 
-There are four wallpapers:
+There are five wallpapers:
 
 - **Aurora**: drifting color glows with light curtains
 - **Bloom**: a slowly turning flower of light
 - **Starfield**: flying through stars and nebula
 - **Tide**: layered waves under a low sun
+- **Matrix**: falling green-screen code, in your accent color or rainbow colors. After [Matrix Rain Customizable](https://github.com/bad1dea/lively_matrix) for Lively Wallpaper by parambirs and khuong.
 
 All four are tinted by the accent color you pick.
 
@@ -24,7 +25,7 @@ To build a standalone **`PaneLiveWallpaper.exe`** you can pin or share, double-c
 
 The app has no window. It lives in the **system tray**: click the **^** arrow at the right end of the taskbar if you don't see the four-squares icon. Right-click (or click) the icon for:
 
-- **Wallpaper**: Aurora, Bloom, Starfield or Tide
+- **Wallpaper**: Aurora, Bloom, Starfield, Tide or Matrix, plus **Rainbow rain** for Matrix
 - **Accent color**: blue, violet, pink, orange, green or teal
 - **Frame rate**: 15, 30 (default) or 60 fps. Lower uses less power.
 - **Pause**: freezes the current frame
@@ -42,7 +43,7 @@ Minimize any window (the – button, the taskbar, or Win+Down) and a live previe
 
 - **Click a preview** to bring that window back. Only that window changes: the shelf never minimizes or opens anything on its own.
 - **Rest the pointer on a preview** and, after a moment, a copy **twice the size** pops up just above it, easier to read. Move along the shelf and it follows; move away and it disappears. Click the big copy to bring that window back, or middle-click it to close the window. Turn this off with **Enlarge previews on hover** in the tray menu.
-- **Hover a preview** and click its **✕**, or **middle-click** it, to close that window.
+- **Hover a preview** and click the **✕** at the right of its title, or **middle-click** the preview, to close that window.
 - **Drag a preview to another screen** to move that window there. Drop it anywhere on the other screen. The window stays minimized, joins that screen's shelf, and opens on that screen when you click it. It keeps the same position relative to the screen's corner, shrinking to fit if the new screen is smaller. A window that was maximized comes back maximized on its new screen.
 - **Out of the way:** while an open window overlaps a screen's shelf (including any maximized window), that shelf shrinks to a thin see-through bar with one colored dot per minimized window. **Point at the bar** to open the full shelf; it shrinks back about half a second after the pointer leaves, if a window is still in the way. Move the window off the shelf and the full shelf comes back by itself. Turn this off with **Shrink the shelf behind open windows** in the tray menu.
 - **Colors by type:** each thumbnail has a colored border and tint showing what it is. By default web browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi and others) are **blue**, File Explorer folders are **yellow**, and every other app is **green**. Change any of them, or turn the colors off, under **Shelf colors** in the tray menu.

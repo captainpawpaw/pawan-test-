@@ -217,7 +217,10 @@ DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_CLOAKED, DWMWA_WINDOW_CORNER_PREFERENCE = 9, 
 WS_EX_LAYERED, LWA_ALPHA = 0x80000, 0x2
 EVENT_SYSTEM_FOREGROUND, EVENT_OBJECT_SHOW, EVENT_OBJECT_HIDE, EVENT_OBJECT_LOCATIONCHANGE = 0x0003, 0x8002, 0x8003, 0x800B
 BAR_ALPHA = 150         # 0-255: how see-through the shrunk bar is
-DWMWCP_ROUND = 2
+DWMWCP_DONOTROUND, DWMWCP_ROUND = 1, 2
+# Corner radii (at 100% scaling). Windows' own rounding is fixed at about 8px, so the shelf's
+# windows are shaped with a region instead, which allows any radius.
+SHELF_RADIUS, TILE_RADIUS, ZOOM_RADIUS, GHOST_RADIUS = 28, 18, 28, 18
 MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY, MONITOR_DEFAULTTONEAREST = 0, 1, 2
 MDT_EFFECTIVE_DPI = 0
 WPF_SETMINPOSITION = 0x1
@@ -298,6 +301,12 @@ def _wndproc(hwnd, msg, wp, lp):
 
 
 _WNDPROC_REF = WNDPROC(_wndproc) if sys.platform == "win32" else None
+
+
+def square_corners(hwnd):
+    """Turn off Windows 11's own small corner rounding; the window's region does the rounding."""
+    pref = ctypes.c_int(DWMWCP_DONOTROUND)
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref), ctypes.sizeof(pref))
 
 
 def create_window(owner, ex_style, parent=None):
@@ -407,9 +416,7 @@ class Panel:
         self.bar = False           # currently drawn as the thin bar
         self.dot = 8
         create_window(self, WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE)
-        pref = ctypes.c_int(DWMWCP_ROUND)
-        self.round_corners = DwmSetWindowAttribute(
-            self.hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref), ctypes.sizeof(pref)) == 0
+        square_corners(self.hwnd)  # show() shapes it with a rounder region
 
     def px(self, v):
         return int(round(v * self.scale))
@@ -468,8 +475,8 @@ class Panel:
         self.bar = False
         self.size = (w, h)
         SetWindowPos(self.hwnd, wintypes.HWND(HWND_TOPMOST), x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW)
-        if not self.round_corners:
-            SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, self.px(16), self.px(16)), True)
+        rad = self.px(SHELF_RADIUS)
+        SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, rad, rad), True)
 
         self.entries, self.rects = shown, []
         close = self.px(22)
@@ -478,8 +485,10 @@ class Panel:
             left = pad + i * (tile_w + gap)
             tile = (left, pad, left + tile_w, pad + tile_h)
             area = (left + inset, pad + inset, left + tile_w - inset, pad + tile_h - cap_h)
-            close_rect = (tile[2] - close - self.px(4), tile[1] + self.px(4),
-                          tile[2] - self.px(4), tile[1] + self.px(4) + close)
+            # In the caption row: Windows draws the live preview on top of anything the app paints
+            # inside the preview area, so a close button up there would be hidden behind it.
+            cy = tile[3] - cap_h + (cap_h - close) // 2
+            close_rect = (tile[2] - close - self.px(8), cy, tile[2] - self.px(8), cy + close)
             self.rects.append((tile, close_rect))
             if dragging is not e:  # while dragged, the preview lives in the ghost window
                 e.show_in(self.hwnd)
@@ -503,8 +512,7 @@ class Panel:
         self.size = (w, h)
         SetWindowPos(self.hwnd, wintypes.HWND(HWND_TOPMOST), center_x - w // 2, bottom - h, w, h,
                      SWP_NOACTIVATE | SWP_SHOWWINDOW)
-        if not self.round_corners:
-            SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, h, h), True)
+        SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, h, h), True)  # a pill
         self.set_alpha(BAR_ALPHA)
         InvalidateRect(self.hwnd, None, True)
 
@@ -627,7 +635,7 @@ class Panel:
             old_font = SelectObject(hdc, self.font)
             old_pen = SelectObject(hdc, GetStockObject(NULL_PEN))
             SetBkMode(hdc, TRANSPARENT)
-            radius = self.px(12)
+            radius = self.px(TILE_RADIUS)
             dragging = self.shelf.drag.entry if self.shelf.drag and self.shelf.drag.active else None
             for i, (e, (tile, close)) in enumerate(zip(self.entries, self.rects)):
                 hovered = i == self.hover and dragging is None
@@ -656,7 +664,7 @@ class Panel:
                     DrawIconEx(hdc, text_left, cap_top + (self.px(30) - small) // 2, e.icon, small, small, 0, None, DI_NORMAL)
                     text_left += small + self.px(8)
                 SetTextColor(hdc, COLORS["muted" if lifted else "text"])
-                tr = wintypes.RECT(text_left, cap_top, r - self.px(10), b)
+                tr = wintypes.RECT(text_left, cap_top, close[0] - self.px(6), b)  # leave room for the close button
                 DrawTextW(hdc, e.title, -1, ctypes.byref(tr), DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX)
                 if hovered:
                     SelectObject(hdc, br["close_hover" if self.hover_close else "close"])
@@ -747,10 +755,9 @@ class Zoom:
         self.inset, self.cap = px(12), px(48)
         self.font = CreateFontW(-px(17), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
         create_window(self, WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE)
-        pref = ctypes.c_int(DWMWCP_ROUND)
-        if DwmSetWindowAttribute(self.hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref),
-                                 ctypes.sizeof(pref)) != 0:
-            SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, self.w + 1, self.h + 1, px(20), px(20)), True)
+        square_corners(self.hwnd)
+        rad = px(ZOOM_RADIUS)
+        SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, self.w + 1, self.h + 1, rad, rad), True)
 
         # Centered above its tile, kept on the tile's screen.
         tl, tt, tr, _ = panel.tile_screen_rect(index)
@@ -866,8 +873,9 @@ class Ghost:
         self.hwnd = None
         self.w, self.h = int(176 * scale), int(118 * scale)
         create_window(self, WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT)
-        pref = ctypes.c_int(DWMWCP_ROUND)
-        DwmSetWindowAttribute(self.hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(pref), ctypes.sizeof(pref))
+        square_corners(self.hwnd)
+        rad = int(GHOST_RADIUS * scale)
+        SetWindowRgn(self.hwnd, CreateRoundRectRgn(0, 0, self.w + 1, self.h + 1, rad, rad), True)
         inset = int(6 * scale)
         entry.show_in(self.hwnd)
         entry.place((inset, inset, self.w - inset, self.h - inset), opacity=230)

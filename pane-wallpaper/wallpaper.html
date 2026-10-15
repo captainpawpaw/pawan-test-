@@ -11,15 +11,21 @@
 <body>
 <canvas id="wall"></canvas>
 <script>
-// The four Pane Desktop wallpapers, drawn on one canvas.
+// The Pane Desktop wallpapers, drawn on one canvas.
 // pane_wallpaper.py drives this page through window.pane:
-//   pane.apply({wall, accent, fps})  pick wallpaper, accent color and frame-rate cap
+//   pane.apply({wall, accent, fps, rainbow})  pick wallpaper, accent color, frame-rate cap,
+//                                             and rainbow colors for Matrix
 //   pane.pause(true|false)           freeze or resume the animation
 (() => {
   'use strict';
   const cv = document.getElementById('wall'), cx = cv.getContext('2d');
-  const cfg = { wall: 'aurora', accent: '#4f8cff', fps: 30 };
+  const cfg = { wall: 'aurora', accent: '#4f8cff', fps: 30, rainbow: false };
   let W = 0, H = 0, hue = 220, stars = [], running = true, last = 0;
+  // Matrix: after "Matrix Rain Customizable" for Lively Wallpaper by parambirs / khuong
+  // (github.com/bad1dea/lively_matrix), itself inspired by thecodeplayer.com.
+  const GLYPHS = '゠アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレワヰヱヲンヺ・ーヽヿ0123456789'.split('');
+  const RAIN_FONT = 16, RAIN_STEP_MS = 50;  // the original moves every 50 ms, whatever the frame rate
+  let rain = null;
   const seed = Math.random() * 1000;
 
   function hexHue(hex) {
@@ -37,6 +43,7 @@
     W = innerWidth; H = innerHeight;
     cv.width = W; cv.height = H;
     stars = [];
+    rain = null;
     draw(performance.now());
   }
 
@@ -133,6 +140,31 @@
         cx.lineTo(W, H); cx.closePath();
         cx.fillStyle = `hsla(${hue - 10 + k * 8},${60 + k * 4}%,${18 + k * 7}%,${.55 + k * .07})`; cx.fill();
       }
+    },
+    matrix(t, dt) {
+      // Leaves each frame on the canvas and fades it, so the falling glyphs trail behind.
+      if (!rain) {
+        const cols = Math.ceil(W / RAIN_FONT);
+        rain = { drops: Array.from({ length: cols }, () => Math.floor(Math.random() * -H / RAIN_FONT)), acc: 0, hue: Math.random() };
+        cx.fillStyle = '#000'; cx.fillRect(0, 0, W, H);
+      }
+      rain.acc += dt;
+      let steps = Math.floor(rain.acc / RAIN_STEP_MS);
+      rain.acc -= steps * RAIN_STEP_MS;
+      if (steps > 3) { steps = 3; rain.acc = 0; }  // after a pause, don't jump ahead
+      cx.font = `${RAIN_FONT}px "MS Gothic", "Yu Gothic", "Meiryo", monospace`;
+      const color = `hsl(${hue}, 100%, 58%)`;
+      for (let s = 0; s < steps; s++) {
+        cx.fillStyle = 'rgba(0, 0, 0, 0.05)'; cx.fillRect(0, 0, W, H);
+        for (let i = 0; i < rain.drops.length; i++) {
+          const y = rain.drops[i] * RAIN_FONT;
+          if (cfg.rainbow) { rain.hue = (rain.hue + 0.0004) % 1; cx.fillStyle = `hsl(${rain.hue * 360}, 95%, 62%)`; }
+          else cx.fillStyle = color;
+          if (y > 0) cx.fillText(GLYPHS[(Math.random() * GLYPHS.length) | 0], i * RAIN_FONT, y);
+          rain.drops[i]++;
+          if (y > H && Math.random() > 0.975) rain.drops[i] = 0;
+        }
+      }
     }
   };
 
@@ -150,10 +182,13 @@
 
   window.pane = {
     apply(next) {
+      const before = cfg.wall;
       Object.assign(cfg, next || {});
       cfg.fps = Math.max(5, Math.min(144, Number(cfg.fps) || 30));
+      cfg.rainbow = !!cfg.rainbow;
       hue = hexHue(cfg.accent);
       stars = [];
+      if (cfg.wall !== before) rain = null;  // a color change keeps the rain falling
       draw(performance.now());
       return true;
     },

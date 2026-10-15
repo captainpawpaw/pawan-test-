@@ -28,7 +28,7 @@ APP_NAME = "Pane Live Wallpaper"
 HOST_TITLE = "Pane Live Wallpaper host"
 MUTEX_NAME = "Local\\PaneLiveWallpaper"
 
-WALLS = [("aurora", "Aurora"), ("bloom", "Bloom"), ("stars", "Starfield"), ("waves", "Tide")]
+WALLS = [("aurora", "Aurora"), ("bloom", "Bloom"), ("stars", "Starfield"), ("waves", "Tide"), ("matrix", "Matrix")]
 ACCENTS = [
     ("Blue", "#4f8cff"),
     ("Violet", "#8b5cf6"),
@@ -45,6 +45,7 @@ DEFAULTS = {
     "wall": "aurora",
     "accent": "#4f8cff",
     "fps": 30,
+    "matrix_rainbow": False,  # Matrix wallpaper: rainbow colors instead of the accent color
     "paused": False,
     "auto_pause": True,  # pause while another app is maximized or full screen
     "shelf": True,       # thumbnail shelf for minimized windows
@@ -321,7 +322,8 @@ class WallpaperApp:
     def push(self):
         if not self.window:
             return
-        payload = json.dumps({k: self.cfg[k] for k in ("wall", "accent", "fps")})
+        payload = json.dumps({"wall": self.cfg["wall"], "accent": self.cfg["accent"], "fps": self.cfg["fps"],
+                              "rainbow": bool(self.cfg["matrix_rainbow"])})
         try:
             self.window.evaluate_js(f"window.pane && window.pane.apply({payload})")
         except Exception:
@@ -415,7 +417,11 @@ class WallpaperApp:
 
         return Menu(
             item("Wallpaper", Menu(*[item(label, choose("wall", key), checked=is_set("wall", key), radio=True)
-                                     for key, label in WALLS])),
+                                     for key, label in WALLS],
+                                   Menu.SEPARATOR,
+                                   item("Rainbow rain (Matrix)", toggle("matrix_rainbow"),
+                                        checked=lambda it: self.cfg["matrix_rainbow"],
+                                        enabled=lambda it: self.cfg["wall"] == "matrix"))),
             item("Accent color", Menu(*[item(label, choose("accent", hexv), checked=is_set("accent", hexv), radio=True)
                                         for label, hexv in ACCENTS])),
             item("Frame rate", Menu(*[item(f"{n} fps", choose("fps", n), checked=is_set("fps", n), radio=True)
