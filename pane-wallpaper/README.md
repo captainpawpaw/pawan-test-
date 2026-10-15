@@ -2,12 +2,13 @@
 
 The animated Pane Desktop wallpapers, running as your real Windows desktop background, behind your desktop icons. It also adds a **thumbnail shelf**: when you minimize a window, a live preview of it appears above the taskbar, and clicking the preview brings the window back.
 
-There are four wallpapers:
+There are five wallpapers:
 
 - **Aurora**: drifting color glows with light curtains
 - **Bloom**: a slowly turning flower of light
 - **Starfield**: flying through stars and nebula
 - **Tide**: layered waves under a low sun
+- **Matrix**: falling green-screen code, in your accent color or rainbow colors. After [Matrix Rain Customizable](https://github.com/bad1dea/lively_matrix) for Lively Wallpaper by parambirs and khuong.
 
 All four are tinted by the accent color you pick.
 
@@ -24,7 +25,7 @@ To build a standalone **`PaneLiveWallpaper.exe`** you can pin or share, double-c
 
 The app has no window. It lives in the **system tray**: click the **^** arrow at the right end of the taskbar if you don't see the four-squares icon. Right-click (or click) the icon for:
 
-- **Wallpaper**: Aurora, Bloom, Starfield or Tide
+- **Wallpaper**: Aurora, Bloom, Starfield, Tide or Matrix, plus **Rainbow rain** for Matrix
 - **Accent color**: blue, violet, pink, orange, green or teal
 - **Frame rate**: 15, 30 (default) or 60 fps. Lower uses less power.
 - **Pause**: freezes the current frame
