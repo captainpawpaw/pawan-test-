@@ -166,8 +166,8 @@ if sys.platform == "win32":
     IsWindowVisible = _sig(user32.IsWindowVisible, wintypes.BOOL, wintypes.HWND)
     MonitorFromWindow = _sig(user32.MonitorFromWindow, wintypes.HMONITOR, wintypes.HWND, wintypes.DWORD)
     GetMonitorInfoW = _sig(user32.GetMonitorInfoW, wintypes.BOOL, wintypes.HMONITOR, ctypes.POINTER(MONITORINFO))
-    SystemParametersInfoW = _sig(user32.SystemParametersInfoW, wintypes.BOOL,
-                                 wintypes.UINT, wintypes.UINT, ctypes.c_void_p, wintypes.UINT)
+    RedrawWindow = _sig(user32.RedrawWindow, wintypes.BOOL,
+                        wintypes.HWND, ctypes.c_void_p, wintypes.HRGN, wintypes.UINT)
     SetLayeredWindowAttributes = _sig(user32.SetLayeredWindowAttributes, wintypes.BOOL,
                                       wintypes.HWND, wintypes.COLORREF, ctypes.c_ubyte, wintypes.DWORD)
     MessageBoxW = _sig(user32.MessageBoxW, ctypes.c_int,
@@ -186,7 +186,7 @@ SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 7
 SMTO_NORMAL = 0
 WM_SPAWN_WORKER = 0x052C  # undocumented: asks Explorer to create the wallpaper WorkerW
 MONITOR_DEFAULTTONEAREST = 2
-SPI_GETDESKWALLPAPER, SPI_SETDESKWALLPAPER = 0x0073, 0x0014
+RDW_INVALIDATE, RDW_ERASE, RDW_ALLCHILDREN, RDW_UPDATENOW, RDW_FRAME = 0x1, 0x4, 0x80, 0x100, 0x400
 LWA_ALPHA = 0x2
 ERROR_ALREADY_EXISTS = 183
 SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}
@@ -293,11 +293,29 @@ def desktop_covered():
     return r.left <= m.left and r.top <= m.top and r.right >= m.right and r.bottom >= m.bottom
 
 
-def repaint_static_wallpaper():
-    """Ask Windows to redraw the normal wallpaper so no frozen frame is left behind."""
-    buf = ctypes.create_unicode_buffer(260)
-    if SystemParametersInfoW(SPI_GETDESKWALLPAPER, 260, buf, 0):
-        SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, buf, 0)
+def repaint_desktop():
+    """Ask Explorer to repaint the desktop so no frozen frame is left behind.
+
+    This only repaints. It never sets the wallpaper: re-setting it (as an earlier version
+    did) turns Windows Spotlight or a slideshow into a fixed picture for the session.
+    """
+    targets = []
+    progman = FindWindowW("Progman", None)
+    if progman:
+        targets.append(progman)
+
+    def visit(h, _):
+        if class_name(h) == "WorkerW":
+            targets.append(h)
+        return True
+
+    EnumWindows(WNDENUMPROC(visit), 0)
+    if progman:
+        child = FindWindowExW(progman, None, "WorkerW", None)
+        if child:
+            targets.append(child)
+    for h in targets:
+        RedrawWindow(h, None, None, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW | RDW_FRAME)
 
 
 # --------------------------------------------------------------------------
@@ -500,7 +518,7 @@ class WallpaperApp:
                                gui="edgechromium")
         finally:
             self.quit()
-            repaint_static_wallpaper()
+            repaint_desktop()
 
 
 def main():

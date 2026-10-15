@@ -65,4 +65,5 @@ The wallpaper is a small web page (`wallpaper.html`) shown in an Edge WebView2 w
 - **Several monitors:** one wallpaper stretches across all of them.
 - If more windows are minimized on a screen than fit across it, that screen's shelf shows the most recent ones.
 - **If Explorer restarts** (after a crash, or after some updates), Windows removes the wallpaper layer and the app closes. Start it again from `run.bat` or the exe.
+- **Older versions (before this fix) and Windows Spotlight or slideshows:** quitting an older version of the app could swap a Spotlight or slideshow background for a fixed picture until you sign out. Settings still showed Spotlight or Slideshow, so picking it again seemed to do nothing. To get it back, in **Settings → Personalization → Background** choose **Picture**, then choose **Windows spotlight** or **Slideshow** again (or just sign out and back in). The current version only repaints the desktop and never sets the wallpaper.
 - The wallpaper layer is undocumented Windows behavior. Microsoft changed it in Windows 11 24H2, and the app handles both the old and new layouts. A future Windows update could change it again.
