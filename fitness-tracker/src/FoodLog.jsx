@@ -46,7 +46,13 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
 
   const row = (e) => (
     <React.Fragment key={e.id}>
-      <div style={{ ...st.row, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}>
+      {/* Tap a food to edit it; Delete is in the form that opens. */}
+      <button
+        type="button"
+        aria-label={`Edit ${e.name}`}
+        onClick={() => setEditingId(editingId === e.id ? null : e.id)}
+        style={{ ...st.row, ...st.rowBtn, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}
+      >
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={st.rowName}>{e.name}</div>
           <div style={st.rowMeta}>
@@ -55,13 +61,10 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
           </div>
         </div>
         <span style={st.rowKcal}>{Math.round(e.kcal)} kcal</span>
-        {onEdit && (
-          <button aria-label={`Edit ${e.name}`} onClick={() => setEditingId(editingId === e.id ? null : e.id)} style={st.editBtn}>✎</button>
-        )}
-        <button aria-label={`Delete ${e.name}`} onClick={() => { if (editingId === e.id) setEditingId(null); onDelete(e.id); }} style={st.deleteBtn}>×</button>
-      </div>
+        <span aria-hidden="true" style={st.rowChev}>›</span>
+      </button>
       {editingId === e.id && (
-        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); if (next.slot && next.slot !== e.slot) setOpen(next.slot, true); }} onCancel={() => setEditingId(null)} />
+        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); if (next.slot && next.slot !== e.slot) setOpen(next.slot, true); }} onCancel={() => setEditingId(null)} onDelete={() => { setEditingId(null); onDelete(e.id); }} />
       )}
     </React.Fragment>
   );
@@ -608,7 +611,7 @@ function AmountStep({ food, onAdd, onBack }) {
 
 // Edit a logged food: change the amount (nutrients rescale) or, for foods
 // entered by hand, the numbers themselves. The name can always change.
-function EditFood({ entry, onSave, onCancel }) {
+function EditFood({ entry, onSave, onCancel, onDelete }) {
   const hasPortion = entry.portion && entry.qty;
   const portionG = hasPortion ? entry.grams / entry.qty : null;
   const [name, setName] = useState(entry.name);
@@ -679,6 +682,7 @@ function EditFood({ entry, onSave, onCancel }) {
       <div style={st.btnRow}>
         <button type="submit" style={st.primaryBtn}>Save changes</button>
         <button type="button" onClick={onCancel} style={st.secondaryBtn}>Cancel</button>
+        {onDelete && <button type="button" aria-label={`Delete ${entry.name}`} onClick={onDelete} style={st.formDeleteBtn}>Delete</button>}
       </div>
     </form>
   );
@@ -1075,7 +1079,9 @@ const st = {
   rowName: { fontSize: 14, color: ink, overflowWrap: "anywhere" },
   rowMeta: { fontFamily: mono, fontSize: 11, color: inkFaint, overflowWrap: "anywhere" },
   rowKcal: { fontFamily: mono, fontSize: 13, color: ink, flexShrink: 0 },
-  editBtn: { background: "none", border: "none", color: inkFaint, fontSize: 15, lineHeight: 1, padding: "0 2px" },
+  rowBtn: { width: "100%", border: "none", font: "inherit", textAlign: "left", minHeight: 44 },
+  rowChev: { fontSize: 18, lineHeight: 1, color: inkFaint, flexShrink: 0 },
+  formDeleteBtn: { marginLeft: "auto", fontFamily: mono, fontSize: 13, color: plum, background: "transparent", border: "none", textDecoration: "underline", padding: "8px 2px", minHeight: 40 },
   deleteBtn: { background: "none", border: "none", color: inkFaint, fontSize: 18, lineHeight: 1, padding: "0 2px" },
   addBox: { display: "flex", flexDirection: "column", gap: 10, background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: 10 },
   stack: { display: "flex", flexDirection: "column", gap: 8 },
