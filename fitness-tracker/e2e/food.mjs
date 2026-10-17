@@ -146,6 +146,8 @@ check(!(await pa.locator('body').innerText()).includes('Branded products (Open F
 const offBtn = pa.getByRole('button', { name: /Search branded products for/ });
 const offY = (await offBtn.boundingBox()).y, firstSuggestion = await pa.getByText(/^(Recent|Logged before|My foods|Foods \(UK CoFID and USDA\))$/).first().boundingBox();
 check(!firstSuggestion || offY < firstSuggestion.y, 'branded search sits above the suggestions');
+const searchY = (await pa.getByLabel('Search foods').boundingBox()).y, manualY = (await pa.getByRole('button', { name: 'Enter manually' }).boundingBox()).y, barcodeY = (await pa.getByLabel('Or type a barcode').boundingBox()).y;
+check(searchY < manualY && manualY < barcodeY && barcodeY < offY, 'photo, barcode and manual options sit right under the search box');
 await pa.getByRole('button', { name: /Search branded products for/ }).click();
 await pa.getByText('Branded products (Open Food Facts)').waitFor();
 check(!(await pa.locator('body').innerText()).includes('No nutrition'), 'products without nutrition data are skipped');
