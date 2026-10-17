@@ -117,6 +117,7 @@ check(lp.images === 2 && lp.prompt.includes('per 100 g'), 'Claude gets both phot
 check(await pa.getByLabel('Name', { exact: true }).inputValue() === 'Protein Granola' && await pa.getByLabel('Calories (kcal) per bowl').inputValue() === '165' && await pa.getByLabel('Calories (kcal) per 100 g').inputValue() === '412' && await pa.getByLabel('Serving weight (g)').inputValue() === '40', 'Claude\'s reading fills the form, serving first');
 check(lp.prompt.includes('single serving matters most'), 'Claude is told the serving comes first');
 await pa.getByRole('button', { name: 'Save to My foods' }).click();
+await pa.getByRole('button', { name: /^My foods \d/ }).click(); // open the folded group
 await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).waitFor({ timeout: 5000 }).catch(() => {});
 check(await pa.getByRole('button', { name: 'Remove Protein Granola (Testbrand) from My foods' }).count() === 1 && external === 0, 'saved to My foods, nothing sent outside');
 await pa.getByRole('button', { name: 'Done adding' }).click();

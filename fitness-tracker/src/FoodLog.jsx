@@ -345,6 +345,11 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
   const [barcode, setBarcode] = useState("");
   const [barcodeMsg, setBarcodeMsg] = useState("");
   const [canClaude, setCanClaude] = useState(false);
+  // My foods and Recent fold to one line until opened; a search shows their matches.
+  const [openGroups, setOpenGroups] = useState({});
+  const searching = q.trim().length > 0;
+  const groupOpen = (key) => searching || Boolean(openGroups[key]);
+  const toggleGroup = (key) => setOpenGroups((g) => ({ ...g, [key]: !g[key] }));
   const online = onlineLookupsAllowed();
   const inputRef = useRef(null);
 
@@ -404,10 +409,19 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
     }
   };
 
-  const ResultList = ({ items, label }) => items.length ? (
+  // A group's heading; with `fold` it's a button that opens and closes the group.
+  const GroupHead = ({ label, count, fold }) => fold && !searching ? (
+    <button type="button" aria-expanded={groupOpen(fold)} onClick={() => toggleGroup(fold)} style={st.groupToggle}>
+      <span>{label}</span>
+      <span style={st.groupCount}>{count}</span>
+      <span aria-hidden="true" style={{ ...st.groupChev, transform: groupOpen(fold) ? "rotate(90deg)" : "none" }}>›</span>
+    </button>
+  ) : <span style={st.groupLabel}>{label}</span>;
+
+  const ResultList = ({ items, label, fold }) => items.length ? (
     <div style={st.resultGroup}>
-      <span style={st.groupLabel}>{label}</span>
-      <ul style={st.resultList}>
+      <GroupHead label={label} count={items.length} fold={fold} />
+      {(!fold || groupOpen(fold)) && <ul style={st.resultList}>
         {items.map((f) => (
           <li key={f.id}>
             <button type="button" onClick={() => onPick(f)} style={st.result}>
@@ -416,7 +430,7 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
             </button>
           </li>
         ))}
-      </ul>
+      </ul>}
     </div>
   ) : null;
 
@@ -436,6 +450,25 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
       />
       {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
       {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
+
+      <div style={st.optionRow}>
+        <button type="button" onClick={() => onMode("label")} style={st.secondaryBtn}>Photograph a label</button>
+        {online && cameraAllowed() && <button type="button" onClick={() => onMode("scan")} style={st.secondaryBtn}>Scan barcode</button>}
+        {canClaude && <button type="button" onClick={() => onMode("claude")} style={st.secondaryBtn}>Describe a meal for Claude</button>}
+        <button type="button" onClick={() => onMode("manual")} style={st.secondaryBtn}>Enter manually</button>
+      </div>
+
+      {online && (
+        <form onSubmit={findBarcode} style={st.inline}>
+          <label htmlFor="barcode-input" style={st.fieldLabel}>Or type a barcode</label>
+          <div style={st.btnRow}>
+            <input id="barcode-input" inputMode="numeric" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="5000159484695" style={{ ...st.input, flex: 1, minWidth: 0 }} />
+            <button type="submit" disabled={barcode.replace(/\D/g, "").length < 6} style={st.secondaryBtn}>Look up</button>
+          </div>
+          {barcodeMsg && <span style={st.note}>{barcodeMsg}</span>}
+        </form>
+      )}
+
       {online && (
         // Always here, above the suggestions: search Open Food Facts for branded products.
         <div style={st.resultGroup}>
@@ -483,8 +516,8 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
       )}
       {myHits.length > 0 && (
         <div style={st.resultGroup}>
-          <span style={st.groupLabel}>My foods</span>
-          <ul style={st.resultList}>
+          <GroupHead label="My foods" count={myHits.length} fold="mine" />
+          {groupOpen("mine") && <ul style={st.resultList}>
             {myHits.map((f) => (
               <li key={f.id} style={st.mineRow}>
                 <button type="button" onClick={() => onPick(f)} style={{ ...st.result, flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
@@ -499,31 +532,14 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
                 )}
               </li>
             ))}
-          </ul>
+          </ul>}
         </div>
       )}
-      <ResultList items={recentHits} label={q.trim() ? "Logged before" : "Recent"} />
+      <ResultList items={recentHits} label={q.trim() ? "Logged before" : "Recent"} fold="recent" />
       <ResultList items={local.slice(0, 15)} label="Foods (UK CoFID and USDA)" />
       <ResultList items={usdaShown} label="More from USDA online" />
       {q.trim().length >= 2 && foods && !local.length && !recentHits.length && <span style={st.note}>No match in the built-in list.</span>}
 
-      <div style={st.optionRow}>
-        <button type="button" onClick={() => onMode("label")} style={st.secondaryBtn}>Photograph a label</button>
-        {online && cameraAllowed() && <button type="button" onClick={() => onMode("scan")} style={st.secondaryBtn}>Scan barcode</button>}
-        {canClaude && <button type="button" onClick={() => onMode("claude")} style={st.secondaryBtn}>Describe a meal for Claude</button>}
-        <button type="button" onClick={() => onMode("manual")} style={st.secondaryBtn}>Enter manually</button>
-      </div>
-
-      {online && (
-        <form onSubmit={findBarcode} style={st.inline}>
-          <label htmlFor="barcode-input" style={st.fieldLabel}>Or type a barcode</label>
-          <div style={st.btnRow}>
-            <input id="barcode-input" inputMode="numeric" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="5000159484695" style={{ ...st.input, flex: 1, minWidth: 0 }} />
-            <button type="submit" disabled={barcode.replace(/\D/g, "").length < 6} style={st.secondaryBtn}>Look up</button>
-          </div>
-          {barcodeMsg && <span style={st.note}>{barcodeMsg}</span>}
-        </form>
-      )}
     </div>
   );
 }
@@ -1066,6 +1082,9 @@ const st = {
   fieldLabel: { fontFamily: mono, fontSize: 11, color: inkFaint, display: "flex", flexDirection: "column", gap: 3 },
   input: { fontFamily: sans, fontSize: 14, padding: "7px 8px", border: `1px solid ${line}`, borderRadius: 3, background: C.field, color: ink },
   resultGroup: { display: "flex", flexDirection: "column", gap: 4 },
+  groupToggle: { display: "flex", alignItems: "center", gap: 8, width: "100%", minHeight: 40, padding: "6px 2px", fontFamily: mono, fontSize: 10, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase", background: "transparent", border: "none", borderBottom: `1px solid ${line}`, textAlign: "left" },
+  groupCount: { flex: 1, letterSpacing: 0, color: inkFaint, opacity: 0.8 },
+  groupChev: { fontSize: 16, lineHeight: 1, transition: "transform 0.15s" },
   groupLabel: { fontFamily: mono, fontSize: 10, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase" },
   resultList: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 },
   result: { width: "100%", textAlign: "left", display: "flex", flexDirection: "column", gap: 1, background: raised, border: `1px solid ${line}`, borderRadius: 3, padding: "7px 9px" },

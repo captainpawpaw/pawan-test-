@@ -160,9 +160,13 @@ await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Driv
 await pb.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pb.getByRole('button', { name: '+ Add' }).last().click();
 const mineOn = (p, n) => p.getByRole('button', { name: `Remove ${n} from My foods` });
+const mineToggle = (p) => p.getByRole('button', { name: /^My foods \d/ });
+check(await mineToggle(pb).getAttribute('aria-expanded') === 'false' && await mineOn(pb, 'Crunchy Granola (Testbrand)').count() === 0, 'My foods is folded until opened');
+await mineToggle(pb).click();
 check(await mineOn(pb, 'Crunchy Granola (Testbrand)').count() === 1, 'other device has it in My foods');
 // remove
 await pa.getByRole('button', { name: '+ Add' }).last().click();
+await mineToggle(pa).click();
 await pa.getByRole('button', { name: 'Remove Crunchy Granola (Testbrand) from My foods' }).click();
 check(await mineOn(pa, 'Crunchy Granola (Testbrand)').count() === 0 && (await pa.locator('body').innerText()).includes('198 kcal'), 'removed from My foods; the logged day keeps it');
 // typing it in instead
@@ -176,6 +180,7 @@ await pa.getByLabel('Serving weight (g)').fill('150');
 check(await pa.getByLabel('Calories (kcal) per 100 g').getAttribute('placeholder') === '80', 'per 100 g worked out from the serving');
 await pa.getByRole('button', { name: 'Save to My foods' }).click();
 await pa.getByText('Saved Protein Pudding to My foods.').waitFor({ timeout: 5000 }).catch(() => {});
+await mineToggle(pa).click();
 check((await pa.locator('body').innerText()).includes('Saved Protein Pudding to My foods.') && await mineOn(pa, 'Protein Pudding').count() === 1 && (await pa.locator('li', { hasText: 'Protein Pudding' }).innerText()).includes('120 kcal · P 15 g per pot'), 'typed food saved, listed per pot');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

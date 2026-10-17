@@ -129,6 +129,15 @@ await pa.locator('#month-calendar').getByRole('button', { name: /^1$/ }).first()
 await pa.getByRole('button', { name: '+ Add to Lunch' }).click();
 const mealsY = (await pa.getByText(/^Meals · one tap adds them all$/i).boundingBox())?.y, recentY = (await pa.getByText(/^Recent$/i).boundingBox())?.y;
 check(mealsY != null && recentY != null && mealsY < recentY && (await body(pa)).includes('Porridge oats + Skyr + Banana'), 'Meals listed first when adding');
+const recentBtn = pa.getByRole('button', { name: /^Recent \d/ });
+check(await recentBtn.getAttribute('aria-expanded') === 'false' && await pa.getByRole('button', { name: /^Porridge oats/ }).count() === 0, 'Recent is folded until opened');
+await recentBtn.click();
+check(await recentBtn.getAttribute('aria-expanded') === 'true' && await pa.getByRole('button', { name: /^Porridge oats/ }).count() === 1, 'tapping Recent opens it');
+await recentBtn.click();
+await pa.getByLabel('Search foods').fill('porridge');
+const hits = await pa.getByRole('button', { name: /^Porridge oats/ }).count(), lb = await pa.getByText(/^Logged before$/i).count();
+check(hits >= 1 && lb === 1, `searching shows matches without opening it (${hits} hits, ${lb} label)`);
+await pa.getByLabel('Search foods').fill('');
 await pa.screenshot({ path: 'meal-pick.png', fullPage: true });
 await pa.getByRole('button', { name: 'Add meal Breakfast' }).click();
 check((await body(pa)).includes('Added Breakfast: 3 foods.'), 'one tap adds the meal');
@@ -171,6 +180,7 @@ await pb.getByRole('button', { name: '+ Add' }).last().click();
 check(await pb.getByRole('button', { name: 'Add meal Breakfast' }).count() === 1, 'other device has the meal');
 // remove
 await pa.getByRole('button', { name: 'Remove meal Breakfast' }).click();
+await pa.getByRole('button', { name: /^Recent \d/ }).click();
 check(await pa.getByRole('button', { name: 'Add meal Breakfast' }).count() === 0 && (await body(pa)).includes('Porridge oats'), 'meal removed; logged days keep their foods');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();
