@@ -1508,6 +1508,11 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           ))}
           {editingId && <span style={styles.editingNote}>Editing an entry. Change anything, then save.</span>}
           <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{editingId ? "Save changes" : addLabel}</button>
+          {editingId && (
+            <button type="button" aria-label="Delete entry" onClick={() => { const id = editingId; closeForm(); onDelete(id); }} style={{ ...styles.formDeleteBtn, color: accent }}>
+              Delete this entry
+            </button>
+          )}
         </form>
       )}
 
@@ -1516,13 +1521,17 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           <div style={styles.emptyText}>{emptyText}</div>
         ) : (
           entries.map((e) => (
-            <div key={e.id} style={{ ...styles.row, background: `color-mix(in srgb, ${accentSoft} 25%, transparent)`, ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}>
+            // Tap a row to edit it; Delete is in the form that opens, away from + Add.
+            <button
+              key={e.id}
+              type="button"
+              aria-label={`Edit ${e[fields[0].key] || "entry"}`}
+              onClick={() => (editingId === e.id ? closeForm() : startEdit(e))}
+              style={{ ...styles.row, ...styles.rowBtn, background: `color-mix(in srgb, ${accentSoft} 25%, transparent)`, ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}
+            >
               {renderRow(e)}
-              {onEdit && (
-                <button aria-label={`Edit ${e[fields[0].key] || "entry"}`} onClick={() => startEdit(e)} style={styles.editBtn}>✎</button>
-              )}
-              <button aria-label="Delete entry" onClick={() => { if (editingId === e.id) closeForm(); onDelete(e.id); }} style={styles.deleteBtn}>×</button>
-            </div>
+              <span aria-hidden="true" style={styles.rowChev}>›</span>
+            </button>
           ))
         )}
       </div>
@@ -2989,24 +2998,10 @@ const styles = {
   },
   rowMain: { fontFamily: C.sans, fontSize: 13.5, fontWeight: 500, flex: 1 },
   rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
-  editBtn: {
-    background: "none",
-    border: "none",
-    color: inkFaint,
-    fontSize: 15,
-    lineHeight: 1,
-    padding: "0 4px",
-    marginLeft: 4,
-  },
+  rowBtn: { width: "100%", border: "none", color: ink, font: "inherit", textAlign: "left", minHeight: 44 },
+  rowChev: { fontSize: 18, lineHeight: 1, color: inkFaint, marginLeft: 2 },
+  formDeleteBtn: { alignSelf: "flex-start", marginTop: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, background: "transparent", border: "none", textDecoration: "underline", padding: "8px 0", minHeight: 40 },
   editingNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
-  deleteBtn: {
-    background: "none",
-    border: "none",
-    fontSize: 16,
-    color: inkFaint,
-    lineHeight: 1,
-    padding: "0 2px",
-  },
   footerStack: { display: "flex", flexDirection: "column", gap: 4 },
   bwLine: { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 8px", fontWeight: 400, color: inkFaint, fontSize: 11 },
   bwEditBtn: {

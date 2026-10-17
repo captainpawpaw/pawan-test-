@@ -179,7 +179,10 @@ check(t.includes('996') && t.includes('1,204 kcal left'), 'day total calories: '
 check(t.includes('2 × 1 large'), 'portion shown on the entry');
 await pa.screenshot({ path: 'food-day.png', fullPage: true });
 
-// delete one
+// delete one: the row has no buttons of its own; Delete is in the edit form
+check(await pa.getByRole('button', { name: 'Delete Protein bar' }).count() === 0, 'no delete button on the row itself');
+await pa.getByRole('button', { name: 'Edit Protein bar' }).click();
+await pa.screenshot({ path: 'food-edit-delete.png' });
 await pa.getByRole('button', { name: 'Delete Protein bar' }).click();
 check((await pa.locator('body').innerText()).includes('1,404 kcal left'), 'delete updates totals');
 
