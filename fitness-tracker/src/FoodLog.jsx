@@ -441,19 +441,6 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
 
   return (
     <div style={st.stack}>
-      <label htmlFor="food-search" style={st.fieldLabel}>Search foods</label>
-      <input
-        id="food-search"
-        ref={inputRef}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="e.g. chicken breast, oats, banana"
-        autoComplete="off"
-        style={{ ...st.input, width: "100%" }}
-      />
-      {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
-      {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
-
       <div style={st.optionRow}>
         <button type="button" onClick={() => onMode("label")} style={st.secondaryBtn}>Photograph a label</button>
         {online && cameraAllowed() && <button type="button" onClick={() => onMode("scan")} style={st.secondaryBtn}>Scan barcode</button>}
@@ -471,6 +458,19 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
           {barcodeMsg && <span style={st.note}>{barcodeMsg}</span>}
         </form>
       )}
+
+      <label htmlFor="food-search" style={st.fieldLabel}>Search foods</label>
+      <input
+        id="food-search"
+        ref={inputRef}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="e.g. chicken breast, oats, banana"
+        autoComplete="off"
+        style={{ ...st.input, width: "100%" }}
+      />
+      {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
+      {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
 
       {online && (
         // Always here, above the suggestions: search Open Food Facts for branded products.
