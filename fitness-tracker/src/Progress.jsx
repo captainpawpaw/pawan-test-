@@ -37,7 +37,7 @@ function writeSaved(v) {
   try { window.localStorage.setItem(SEL_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg" }) {
+export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg", bests = [] }) {
   const [months, setMonths] = useState(null);
   const [selection, setSelection] = useState(() => readSaved()); // { kind, value }
   const [metric, setMetric] = useState(null);
@@ -184,7 +184,42 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
           title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.kind === "body" ? "Body weight" : sel.kind === "all" ? "All exercises" : sel.value}
         />
       )}
+
+      <PersonalBests bests={bests} onPick={(name) => { if (exercises.some(([n]) => n === name)) choose("exercise", name); }} />
     </div>
+  );
+}
+
+/* ---------- personal bests ---------- */
+const PB_SHOWN = 8;
+const shortDate = (iso) => { const d = parseIso(iso); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
+
+function PersonalBests({ bests, onPick }) {
+  const [all, setAll] = useState(false);
+  if (!bests.length) return null;
+  const shown = all ? bests : bests.slice(0, PB_SHOWN);
+  const kg = (v) => `${fmtNum(v)} kg`;
+  return (
+    <section aria-label="Personal bests" className="ft-card" style={s.pbCard}>
+      <div style={s.pbHead}>
+        <span style={s.pbTitle}>🏆 Personal bests</span>
+        <span style={s.pbSub}>latest first</span>
+      </div>
+      <ul style={s.pbList}>
+        {shown.map((b) => (
+          <li key={b.name}>
+            <button type="button" onClick={() => onPick(b.name)} style={s.pbRow}>
+              <span style={s.pbName}>{b.name}</span>
+              {b.weight && <span style={s.pbStat}>Heaviest {b.weight.bw ? "BW + " : ""}{kg(b.weight.value)}{b.weight.reps ? ` × ${b.weight.reps}` : ""} · {shortDate(b.weight.date)}</span>}
+              {b.reps && <span style={s.pbStat}>Most reps {b.reps.value}{b.reps.weight ? ` @ ${b.reps.bw ? "BW + " : ""}${kg(b.reps.weight)}` : b.reps.bw ? " @ body weight" : ""} · {shortDate(b.reps.date)}</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {bests.length > PB_SHOWN && (
+        <button type="button" onClick={() => setAll((x) => !x)} style={s.pbMore}>{all ? "Show fewer" : `Show all ${bests.length}`}</button>
+      )}
+    </section>
   );
 }
 
@@ -664,6 +699,15 @@ function Tile({ label, value, sub, badge }) {
 }
 
 const s = {
+  pbCard: { display: "flex", flexDirection: "column", gap: 8, marginTop: 6, padding: "12px 14px", background: raised, border: `1px solid ${line}`, borderRadius: 4 },
+  pbHead: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 },
+  pbTitle: { fontFamily: condensed, fontWeight: 700, fontSize: 18, letterSpacing: "0.04em", color: ink },
+  pbSub: { fontFamily: mono, fontSize: 11, color: inkFaint },
+  pbList: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 },
+  pbRow: { display: "flex", flexDirection: "column", gap: 2, width: "100%", minHeight: 44, padding: "7px 9px", textAlign: "left", font: "inherit", color: ink, background: paper, border: "none", borderRadius: 3 },
+  pbName: { fontSize: 14, fontWeight: 500 },
+  pbStat: { fontFamily: mono, fontSize: 12, color: inkFaint },
+  pbMore: { alignSelf: "flex-start", fontFamily: mono, fontSize: 12, color: ink, background: "transparent", border: "none", textDecoration: "underline", padding: "6px 0", minHeight: 36 },
   badge: { display: "inline-block", marginLeft: 8, verticalAlign: "middle", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", color: C.highlightInk, background: C.highlight, borderRadius: 999, padding: "2px 8px" },
   wrap: { display: "flex", flexDirection: "column", gap: 10, marginTop: 16 },
   empty: { marginTop: 24, fontSize: 14, color: inkFaint, lineHeight: 1.5 },
