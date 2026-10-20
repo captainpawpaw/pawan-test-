@@ -10,6 +10,7 @@ import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
 import { strengthHistory, lastSession, firstSetPct, FIRST_SET_OPTIONS } from "./lastTime";
+import { personalBests, newBests, recordIds, bestsList } from "./bests";
 import { BodyWeightField } from "./BodyWeight";
 import { validUnit, toKg, fromKg, bwText } from "./units";
 import { SplitSettings, DayPlan } from "./Split";
@@ -475,6 +476,11 @@ export default function App() {
     return () => { live = false; };
   }, [loadAllMonths, dataVersion, key]); // and again on changing month, to pick up edits made in the last one
   const history = useMemo(() => strengthHistory({ ...allMonths, [monthKey(cursor)]: monthData }), [allMonths, monthData, cursor]);
+  // Personal bests: heaviest weight and most reps for each exercise.
+  const bests = useMemo(() => personalBests(history), [history]);
+  const pbIds = useMemo(() => recordIds(bests), [bests]);
+  const [pbNote, setPbNote] = useState(null); // { name, bw, weight, reps } for a set that just beat a record
+  const pbTimer = useRef(null);
 
   // Exercises you've logged that suit the day's session in your split,
   // leaving out what's already logged that day.
@@ -646,6 +652,14 @@ export default function App() {
   }, [exercisesLoading, baseExercises, loaded]);
 
   const addEntry = (type, entry) => {
+    if (type === "strength") {
+      const beat = newBests(bests, entry);
+      if (beat) {
+        setPbNote({ name: entry.exercise, bw: Boolean(entry.bw), ...beat });
+        clearTimeout(pbTimer.current);
+        pbTimer.current = setTimeout(() => setPbNote(null), 10000);
+      }
+    }
     const current = monthData[selected] || { strength: [], cardio: [] };
     const updated = { ...current, [type]: [...(current[type] || []), { id: uid(), ...entry }] };
     persist({ ...monthData, [selected]: updated });
@@ -857,7 +871,7 @@ export default function App() {
         className={slideDir ? `ft-slide-${slideDir}` : undefined}
       >
       {activeTab === "progress" ? (
-        <Progress bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
+        <Progress bests={bestsList(bests)} bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -1009,6 +1023,17 @@ export default function App() {
             />
           ) : (
           <>
+          {pbNote && (
+            <div role="status" aria-label="New personal best" style={styles.pbNote}>
+              <span aria-hidden="true" style={{ fontSize: 22 }}>🏆</span>
+              <span style={{ flex: 1 }}>
+                <strong>New personal best</strong> on {pbNote.name}
+                {pbNote.weight && <span style={styles.pbLine}>Heaviest: {pbNote.bw ? "body weight + " : ""}{kgText(pbNote.weight.value)} (was {kgText(pbNote.weight.was)})</span>}
+                {pbNote.reps && <span style={styles.pbLine}>Most reps: {pbNote.reps.value} (was {pbNote.reps.was})</span>}
+              </span>
+              <button type="button" aria-label="Dismiss" onClick={() => setPbNote(null)} style={styles.pbClose}>×</button>
+            </div>
+          )}
           <DayPlan
             split={split}
             firstPct={firstPct}
@@ -1038,7 +1063,10 @@ export default function App() {
               onAdd={(vals) => addEntry("strength", vals)}
               renderRow={(e) => (
                 <>
-                  <span style={styles.rowMain}>{e.exercise || "Exercise"}</span>
+                  <span style={styles.rowMain}>
+                    {e.exercise || "Exercise"}
+                    {pbIds.has(e.id) && <span title="Personal best" style={styles.pbBadge}>PB</span>}
+                  </span>
                   <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} · {weightRange(e)}</span>
                 </>
               )}
@@ -2583,6 +2611,10 @@ const styles = {
   },
   libraryActions: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 },
   newExerciseGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 },
+  pbNote: { display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "10px 12px", fontSize: 14, lineHeight: 1.4, color: C.highlightInk, background: C.highlight, borderRadius: 4 },
+  pbLine: { display: "block", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5 },
+  pbClose: { background: "none", border: "none", color: "inherit", fontSize: 20, lineHeight: 1, padding: "4px 6px", minWidth: 36, minHeight: 36 },
+  pbBadge: { display: "inline-block", marginLeft: 8, padding: "1px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", color: C.highlightInk, background: C.highlight, borderRadius: 999, verticalAlign: "middle" },
   newExerciseNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: teal, fontWeight: 400, letterSpacing: 0 },
   importOpenBtn: {
     width: "100%",
