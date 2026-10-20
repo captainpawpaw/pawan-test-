@@ -76,17 +76,30 @@ t = await plan().innerText();
 check(t.includes('Lower A') && t.includes('Back Squat') && !t.includes('Bench'), 'Tuesday is Lower A, with squats');
 await goTo('WED');
 check((await plan().innerText()).includes('Rest day'), 'Wednesday is a rest day');
-// change the first set to 60%
+// adjust sets and reps: no first-set % there any more
 await p.getByRole('button', { name: 'Menu' }).click();
 await p.getByRole('menuitem', { name: /^Training split/ }).click();
 await p.getByRole('menuitem', { name: 'Adjust sets & reps…' }).click();
-check((await settings.innerText()).includes('Upper/Lower') && await settings.getByLabel('Sets').inputValue() === '4', 'Adjust shows the chosen split\'s numbers');
-await settings.getByLabel('First set %').fill('60');
+check((await settings.innerText()).includes('Upper/Lower') && await settings.getByLabel('Sets').inputValue() === '4' && await settings.getByLabel('First set %').count() === 0, 'Adjust shows the chosen split\'s sets and reps only');
 await p.screenshot({ path: 'split-settings.png' });
-await settings.getByRole('button', { name: 'Save' }).click();
 await settings.getByRole('button', { name: 'Close' }).click();
+// First set weight in the menu: 70% to start, choose 90%
+await p.getByRole('button', { name: 'Menu' }).click();
+check((await p.getByRole('menuitem', { name: /^First set weight/ }).innerText()).includes('70%'), 'the menu shows First set weight at 70%');
+await p.getByRole('menuitem', { name: /^First set weight/ }).click();
+const fsGroup = p.getByRole('group', { name: 'First set weight' });
+check((await fsGroup.getByRole('menuitemradio').allInnerTexts()).map(x => x.replace(/\s*✓/, '').trim()).join(',') === '70% of last max,80% of last max,90% of last max', 'choices: 70%, 80%, 90%');
+await p.screenshot({ path: 'first-set-menu.png' });
+await fsGroup.getByRole('menuitemradio', { name: /^90%/ }).click();
+check((await p.evaluate(() => JSON.parse(localStorage.getItem('fitness-tracker:profile')))).firstSet.pct === 90, 'stored in the profile (syncs)');
 await goTo('TUE');
+check((await plan().innerText()).includes('first set 90%'), 'the day plan uses it');
 await p.getByRole('button', { name: '+ Back Squat' }).click();
-check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 120 kg, first set 72.5 kg', 'first set follows your %: ' + await p.getByRole('status', { name: 'Last time' }).innerText());
+check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 120 kg, first set 107.5 kg', 'the suggestion follows your choice: ' + await p.getByRole('status', { name: 'Last time' }).innerText());
+await p.locator('.ft-section').first().getByRole('button', { name: 'Cancel' }).click();
+await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^First set weight/ }).click();
+await fsGroup.getByRole('menuitemradio', { name: /^80%/ }).click();
+await p.getByRole('button', { name: '+ Back Squat' }).click();
+check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 120 kg, first set 95 kg', '80%: ' + await p.getByRole('status', { name: 'Last time' }).innerText());
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

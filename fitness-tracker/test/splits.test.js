@@ -4,15 +4,16 @@ import { activeSplit, sessionOn, suggestFor } from "../src/splits.js";
 
 const mon = new Date(2026, 9, 12), wed = new Date(2026, 9, 14), sun = new Date(2026, 9, 18);
 
-test("Default: 3 x 10, first set 70%, no schedule", () => {
+test("Default: 3 x 10, no schedule", () => {
   const d = activeSplit(undefined);
-  assert.deepEqual([d.id, d.sets, d.reps, d.firstPct], ["default", 3, 10, 70]);
+  assert.deepEqual([d.id, d.sets, d.reps], ["default", 3, 10]);
   assert.equal(sessionOn(d, mon), undefined);
 });
 
 test("your own numbers apply; bad ones fall back to the split's", () => {
-  const s = activeSplit({ id: "upper-lower", sets: 5, reps: "12", firstPct: 0 });
-  assert.deepEqual([s.sets, s.reps, s.firstPct], [5, 12, 70]);
+  const s = activeSplit({ id: "upper-lower", sets: 5, reps: "12" });
+  assert.deepEqual([s.sets, s.reps], [5, 12]);
+  assert.deepEqual([activeSplit({ id: "upper-lower", sets: 0 }).sets], [4]);
   assert.equal(activeSplit({ id: "nope" }).id, "default");
 });
 

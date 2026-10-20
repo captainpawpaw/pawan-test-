@@ -4,6 +4,15 @@
 import { nameKey } from "./importParser.js";
 
 export const FIRST_SET_PCT = 70;
+// The choices offered in the menu.
+export const FIRST_SET_OPTIONS = [70, 80, 90];
+// The chosen first-set %: the menu's setting, else an older per-split one
+// rounded to the nearest choice, else 70%.
+export function firstSetPct(profile) {
+  const n = Number(profile?.firstSet?.pct ?? profile?.split?.firstPct);
+  if (!Number.isFinite(n) || n <= 0) return FIRST_SET_PCT;
+  return FIRST_SET_OPTIONS.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a));
+}
 
 // months: { "2026-10": { "05": { strength: [...] } } } -> Map(nameKey -> [{ date, entries }]) oldest first
 export function strengthHistory(months) {

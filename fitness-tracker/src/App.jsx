@@ -9,7 +9,7 @@ import { sumFood } from "./food";
 import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
-import { strengthHistory, lastSession } from "./lastTime";
+import { strengthHistory, lastSession, firstSetPct, FIRST_SET_OPTIONS } from "./lastTime";
 import { BodyWeightField } from "./BodyWeight";
 import { validUnit, toKg, fromKg, bwText } from "./units";
 import { SplitSettings, DayPlan } from "./Split";
@@ -396,6 +396,14 @@ export default function App() {
   const weighInDueAt = useMemo(() => weighInDue(weighIn, weights, new Date(clock)), [weighIn, weights, clock]);
   // Training split: the day's session, and the sets, reps and first-set % to use.
   const split = useMemo(() => activeSplit(profile.split), [profile.split]);
+  // First set: the share of last time's max the app suggests starting at.
+  const firstPct = firstSetPct(profile);
+  const saveFirstSet = async (pct) => {
+    const next = { ...profile, firstSet: { pct, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
+  };
   const saveSplit = async (value) => {
     const next = { ...profile, split: { ...value, at: Date.now() } };
     setProfile(next);
@@ -823,7 +831,7 @@ export default function App() {
           </div>
         )}
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps, firstPct: sp.firstPct }); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps }); closeMenu(); }} firstPct={firstPct} onFirstSet={(pct) => { saveFirstSet(pct); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
       {panel === "backup" ? (
         <Backup onClose={closePanel} />
@@ -1003,6 +1011,7 @@ export default function App() {
           <>
           <DayPlan
             split={split}
+            firstPct={firstPct}
             session={sessionOn(split, new Date(cursor.getFullYear(), cursor.getMonth(), Number(selected)))}
             suggestions={todaySuggestions}
             onPick={(name) => setPrefill({ type: "strength", value: name, plan: { sets: split.sets, reps: split.reps }, token: Date.now() })}
@@ -1039,7 +1048,7 @@ export default function App() {
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
               bwUnit={bwUnit}
-              lastFor={(name) => lastSession(history, name, `${key}-${selected}`, split.firstPct)}
+              lastFor={(name) => lastSession(history, name, `${key}-${selected}`, firstPct)}
               defaults={{ sets: String(split.sets), reps: String(split.reps) }}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
                 <StrengthFooter
@@ -1123,9 +1132,9 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onBackup, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, firstPct, onFirstSet, onBackup, onClose, buttonRef }) {
   const ref = useRef(null);
-  // "main", or a sub-menu: "theme" or "split".
+  // "main", or a sub-menu: "theme", "split" or "firstset".
   const [view, setView] = useState("main");
   const cameFrom = useRef(null);
   // Drop down from just under the ☰ button, right-aligned with it.
@@ -1184,11 +1193,12 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onB
   );
   const splitName = (SPLITS.find((sp) => sp.id === split) || SPLITS[0]).name.split(" ·")[0];
   return (
-    <div id="app-menu" ref={ref} role="menu" aria-label={view === "theme" ? "Theme" : view === "split" ? "Training split" : "Menu"} onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
+    <div id="app-menu" ref={ref} role="menu" aria-label={view === "theme" ? "Theme" : view === "split" ? "Training split" : view === "firstset" ? "First set weight" : "Menu"} onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
       {view === "main" && (
         <>
           {subItem("theme", "Theme", THEMES[theme]?.label)}
           {subItem("split", "Training split", splitName)}
+          {subItem("firstset", "First set weight", `${firstPct}%`)}
           <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
             <span style={{ flex: 1 }}>Weekly weigh-in…</span>
           </button>
@@ -1217,6 +1227,27 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, onB
                 </span>
                 <span style={{ flex: 1 }}>{THEMES[t].label}</span>
                 {theme === t && <span aria-hidden="true">✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {view === "firstset" && (
+        <>
+          {backItem("First set weight")}
+          <p style={styles.menuNote}>When you log an exercise, the app suggests starting at this share of last time's max.</p>
+          <div role="group" aria-label="First set weight">
+            {FIRST_SET_OPTIONS.map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                role="menuitemradio"
+                aria-checked={firstPct === pct}
+                onClick={() => onFirstSet(pct)}
+                style={{ ...styles.menuItem, ...(firstPct === pct ? styles.menuItemOn : {}) }}
+              >
+                <span style={{ flex: 1 }}>{pct}% of last max</span>
+                {firstPct === pct && <span aria-hidden="true">✓</span>}
               </button>
             ))}
           </div>
@@ -2401,6 +2432,7 @@ const styles = {
   menuItemOn: { fontWeight: 600, background: paper },
   menuValue: { fontSize: 12, color: inkFaint, whiteSpace: "nowrap" },
   menuChev: { fontSize: 16, color: inkFaint, marginLeft: 2 },
+  menuNote: { margin: "2px 8px 6px", fontSize: 12, lineHeight: 1.4, color: inkFaint },
   menuRule: { height: 1, background: line, margin: "4px 8px" },
   menuBack: { color: inkFaint, borderBottom: `1px solid ${line}`, borderRadius: 0, marginBottom: 4 },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
