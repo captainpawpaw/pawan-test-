@@ -46,7 +46,13 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
 
   const row = (e) => (
     <React.Fragment key={e.id}>
-      <div style={{ ...st.row, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}>
+      {/* Tap a food to edit it; Delete is in the form that opens. */}
+      <button
+        type="button"
+        aria-label={`Edit ${e.name}`}
+        onClick={() => setEditingId(editingId === e.id ? null : e.id)}
+        style={{ ...st.row, ...st.rowBtn, ...(editingId === e.id ? { outline: `2px solid ${plum}`, outlineOffset: -2 } : {}) }}
+      >
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={st.rowName}>{e.name}</div>
           <div style={st.rowMeta}>
@@ -55,13 +61,10 @@ export default function FoodLog({ entries, recent, onAdd, onDelete, onEdit, targ
           </div>
         </div>
         <span style={st.rowKcal}>{Math.round(e.kcal)} kcal</span>
-        {onEdit && (
-          <button aria-label={`Edit ${e.name}`} onClick={() => setEditingId(editingId === e.id ? null : e.id)} style={st.editBtn}>✎</button>
-        )}
-        <button aria-label={`Delete ${e.name}`} onClick={() => { if (editingId === e.id) setEditingId(null); onDelete(e.id); }} style={st.deleteBtn}>×</button>
-      </div>
+        <span aria-hidden="true" style={st.rowChev}>›</span>
+      </button>
       {editingId === e.id && (
-        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); if (next.slot && next.slot !== e.slot) setOpen(next.slot, true); }} onCancel={() => setEditingId(null)} />
+        <EditFood entry={e} onSave={(next) => { onEdit(e.id, next); setEditingId(null); if (next.slot && next.slot !== e.slot) setOpen(next.slot, true); }} onCancel={() => setEditingId(null)} onDelete={() => { setEditingId(null); onDelete(e.id); }} />
       )}
     </React.Fragment>
   );
@@ -438,19 +441,6 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
 
   return (
     <div style={st.stack}>
-      <label htmlFor="food-search" style={st.fieldLabel}>Search foods</label>
-      <input
-        id="food-search"
-        ref={inputRef}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="e.g. chicken breast, oats, banana"
-        autoComplete="off"
-        style={{ ...st.input, width: "100%" }}
-      />
-      {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
-      {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
-
       <div style={st.optionRow}>
         <button type="button" onClick={() => onMode("label")} style={st.secondaryBtn}>Photograph a label</button>
         {online && cameraAllowed() && <button type="button" onClick={() => onMode("scan")} style={st.secondaryBtn}>Scan barcode</button>}
@@ -468,6 +458,19 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
           {barcodeMsg && <span style={st.note}>{barcodeMsg}</span>}
         </form>
       )}
+
+      <label htmlFor="food-search" style={st.fieldLabel}>Search foods</label>
+      <input
+        id="food-search"
+        ref={inputRef}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="e.g. chicken breast, oats, banana"
+        autoComplete="off"
+        style={{ ...st.input, width: "100%" }}
+      />
+      {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
+      {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
 
       {online && (
         // Always here, above the suggestions: search Open Food Facts for branded products.
@@ -608,7 +611,7 @@ function AmountStep({ food, onAdd, onBack }) {
 
 // Edit a logged food: change the amount (nutrients rescale) or, for foods
 // entered by hand, the numbers themselves. The name can always change.
-function EditFood({ entry, onSave, onCancel }) {
+function EditFood({ entry, onSave, onCancel, onDelete }) {
   const hasPortion = entry.portion && entry.qty;
   const portionG = hasPortion ? entry.grams / entry.qty : null;
   const [name, setName] = useState(entry.name);
@@ -679,6 +682,7 @@ function EditFood({ entry, onSave, onCancel }) {
       <div style={st.btnRow}>
         <button type="submit" style={st.primaryBtn}>Save changes</button>
         <button type="button" onClick={onCancel} style={st.secondaryBtn}>Cancel</button>
+        {onDelete && <button type="button" aria-label={`Delete ${entry.name}`} onClick={onDelete} style={st.formDeleteBtn}>Delete</button>}
       </div>
     </form>
   );
@@ -1055,7 +1059,7 @@ const st = {
   section: { background: raised, border: `1px solid ${line}`, borderLeft: `3px solid ${plum}`, borderRadius: 4, padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10, marginTop: 16 },
   head: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   title: { fontFamily: condensed, fontWeight: 700, fontSize: 19, letterSpacing: "0.06em", color: plum },
-  addBtn: { fontFamily: mono, fontSize: 12, border: `1px solid ${plum}`, borderRadius: 3, padding: "4px 10px" },
+  addBtn: { fontFamily: mono, fontSize: 13, border: `1px solid ${plum}`, borderRadius: 4, padding: "8px 14px", minHeight: 40 },
   totals: { display: "flex", flexDirection: "column", gap: 6 },
   meters: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 },
   meter: { display: "flex", flexDirection: "column", gap: 4 },
@@ -1075,21 +1079,23 @@ const st = {
   rowName: { fontSize: 14, color: ink, overflowWrap: "anywhere" },
   rowMeta: { fontFamily: mono, fontSize: 11, color: inkFaint, overflowWrap: "anywhere" },
   rowKcal: { fontFamily: mono, fontSize: 13, color: ink, flexShrink: 0 },
-  editBtn: { background: "none", border: "none", color: inkFaint, fontSize: 15, lineHeight: 1, padding: "0 2px" },
+  rowBtn: { width: "100%", border: "none", font: "inherit", textAlign: "left", minHeight: 44 },
+  rowChev: { fontSize: 18, lineHeight: 1, color: inkFaint, flexShrink: 0 },
+  formDeleteBtn: { marginLeft: "auto", fontFamily: mono, fontSize: 13, color: plum, background: "transparent", border: "none", textDecoration: "underline", padding: "8px 2px", minHeight: 40 },
   deleteBtn: { background: "none", border: "none", color: inkFaint, fontSize: 18, lineHeight: 1, padding: "0 2px" },
   addBox: { display: "flex", flexDirection: "column", gap: 10, background: paper, border: `1px solid ${line}`, borderRadius: 4, padding: 10 },
   stack: { display: "flex", flexDirection: "column", gap: 8 },
   fieldLabel: { fontFamily: mono, fontSize: 11, color: inkFaint, display: "flex", flexDirection: "column", gap: 3 },
   input: { fontFamily: sans, fontSize: 14, padding: "7px 8px", border: `1px solid ${line}`, borderRadius: 3, background: C.field, color: ink },
   resultGroup: { display: "flex", flexDirection: "column", gap: 4 },
-  groupToggle: { display: "flex", alignItems: "center", gap: 8, width: "100%", minHeight: 40, padding: "6px 2px", fontFamily: mono, fontSize: 10, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase", background: "transparent", border: "none", borderBottom: `1px solid ${line}`, textAlign: "left" },
+  groupToggle: { display: "flex", alignItems: "center", gap: 8, width: "100%", minHeight: 40, padding: "6px 2px", fontFamily: mono, fontSize: 11, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase", background: "transparent", border: "none", borderBottom: `1px solid ${line}`, textAlign: "left" },
   groupCount: { flex: 1, letterSpacing: 0, color: inkFaint, opacity: 0.8 },
   groupChev: { fontSize: 16, lineHeight: 1, transition: "transform 0.15s" },
-  groupLabel: { fontFamily: mono, fontSize: 10, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase" },
+  groupLabel: { fontFamily: mono, fontSize: 11, letterSpacing: "0.12em", color: inkFaint, textTransform: "uppercase" },
   resultList: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 },
   result: { width: "100%", textAlign: "left", display: "flex", flexDirection: "column", gap: 1, background: raised, border: `1px solid ${line}`, borderRadius: 3, padding: "7px 9px" },
   resultName: { fontFamily: sans, fontSize: 13, color: ink },
-  resultMeta: { fontFamily: mono, fontSize: 10, color: inkFaint },
+  resultMeta: { fontFamily: mono, fontSize: 11, color: inkFaint },
   optionRow: { display: "flex", flexWrap: "wrap", gap: 6 },
   inline: { display: "flex", flexDirection: "column", gap: 4 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "flex-end" },
@@ -1113,7 +1119,7 @@ const st = {
   slotToggle: { flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, minHeight: 36, padding: 0, background: "none", border: "none", color: ink, textAlign: "left", cursor: "pointer" },
   chev: { flex: "none", color: inkFaint, transition: "transform 0.15s ease" },
   slotTitle: { fontFamily: condensed, fontWeight: 700, fontSize: 16, letterSpacing: "0.05em", textTransform: "uppercase", color: ink },
-  slotSum: { fontFamily: mono, fontSize: 11, color: inkFaint },
+  slotSum: { fontFamily: mono, fontSize: 12, color: inkFaint },
   nutRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6, alignItems: "center" },
   nutHead: { fontFamily: mono, fontSize: 11, fontWeight: 600, color: inkFaint },
   nutName: { fontFamily: mono, fontSize: 11, color: ink },

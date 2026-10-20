@@ -147,7 +147,7 @@ const offBtn = pa.getByRole('button', { name: /Search branded products for/ });
 const offY = (await offBtn.boundingBox()).y, firstSuggestion = await pa.getByText(/^(Recent|Logged before|My foods|Foods \(UK CoFID and USDA\))$/).first().boundingBox();
 check(!firstSuggestion || offY < firstSuggestion.y, 'branded search sits above the suggestions');
 const searchY = (await pa.getByLabel('Search foods').boundingBox()).y, manualY = (await pa.getByRole('button', { name: 'Enter manually' }).boundingBox()).y, barcodeY = (await pa.getByLabel('Or type a barcode').boundingBox()).y;
-check(searchY < manualY && manualY < barcodeY && barcodeY < offY, 'photo, barcode and manual options sit right under the search box');
+check(manualY < barcodeY && barcodeY < searchY && searchY < offY, 'photo, barcode and manual options sit above the search box, with branded search right under it');
 await pa.getByRole('button', { name: /Search branded products for/ }).click();
 await pa.getByText('Branded products (Open Food Facts)').waitFor();
 check(!(await pa.locator('body').innerText()).includes('No nutrition'), 'products without nutrition data are skipped');
@@ -179,7 +179,10 @@ check(t.includes('996') && t.includes('1,204 kcal left'), 'day total calories: '
 check(t.includes('2 × 1 large'), 'portion shown on the entry');
 await pa.screenshot({ path: 'food-day.png', fullPage: true });
 
-// delete one
+// delete one: the row has no buttons of its own; Delete is in the edit form
+check(await pa.getByRole('button', { name: 'Delete Protein bar' }).count() === 0, 'no delete button on the row itself');
+await pa.getByRole('button', { name: 'Edit Protein bar' }).click();
+await pa.screenshot({ path: 'food-edit-delete.png' });
 await pa.getByRole('button', { name: 'Delete Protein bar' }).click();
 check((await pa.locator('body').innerText()).includes('1,404 kcal left'), 'delete updates totals');
 

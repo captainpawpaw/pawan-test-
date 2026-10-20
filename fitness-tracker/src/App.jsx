@@ -26,6 +26,13 @@ const MONTH_NAMES = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","A
 const DOW = ["M","T","W","T","F","S","S"];
 
 const TABS = [["log", "LOG"], ["food", "FOOD"], ["exercises", "EXERCISES"], ["progress", "PROGRESS"]];
+// Icons for the bottom navigation bar (24 × 24, drawn with the current colour).
+const TAB_ICONS = {
+  log: <path d="M3 9.5v5M6 7.5v9M18 7.5v9M21 9.5v5M6 12h12" />,
+  food: <><path d="M7 3v8a2 2 0 0 0 2 2v8M5 3v5M9 3v5" /><path d="M17 21V3c-2.2 1.2-3 3.6-3 6.5V14h3" /></>,
+  exercises: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" /></>,
+  progress: <path d="M3 20h18M5 16l5-5 4 3 6-7" />,
+};
 
 // A synced map in storage ({ [id]: entry }): loads it, and writes one entry at
 // a time, re-reading first so anything that arrived by sync isn't lost.
@@ -777,11 +784,11 @@ export default function App() {
         @media (max-width: 720px) {
           input, select, textarea { font-size: 16px !important; }
         }
-        /* The four tabs fit the narrowest phones too. */
-        @media (max-width: 370px) {
-          .ft-tabs { gap: 10px !important; }
-          .ft-tabs button { font-size: 13px !important; letter-spacing: 0.04em !important; }
-        }
+        /* Example text in empty boxes: clearly fainter than anything typed. */
+        ::placeholder { color: var(--ft-ink-faint); opacity: 0.45; }
+        /* Room for the bottom navigation bar and the phone's home indicator. */
+        .ft-page { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+        .ft-bottom-nav { padding-bottom: env(safe-area-inset-bottom, 0px); }
       `}</style>
 
       <header className="ft-masthead" style={styles.header}>
@@ -808,11 +815,13 @@ export default function App() {
             </button>
           </div>
         </div>
-        <div style={styles.monthRow}>
-          <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
-          <div className="ft-masthead-title" style={styles.monthTitle}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></div>
-          <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
-        </div>
+        {(activeTab === "log" || activeTab === "food") && (
+          <div style={styles.monthRow}>
+            <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
+            <div className="ft-masthead-title" style={styles.monthTitle}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></div>
+            <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
+          </div>
+        )}
       </header>
       {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps, firstPct: sp.firstPct }); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
@@ -834,23 +843,6 @@ export default function App() {
           onSettings={() => openPanel("weighin")}
         />
       )}
-
-      <div className="ft-tabs" style={styles.tabRow}>
-        {TABS.map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => goTab(id)}
-            aria-current={activeTab === id ? "page" : undefined}
-            style={{
-              ...styles.tabBtn,
-              color: activeTab === id ? ink : inkFaint,
-              borderBottomColor: activeTab === id ? ink : "transparent",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
 
       <div
         key={activeTab}
@@ -1095,6 +1087,21 @@ export default function App() {
       </>
       )}
       </div>
+
+      {/* Bottom navigation: the four sections within thumb reach. */}
+      <nav className="ft-tabs ft-bottom-nav" aria-label="Sections" style={styles.bottomNav}>
+        {TABS.map(([id, label]) => {
+          const on = activeTab === id;
+          return (
+            <button key={id} type="button" onClick={() => goTab(id)} aria-current={on ? "page" : undefined} style={{ ...styles.navTab, color: on ? ink : inkFaint }}>
+              <span aria-hidden="true" style={{ ...styles.navPill, background: on ? `color-mix(in srgb, ${ink} 12%, transparent)` : "transparent" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={on ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">{TAB_ICONS[id]}</svg>
+              </span>
+              <span style={{ ...styles.navLabel, fontWeight: on ? 700 : 500 }}>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
@@ -1501,6 +1508,11 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           ))}
           {editingId && <span style={styles.editingNote}>Editing an entry. Change anything, then save.</span>}
           <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{editingId ? "Save changes" : addLabel}</button>
+          {editingId && (
+            <button type="button" aria-label="Delete entry" onClick={() => { const id = editingId; closeForm(); onDelete(id); }} style={{ ...styles.formDeleteBtn, color: accent }}>
+              Delete this entry
+            </button>
+          )}
         </form>
       )}
 
@@ -1509,13 +1521,17 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           <div style={styles.emptyText}>{emptyText}</div>
         ) : (
           entries.map((e) => (
-            <div key={e.id} style={{ ...styles.row, background: `color-mix(in srgb, ${accentSoft} 25%, transparent)`, ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}>
+            // Tap a row to edit it; Delete is in the form that opens, away from + Add.
+            <button
+              key={e.id}
+              type="button"
+              aria-label={`Edit ${e[fields[0].key] || "entry"}`}
+              onClick={() => (editingId === e.id ? closeForm() : startEdit(e))}
+              style={{ ...styles.row, ...styles.rowBtn, background: `color-mix(in srgb, ${accentSoft} 25%, transparent)`, ...(editingId === e.id ? { outline: `2px solid ${accent}`, outlineOffset: -2 } : {}) }}
+            >
               {renderRow(e)}
-              {onEdit && (
-                <button aria-label={`Edit ${e[fields[0].key] || "entry"}`} onClick={() => startEdit(e)} style={styles.editBtn}>✎</button>
-              )}
-              <button aria-label="Delete entry" onClick={() => { if (editingId === e.id) closeForm(); onDelete(e.id); }} style={styles.deleteBtn}>×</button>
-            </div>
+              <span aria-hidden="true" style={styles.rowChev}>›</span>
+            </button>
           ))
         )}
       </div>
@@ -2435,11 +2451,11 @@ const styles = {
     letterSpacing: "0.18em",
     color: inkFaint,
   },
-  monthRow: { display: "flex", alignItems: "baseline", justifyContent: "space-between" },
+  monthRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
   monthTitle: {
     fontFamily: C.display,
     fontWeight: 700,
-    fontSize: 34,
+    fontSize: 26,
     letterSpacing: "0.02em",
     lineHeight: 1,
   },
@@ -2454,22 +2470,10 @@ const styles = {
     color: ink,
     lineHeight: 1,
   },
-  tabRow: {
-    display: "flex",
-    gap: 18,
-    marginTop: 18,
-    borderBottom: `1px solid ${line}`,
-  },
-  tabBtn: {
-    background: "none",
-    border: "none",
-    borderBottom: "2px solid transparent",
-    fontFamily: C.display,
-    fontWeight: 700,
-    fontSize: 15,
-    letterSpacing: "0.08em",
-    padding: "0 2px 8px",
-  },
+  bottomNav: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 30, display: "flex", justifyContent: "center", background: raised, borderTop: `1px solid ${line}`, boxShadow: "0 -4px 16px rgba(0,0,0,0.08)" },
+  navTab: { flex: "1 1 0", maxWidth: 160, minHeight: 60, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: "6px 2px 8px", background: "none", border: "none" },
+  navPill: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 56, height: 30, borderRadius: 999 },
+  navLabel: { fontFamily: C.display, fontSize: 12, letterSpacing: "0.08em" },
   library: { marginTop: 16 },
   filterRow: { display: "flex", gap: 8, marginBottom: 12 },
   filterChip: {
@@ -2942,10 +2946,11 @@ const styles = {
   },
   addBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 13,
     border: "1px solid",
-    borderRadius: 3,
-    padding: "4px 9px",
+    borderRadius: 4,
+    padding: "8px 14px",
+    minHeight: 40,
   },
   form: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${line}` },
   fieldLabel: {
@@ -2993,24 +2998,10 @@ const styles = {
   },
   rowMain: { fontFamily: C.sans, fontSize: 13.5, fontWeight: 500, flex: 1 },
   rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
-  editBtn: {
-    background: "none",
-    border: "none",
-    color: inkFaint,
-    fontSize: 15,
-    lineHeight: 1,
-    padding: "0 4px",
-    marginLeft: 4,
-  },
+  rowBtn: { width: "100%", border: "none", color: ink, font: "inherit", textAlign: "left", minHeight: 44 },
+  rowChev: { fontSize: 18, lineHeight: 1, color: inkFaint, marginLeft: 2 },
+  formDeleteBtn: { alignSelf: "flex-start", marginTop: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, background: "transparent", border: "none", textDecoration: "underline", padding: "8px 0", minHeight: 40 },
   editingNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
-  deleteBtn: {
-    background: "none",
-    border: "none",
-    fontSize: 16,
-    color: inkFaint,
-    lineHeight: 1,
-    padding: "0 2px",
-  },
   footerStack: { display: "flex", flexDirection: "column", gap: 4 },
   bwLine: { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 8px", fontWeight: 400, color: inkFaint, fontSize: 11 },
   bwEditBtn: {

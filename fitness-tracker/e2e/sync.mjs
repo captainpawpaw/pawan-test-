@@ -84,7 +84,8 @@ check(Object.keys(drive.files).length === 1, 'still a single Drive file');
 
 // B deletes A's squat -> sync; A taps sync -> squat gone, B's entry appears
 const row = pb.locator('div', { hasText: /^Device A squat/ }).last();
-await pb.locator('div:has(> span:text-is("Device A squat"))').getByRole('button', { name: 'Delete entry' }).click();
+await pb.getByRole('button', { name: 'Edit Device A squat' }).click(); // tap the row to open it
+await pb.getByRole('button', { name: 'Delete entry' }).click();
 check(!(await pb.locator('body').innerText()).includes('Device A squat') && (await pb.locator('body').innerText()).includes('Device A bench'), 'B deleted exactly the squat');
 await pb.waitForTimeout(2500); await waitSynced(pb);
 check(!allIds().includes('Device A squat'), 'deletion syncs to Drive');
