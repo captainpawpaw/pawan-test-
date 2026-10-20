@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { strengthHistory, lastSession, roundPlate } from "../src/lastTime.js";
+import { strengthHistory, lastSession, roundPlate, firstSetPct } from "../src/lastTime.js";
 
 const months = {
   "2026-09": { "28": { strength: [{ exercise: "Back Squat", sets: "3", reps: "5", weight: "95" }] } },
@@ -32,4 +32,14 @@ test("warm-up is 30% lighter, rounded to 2.5 kg; none for body weight alone", ()
   assert.equal(lastSession(h, "Pull-up", "2026-10-12").warmUp, null);
   assert.equal(lastSession(h, "Weighted Dip", "2026-10-13").warmUp, 10); // 10.5
   assert.equal(roundPlate(61.2), 60);
+});
+
+test("first set: 70% by default, the menu's choice, or an older per-split % rounded to a choice", () => {
+  assert.equal(firstSetPct({}), 70);
+  assert.equal(firstSetPct({ firstSet: { pct: 90 } }), 90);
+  assert.equal(firstSetPct({ split: { firstPct: 60 } }), 70);
+  assert.equal(firstSetPct({ split: { firstPct: 84 } }), 80);
+  assert.equal(firstSetPct({ firstSet: { pct: 80 }, split: { firstPct: 90 } }), 80);
+  assert.equal(lastSession(h, "Back Squat", "2026-10-12", 90).warmUp, 90);
+  assert.equal(lastSession(h, "Back Squat", "2026-10-12", 80).warmUp, 80);
 });
