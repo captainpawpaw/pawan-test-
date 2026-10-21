@@ -1,0 +1,87 @@
+/*
+ * Quiet: nothing but the content. No boxes, no borders, one colour, and
+ * text that appears only while it is needed.
+ *
+ * Two layers, so a project can take as much as it wants:
+ *   .quiet-structure  layout and behaviour only; keeps the project's own colours and fonts
+ *   .quiet            the structure plus Quiet's palette (light and dark) and typography
+ *
+ * Put either class on <html> (or any wrapper). Then mark elements with the hooks:
+ *   .q-card         a grouped area (card, section, panel): loses its box
+ *   .q-primary      the one filled button in an area; every other button loses its outline
+ *   .q-hint         an explanation shown only while its .q-card is hovered or focused
+ *   .q-hint-inline  the same, inside a line of text: takes no space while hidden
+ *   .q-reveal       a secondary control shown on hover or focus (always shown on touch screens)
+ *   .q-nav          a navigation bar; its items' .q-nav-label shows only on the current item ([aria-current])
+ *   .q-brand        a logo or app name that can go once the user knows where they are
+ * Hidden text stays readable by screen readers: it is faded or shrunk, never display: none.
+ */
+
+/* ---------- palette (only with .quiet) ---------- */
+.quiet {
+  --q-ink: #111111;   /* text and the one accent */
+  --q-faint: #8a8a8a; /* secondary text */
+  --q-paper: #ffffff; /* background */
+  --q-line: #ececec;  /* the only rule: under inputs, between rows */
+  --q-soft: #f6f6f6;  /* a pressed or selected item */
+  color-scheme: light dark;
+  color: var(--q-ink);
+  background: var(--q-paper);
+}
+@media (prefers-color-scheme: dark) {
+  .quiet {
+    --q-ink: #ededed; --q-faint: #7a7a7a; --q-paper: #0e0e0e; --q-line: #242424; --q-soft: #161616;
+  }
+}
+
+/* ---------- typography (only with .quiet) ---------- */
+.quiet, .quiet * {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+}
+.quiet ::placeholder { color: var(--q-faint); opacity: 0.6; }
+.quiet .q-primary { background: var(--q-ink); color: var(--q-paper); }
+
+/* ---------- structure (both layers) ---------- */
+:is(.quiet, .quiet-structure) .q-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+:is(.quiet, .quiet-structure) button:not(.q-primary) {
+  border-color: transparent;
+  box-shadow: none;
+  background-color: transparent;
+}
+:is(.quiet, .quiet-structure) button:focus:not(:focus-visible) { outline: none; }
+:is(.quiet, .quiet-structure) :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea) {
+  border-width: 0 0 1px;
+  border-style: solid;
+  border-color: var(--q-line, currentColor);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:is(.quiet, .quiet-structure) :is(input, select, textarea):focus {
+  outline: none;
+  border-bottom-color: var(--q-ink, currentColor);
+}
+:is(.quiet, .quiet-structure) .q-nav { border-color: transparent; box-shadow: none; }
+:is(.quiet, .quiet-structure) .q-brand { visibility: hidden; }
+
+/* Text that appears only while it is needed */
+:is(.quiet, .quiet-structure) :is(.q-hint, .q-reveal, .q-nav-label) { transition: opacity 0.15s; }
+:is(.quiet, .quiet-structure) :is(.q-hint, .q-reveal) { opacity: 0; }
+:is(.quiet, .quiet-structure) .q-card:is(:hover, :focus-within) :is(.q-hint, .q-reveal) { opacity: 1; }
+:is(.quiet, .quiet-structure) .q-card:not(:hover, :focus-within) .q-hint-inline { font-size: 0; }
+:is(.quiet, .quiet-structure) .q-nav :not([aria-current]) > .q-nav-label { opacity: 0; }
+@media (hover: none) {
+  :is(.quiet, .quiet-structure) .q-reveal { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.quiet, .quiet-structure) :is(.q-hint, .q-reveal, .q-nav-label) { transition: none; }
+}
