@@ -1094,10 +1094,10 @@ export default function App() {
               addLabel="Log a set"
               fields={[
                 { key: "exercise", label: "Exercise", type: "text", placeholder: "Back squat", options: strengthNames, listId: "strength-exercise-list" },
-                { key: "sets", label: "Sets", type: "number", placeholder: "3" },
-                { key: "reps", label: "Reps", type: "number", placeholder: "5" },
+                { key: "sets", label: "Sets", type: "number", inputMode: "numeric", placeholder: "3" },
+                { key: "reps", label: "Reps", type: "number", inputMode: "numeric", placeholder: "5" },
                 { key: "weight", label: `Max weight (${liftUnit})`, type: "number", placeholder: liftUnit === "lb" ? "175" : "80", bodyweightToggle: true },
-                { key: "minWeight", label: `Min weight (${liftUnit}), optional`, bwLabel: `Min added weight (${liftUnit}), optional`, type: "number", placeholder: liftUnit === "lb" ? "135" : "60" },
+                { key: "minWeight", label: `Min weight (${liftUnit}), optional`, bwLabel: `Min added weight (${liftUnit}), optional`, type: "number", inputMode: "decimal", placeholder: liftUnit === "lb" ? "135" : "60" },
               ]}
               onAdd={(vals) => addEntry("strength", vals)}
               renderRow={(e) => (
@@ -1142,8 +1142,8 @@ export default function App() {
               addLabel="Log a session"
               fields={[
                 { key: "activity", label: "Activity", type: "text", placeholder: "Run", options: cardioNames, listId: "cardio-activity-list" },
-                { key: "duration", label: "Minutes", type: "number", placeholder: "30" },
-                { key: "distance", label: "Distance (mi)", type: "number", placeholder: "3.1" },
+                { key: "duration", label: "Minutes", type: "number", inputMode: "numeric", placeholder: "30" },
+                { key: "distance", label: "Distance (mi)", type: "number", inputMode: "decimal", placeholder: "3.1" },
               ]}
               onAdd={(vals) => addEntry("cardio", vals)}
               renderRow={(e) => (
@@ -1621,6 +1621,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               <input
                 id={`${sectionType}-${f.key}`}
                 type="number"
+                inputMode="decimal"
                 placeholder={vals.bw ? "0" : f.placeholder}
                 value={vals[f.key] || ""}
                 onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
@@ -1642,6 +1643,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               {vals.bw && f.bwLabel ? f.bwLabel : f.label}
               <input
                 type={f.type}
+                // Number boxes bring up the phone's number pad, not the full keyboard.
+                inputMode={f.inputMode}
                 placeholder={f.placeholder}
                 value={vals[f.key] || ""}
                 onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
