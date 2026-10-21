@@ -30,8 +30,12 @@ const DEBOUNCE_MS = 1500;
 export const driveSupported = () => Boolean(CLIENT_ID) && typeof window !== "undefined" && !window.claude;
 
 /* ---------- status ---------- */
-// state: "off" | "connecting" | "syncing" | "synced" | "needs-auth" | "error"
+// state: "off" | "connecting" | "syncing" | "synced" | "needs-auth" | "error" | "offline"
 let status = { state: "off", lastSynced: null, message: "" };
+// With no connection a sync waits: changes stay on this device and sync as
+// soon as the connection is back (see initDriveSync).
+const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+let waitingForOnline = false;
 const listeners = new Set();
 const monthListeners = new Set();
 
@@ -65,7 +69,7 @@ function disarmAutoSync() {
 // entries made on another device appear without a tap.
 let lastPull = 0;
 function onVisible() {
-  if (document.visibilityState !== "visible" || !flag.get()) return;
+  if (document.visibilityState !== "visible" || !flag.get() || isOffline()) return;
   if (!tokenValid()) { if (status.state !== "connecting") setStatus({ state: "needs-auth" }); return; }
   if (Date.now() - lastPull < 30_000) return;
   lastPull = Date.now();
@@ -270,7 +274,9 @@ async function syncOnce() {
   if (changed.length) monthListeners.forEach((fn) => fn(changed));
 }
 
+
 function runSync() {
+  if (isOffline()) { waitingForOnline = true; setStatus({ state: "offline", message: "" }); return Promise.resolve(); }
   if (running) { again = true; return running; }
   setStatus({ state: "syncing", message: "" });
   running = (async () => {
@@ -279,6 +285,7 @@ function runSync() {
       setStatus({ state: "synced", lastSynced: new Date(), message: "" });
     } catch (err) {
       if (err instanceof NeedsAuth) setStatus({ state: "needs-auth", message: "" });
+      else if (isOffline()) { waitingForOnline = true; setStatus({ state: "offline", message: "" }); }
       else setStatus({ state: "error", message: err.message || "Sync failed." });
     } finally {
       running = null;
@@ -292,7 +299,8 @@ export function scheduleSync() {
   if (!driveSupported() || !flag.get()) return;
   clearTimeout(timer);
   timer = setTimeout(() => {
-    if (!tokenValid()) setStatus({ state: "needs-auth" });
+    if (isOffline()) { waitingForOnline = true; setStatus({ state: "offline", message: "" }); }
+    else if (!tokenValid()) setStatus({ state: "needs-auth" });
     else runSync();
   }, DEBOUNCE_MS);
 }
@@ -352,7 +360,15 @@ export async function importBook(raw) {
 export function initDriveSync() {
   if (!driveSupported()) return;
   loadGis().catch(() => {});
-  if (flag.get() && status.state === "off") setStatus({ state: "needs-auth" });
+  if (flag.get() && status.state === "off") setStatus({ state: isOffline() ? "offline" : "needs-auth" });
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("focus", onVisible);
+  window.addEventListener("offline", () => {
+    if (flag.get() && status.state !== "needs-auth") setStatus({ state: "offline", message: "" });
+  });
+  window.addEventListener("online", () => {
+    if (!flag.get()) return;
+    if (!tokenValid()) { setStatus({ state: "needs-auth" }); return; }
+    if (waitingForOnline || status.state === "offline" || status.state === "error") { waitingForOnline = false; runSync(); }
+  });
 }
