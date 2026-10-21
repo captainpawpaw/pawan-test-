@@ -68,7 +68,7 @@ const shut = async (p) => { await drawer(p).waitFor({ state: 'hidden', timeout: 
 const settled = (p) => p.waitForTimeout(350); // slide animation
 const focusedLabel = (p) => p.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent || '');
 
-await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 check(!(await drawer(pa).isVisible()) && await tab(pa).isVisible(), 'calendar starts tucked away, with a tab on the left');
 const tb = await tab(pa).boundingBox();
 check(tb.x <= 1 && tb.width <= 30 && tb.height >= 44, 'tab sits on the left edge: ' + JSON.stringify(tb));
@@ -96,7 +96,7 @@ check((await drawer(pa).innerText()).includes('calories'), 'food calendar explai
 check(await pa.evaluate(() => document.getElementById('month-calendar').contains(document.activeElement)) && (await drawer(pa).getAttribute('aria-modal')) === 'true', 'focus moves into the open sidebar');
 await pa.screenshot({ path: 'cal-pinned-food.png' });
 await drawer(pa).getByRole('button', { name: 'Show next month' }).click();
-check((await drawer(pa).innerText()).includes('NOVEMBER') && (await pa.locator('header').innerText()).includes('NOVEMBER'), 'sidebar arrows change the month');
+check((await drawer(pa).innerText()).includes('NOVEMBER') && (await pa.locator('header').innerText()).includes(' NOV'), 'sidebar arrows change the month');
 await drawer(pa).getByRole('button', { name: 'Show previous month' }).click();
 await pa.keyboard.press('Escape');
 check(await shut(pa) && (await focusedLabel(pa)) === 'Calendar', 'Escape closes it and returns focus to the tab');
@@ -117,7 +117,7 @@ await pa.getByRole('button', { name: 'LOG', exact: true }).click();
 // phone: tap to open, tap a day to close, tap outside to close
 const M = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }); await setup(M);
 const pm = await M.newPage(); pm.on('pageerror', (e) => errs.push(e.message));
-await pm.goto('http://localhost:4190/'); await pm.getByText('STRENGTH').waitFor();
+await pm.goto('http://localhost:4190/?tab=log'); await pm.getByText('STRENGTH').waitFor();
 check(!(await drawer(pm).isVisible()), 'phone: tucked away at first');
 await tab(pm).tap(); await settled(pm);
 const dows = await drawer(pm).evaluate(el => [...el.querySelectorAll('div')].find(d => d.children.length === 7 && d.textContent.length === 7)?.textContent);

@@ -6,6 +6,7 @@ import { getSample, getImageLimits, readWithClaude, readScreenshotsWithClaude } 
 import Progress from "./Progress";
 import FoodLog from "./FoodLog";
 import { sumFood } from "./food";
+import { flattenMonths, ledgerHeadline } from "./progress";
 import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
@@ -164,7 +165,11 @@ export default function App() {
   const [selected, setSelected] = useState(isSameMonth(new Date()) ? todayDayNum() : "01");
   const [baseExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
   const [exercisesLoading, setExercisesLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("log");
+  // Opens on Progress; a link can ask for another tab with ?tab=log (or food, exercises).
+  const [activeTab, setActiveTab] = useState(() => {
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    return TABS.some(([id]) => id === asked) ? asked : "progress";
+  });
   // Swipe left or right to move between tabs (touch only). Swipes that start
   // on something that drags or scrolls sideways itself are left alone.
   const [slideDir, setSlideDir] = useState(null);
@@ -485,6 +490,9 @@ export default function App() {
     return () => { live = false; };
   }, [loadAllMonths, dataVersion, key]); // and again on changing month, to pick up edits made in the last one
   const history = useMemo(() => strengthHistory({ ...allMonths, [monthKey(cursor)]: monthData }), [allMonths, monthData, cursor]);
+  // The headline Ledger score at the top of every tab.
+  const ledger = useMemo(() => ledgerHeadline(flattenMonths({ ...allMonths, [monthKey(cursor)]: monthData }), bwOnDate), [allMonths, monthData, cursor, bwOnDate]);
+
   // Personal bests: heaviest weight and most reps for each exercise.
   const bests = useMemo(() => personalBests(history), [history]);
   const pbIds = useMemo(() => recordIds(bests), [bests]);
@@ -846,11 +854,42 @@ export default function App() {
             </button>
           </div>
         </div>
+        {/* The Ledger score leads on every tab; tapping it opens Progress. */}
+        <button
+          type="button"
+          onClick={() => goTab("progress")}
+          aria-label={ledger ? `Ledger score ${ledger.value}, ${ledger.sinceStart >= 0 ? "up" : "down"} ${Math.abs(ledger.sinceStart)}% since you started` : "Ledger score: not started yet"}
+          style={styles.scoreBlock}
+        >
+          <span style={styles.scoreLabel}>Ledger score</span>
+          {ledger ? (
+            <>
+              <span className="ft-masthead-title" style={styles.scoreValue}>{ledger.value.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
+              <span style={styles.scoreSub}>
+                <span>{ledger.sinceStart >= 0 ? "▲" : "▼"} {Math.abs(ledger.sinceStart)}% since you started</span>
+                {ledger.sinceLastWeek != null && ledger.sinceLastWeek !== 0 && <span style={styles.scoreWeek}>{ledger.sinceLastWeek > 0 ? "+" : "−"}{Math.abs(ledger.sinceLastWeek)} this week</span>}
+                {ledger.badge && <span style={styles.scoreBadge}>{ledger.badge}</span>}
+              </span>
+            </>
+          ) : (
+            <span className="ft-masthead-title" style={styles.scoreEmpty}>Log a workout to start your score</span>
+          )}
+        </button>
         {(activeTab === "log" || activeTab === "food") && (
-          <div style={styles.monthRow}>
-            <button aria-label="Previous month" onClick={() => changeMonth(-1)} style={styles.navBtn}>‹</button>
-            <div className="ft-masthead-title" style={styles.monthTitle}>{MONTH_NAMES[cursor.getMonth()]} <span style={styles.year}>{cursor.getFullYear()}</span></div>
-            <button aria-label="Next month" onClick={() => changeMonth(1)} style={styles.navBtn}>›</button>
+          <div style={styles.headerDayWrap}>
+            <div data-dayswipe style={styles.headerDay}>
+              <span aria-live="polite">{selectedLabel()}</span>
+              <span style={styles.dayNav}>
+                <button type="button" aria-label="Previous day" onClick={() => goDay(-1)} style={styles.dayNavBtn}>‹</button>
+                <button type="button" aria-label="Next day" onClick={() => goDay(1)} style={styles.dayNavBtn}>›</button>
+              </span>
+            </div>
+            {activeTab === "food" && (() => {
+              const eaten = Math.round(sumFood(dayEntries.food || []).kcal), target = Number(profile.targets?.kcal) || 0;
+              return <span style={styles.headerSub}>{target ? `${(target - eaten).toLocaleString()} kcal ${target - eaten >= 0 ? "left" : "over"} · ${eaten.toLocaleString()} eaten` : `${eaten.toLocaleString()} kcal eaten`}</span>;
+            })()}
+            {saveError && <span style={styles.errorTag}>Not saved — try again</span>}
+            {newExerciseNote && <span role="status" style={styles.newExerciseNote}>{newExerciseNote}</span>}
           </div>
         )}
       </header>
@@ -1001,16 +1040,7 @@ export default function App() {
       {loading ? (
         <div style={styles.loading}>Loading ledger…</div>
       ) : (
-        <div ref={dayRef}>
-          <div data-dayswipe style={styles.selectedHeader}>
-            <span aria-live="polite">{selectedLabel()}</span>
-            {saveError && <span style={styles.errorTag}>Not saved — try again</span>}
-            {newExerciseNote && <span role="status" style={styles.newExerciseNote}>{newExerciseNote}</span>}
-            <span style={styles.dayNav}>
-              <button type="button" aria-label="Previous day" onClick={() => goDay(-1)} style={styles.dayNavBtn}>‹</button>
-              <button type="button" aria-label="Next day" onClick={() => goDay(1)} style={styles.dayNavBtn}>›</button>
-            </span>
-          </div>
+        <div ref={dayRef} style={styles.dayBody}>
 
           {activeTab === "food" ? (
             <FoodLog
@@ -1355,42 +1385,62 @@ function SyncNotice() {
   );
 }
 
+// Google Drive sync as a small cloud: tap it to connect or sync; once synced,
+// tap it for the last sync time, Sync now and Disconnect. Its words are kept
+// for screen readers.
 function DriveStatus() {
   const [st, setSt] = useState({ state: "off" });
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
   useEffect(() => drive.subscribe(setSt), []);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
   if (!drive.driveSupported()) return null;
 
   const time = st.lastSynced ? st.lastSynced.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
   const view = {
-    off: { label: "Connect Google Drive", action: drive.connect, hint: "Back up and sync your log" },
-    connecting: { label: "Connecting…" },
-    syncing: { label: "Syncing…" },
-    synced: { label: `Synced ${time}`, action: drive.connect, hint: "Sync now", done: true },
-    "needs-auth": { label: "Tap to sync with Drive", action: drive.connect, hint: "Google needs you to sign in again", warn: true },
-    error: { label: "Sync failed · retry", action: drive.connect, warn: true },
-  }[st.state] || { label: "" };
+    off: { label: "Connect Google Drive", action: drive.connect, hint: "Back up and sync your log", mark: "plus" },
+    connecting: { label: "Connecting…", mark: "dots" },
+    syncing: { label: "Syncing…", mark: "dots" },
+    synced: { label: `Synced ${time}`, action: () => setOpen((o) => !o), hint: `Synced ${time}`, done: true, mark: "check" },
+    "needs-auth": { label: "Tap to sync with Drive", action: drive.connect, hint: "Google needs you to sign in again", warn: true, mark: "alert" },
+    error: { label: "Sync failed · retry", action: drive.connect, hint: "Sync failed: tap to retry", warn: true, mark: "alert" },
+  }[st.state] || { label: "", mark: "plus" };
+
+  const color = view.warn ? rust : view.done ? teal : inkFaint;
+  const icon = (
+    <svg width="26" height="20" viewBox="0 0 26 20" aria-hidden="true" style={{ color }}>
+      <path d="M7.5 17.5h11a5 5 0 0 0 .6-9.96A6.5 6.5 0 0 0 6.6 9.1 4.2 4.2 0 0 0 7.5 17.5z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      {view.mark === "check" && <path d="M9.8 12.4l2.3 2.2 4.4-4.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
+      {view.mark === "plus" && <path d="M13 9.6v5.4M10.3 12.3h5.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />}
+      {view.mark === "alert" && <path d="M13 9.4v3.4M13 15.1v.1" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />}
+      {view.mark === "dots" && <path d="M10.2 13h.01M13 13h.01M15.8 13h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />}
+    </svg>
+  );
 
   return (
-    <div style={styles.driveWrap}>
+    <div ref={ref} style={styles.driveWrap}>
       {view.action ? (
-        <button
-          onClick={view.action}
-          title={view.hint}
-          style={{ ...styles.driveBtn, ...(view.warn ? styles.driveBtnWarn : {}), ...(view.done ? styles.driveBtnDone : {}) }}
-        >
-          <span aria-hidden="true" style={{ ...styles.driveDot, background: view.done ? teal : view.warn ? rust : inkFaint }} />
-          {view.label}
+        <button type="button" onClick={view.action} title={view.hint} aria-expanded={view.done ? open : undefined} style={styles.driveIconBtn}>
+          {icon}
+          <span style={styles.srOnly}>{view.label}</span>
         </button>
       ) : (
-        <span style={styles.driveBtn} role="status">
-          <span aria-hidden="true" style={{ ...styles.driveDot, background: inkFaint }} />
-          {view.label}
+        <span role="status" title={view.label} style={styles.driveIconBtn}>
+          {icon}
+          <span style={styles.srOnly}>{view.label}</span>
         </span>
       )}
-      {st.state === "synced" && (
-        <button onClick={drive.disconnect} style={styles.driveLink} title="Stop syncing. Your log stays in this browser and in Drive.">
-          Disconnect
-        </button>
+      {open && st.state === "synced" && (
+        <div role="dialog" aria-label="Google Drive sync" style={styles.drivePop}>
+          <span style={styles.drivePopText}>Last synced with Google Drive at {time}</span>
+          <button type="button" onClick={() => { setOpen(false); drive.connect(); }} style={styles.drivePopBtn}>Sync now</button>
+          <button type="button" onClick={() => { setOpen(false); drive.disconnect(); }} title="Stop syncing. Your log stays in this browser and in Drive." style={styles.drivePopBtn}>Disconnect</button>
+        </div>
       )}
       {st.message && <span style={styles.driveMsg} role="alert">{st.message}</span>}
     </div>
@@ -2514,7 +2564,12 @@ const styles = {
     padding: "7px 10px",
     marginTop: 10,
   },
-  driveWrap: { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: "4px 10px", marginLeft: "auto" },
+  driveIconBtn: { position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 34, padding: 0, background: "none", border: "none", color: ink },
+  srOnly: { position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 },
+  drivePop: { position: "absolute", top: 40, right: 0, zIndex: 25, display: "flex", flexDirection: "column", gap: 2, width: 220, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
+  drivePopText: { fontSize: 12.5, color: inkFaint, padding: "4px 8px 6px" },
+  drivePopBtn: { minHeight: 40, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
+  driveWrap: { position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: "4px 10px", marginLeft: "auto" },
   driveBtn: {
     display: "inline-flex",
     alignItems: "center",
@@ -2548,6 +2603,17 @@ const styles = {
     letterSpacing: "0.18em",
     color: inkFaint,
   },
+  scoreBlock: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, width: "100%", margin: "2px 0 0", padding: "4px 0", background: "none", border: "none", color: "inherit", textAlign: "left", font: "inherit" },
+  scoreLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: inkFaint },
+  scoreValue: { fontFamily: C.display, fontWeight: 700, fontSize: 56, lineHeight: 1, letterSpacing: "0.01em" },
+  scoreEmpty: { fontFamily: C.display, fontWeight: 600, fontSize: 22, lineHeight: 1.2 },
+  scoreSub: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", fontSize: 13, color: inkFaint },
+  scoreWeek: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 },
+  scoreBadge: { display: "inline-block", padding: "1px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, color: C.highlightInk, background: C.highlight, borderRadius: 999 },
+  headerDayWrap: { display: "flex", flexDirection: "column", gap: 2, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${line}` },
+  headerDay: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontFamily: C.display, fontWeight: 600, fontSize: 22, letterSpacing: "0.03em" },
+  headerSub: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: inkFaint },
+  dayBody: { marginTop: 14 },
   monthRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
   monthTitle: {
     fontFamily: C.display,

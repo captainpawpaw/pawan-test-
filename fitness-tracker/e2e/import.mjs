@@ -72,7 +72,7 @@ async function pasteHtml(p, html) {
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
   }, html);
 }
-await pa.goto('http://localhost:4190/'); await ex(pa); await pa.getByText('3/4 Sit-Up').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await ex(pa); await pa.getByText('3/4 Sit-Up').waitFor();
 await pa.getByText('Import from a web page').click();
 check(!(await pa.locator('body').innerText()).includes('Read with Claude'), 'Read with Claude hidden outside claude.ai');
 await pasteHtml(pa, mockHtml);
@@ -127,7 +127,7 @@ check(!(await pa.locator('body').innerText()).includes('Rower Sprints'), 'import
 // drive sync of imports
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(book().exercises && book().exercises['Back Squat']?.plans?.length === 1 && book().exercises['Rower Sprints']?.removed, 'imports and removals sync to Drive');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 await ex(pb); await pb.getByText('3/4 Sit-Up').waitFor();
 t = await pb.locator('body').innerText();
 check(t.includes('#greek god 10') && t.includes('day 1: legs and abs: 4 × 6–8'), 'other device gets imported plans and tags');
@@ -158,7 +158,7 @@ await C.addInitScript(() => {
   window.claude = { use: async (name) => (name === 'sample' ? sample : null) };
 });
 const pc = await C.newPage(); pc.on('pageerror', e => errs.push(e.message));
-await pc.goto('http://localhost:4190/'); await ex(pc); await pc.getByText('3/4 Sit-Up').waitFor();
+await pc.goto('http://localhost:4190/?tab=log'); await ex(pc); await pc.getByText('3/4 Sit-Up').waitFor();
 await pc.getByText('Import from a web page').click();
 check((await pc.locator('body').innerText()).includes('Read with Claude'), 'Read with Claude shown when Claude is available');
 // a tall 600x3000 phone-style screenshot

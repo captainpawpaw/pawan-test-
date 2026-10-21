@@ -62,7 +62,7 @@ const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
 // Device A: log, then connect
-await pa.goto('http://localhost:4190/'); await pa.getByText('Connect Google Drive').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('Connect Google Drive').waitFor();
 await addLift(pa, 'Device A squat');
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(JSON.stringify(allIds()) === '["Device A squat"]', 'A connect uploads existing entry to appDataFolder: ' + JSON.stringify(allIds()));
@@ -74,7 +74,7 @@ await addLift(pa, 'Device A bench'); await pa.waitForTimeout(2500); await waitSy
 check(allIds().includes('Device A bench'), 'new entry auto-syncs after logging');
 
 // Device B has its own local entry, then connects -> merge
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').waitFor();
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').waitFor();
 await addLift(pb, 'Device B deadlift');
 await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 const bText = await pb.locator('body').innerText();
@@ -89,7 +89,7 @@ await pb.getByRole('button', { name: 'Delete entry' }).click();
 check(!(await pb.locator('body').innerText()).includes('Device A squat') && (await pb.locator('body').innerText()).includes('Device A bench'), 'B deleted exactly the squat');
 await pb.waitForTimeout(2500); await waitSynced(pb);
 check(!allIds().includes('Device A squat'), 'deletion syncs to Drive');
-await pa.getByText(/^Synced /).click(); await pa.waitForTimeout(300); await waitSynced(pa);
+await pa.getByText(/^Synced /).click(); await pa.getByRole('button', { name: 'Sync now' }).click(); await pa.waitForTimeout(300); await waitSynced(pa);
 const aText = await pa.locator('body').innerText();
 check(!aText.includes('Device A squat') && aText.includes('Device B deadlift'), 'A picks up B\'s delete and addition without reload');
 
@@ -108,6 +108,7 @@ drive.fail401 = false; await pa.getByText('Tap to sync with Drive').click(); awa
 check(allIds().includes('Offline curl'), 'pending entry uploads after re-sign-in');
 
 // disconnect
+await pa.getByRole('button', { name: /^Synced / }).click(); // the cloud opens Sync now / Disconnect
 await pa.getByText('Disconnect').click(); await pa.getByText('Connect Google Drive').waitFor();
 check((await pa.locator('body').innerText()).includes('Offline curl'), 'disconnect keeps local data');
 await pa.reload(); await pa.getByText('Connect Google Drive').waitFor();

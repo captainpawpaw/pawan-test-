@@ -74,7 +74,7 @@ const listNames = (p) => p.locator('[style*="flex-direction: column"] > div span
 const visible = async (p) => (await p.locator('body').innerText());
 
 
-await pa.goto('http://localhost:4190/'); await ex(pa);
+await pa.goto('http://localhost:4190/?tab=log'); await ex(pa);
 await pa.getByText('3/4 Sit-Up').waitFor();
 await tag(pa, 'Back Squat', ['legs day']);
 await tag(pa, 'Romanian Deadlift', ['legs day']);

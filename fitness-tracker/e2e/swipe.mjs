@@ -32,7 +32,7 @@ const swipe = async (x0, y0, x1, y1, steps = 8) => {
   await p.waitForTimeout(300);
 };
 const tab = () => p.locator('.ft-tabs button[aria-current="page"]').innerText();
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
 check(await tab() === 'LOG', 'starts on Log');
 await swipe(320, 600, 80, 610);
 check(await tab() === 'FOOD', 'swipe left: Food');
@@ -84,7 +84,7 @@ check(await label() === fmtDay(today), 'the › button: next day');
 // across a month boundary
 for (let i = 0; i < 32 && (await label()) !== fmtDay(plus(-today.getDate())); i++) await p.getByRole('button', { name: 'Previous day' }).click();
 check(await label() === fmtDay(plus(-today.getDate())), 'the ‹ button steps back into last month: ' + await label());
-const mt = await p.locator('.ft-masthead-title').innerText();
+const mt = await p.locator('#cal-title').textContent();
 check(mt.toUpperCase().startsWith(plus(-today.getDate()).toLocaleDateString('en-US', { month: 'long' }).toUpperCase()), 'and the month changes with it: ' + mt);
 await p.getByRole('button', { name: 'Next day' }).click();
 check(await label() === fmtDay(plus(1 - today.getDate())), 'and forward again into this month');

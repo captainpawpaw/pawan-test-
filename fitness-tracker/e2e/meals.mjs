@@ -77,7 +77,7 @@ await A.addInitScript(() => {
 });
 const part = (p, name) => p.getByRole('region', { name, exact: true });
 
-await pa.goto('http://localhost:4190/'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
 const heads = await pa.locator('.ft-card section[aria-label]').evaluateAll(ss => ss.map(s => s.getAttribute('aria-label')));
 check(heads.join(',') === 'Breakfast,Lunch,Dinner,Snacks', 'the day is split into four parts: ' + heads.join(','));
 check(await pa.getByRole('button', { name: /Save .* as a meal/ }).count() === 0, 'no Save as meal on an empty day');
@@ -159,7 +159,7 @@ await pa.getByLabel('Search foods').fill('');
 // a day from before the split: Not sorted, until moved
 const d2 = new Date(); d2.setDate(d2.getDate() - 2);
 const p2 = await A.newPage();
-await p2.goto('http://localhost:4190/'); await p2.getByRole('button', { name: 'FOOD', exact: true }).click();
+await p2.goto('http://localhost:4190/?tab=log'); await p2.getByRole('button', { name: 'FOOD', exact: true }).click();
 if (d2.getMonth() !== new Date().getMonth()) await p2.getByRole('button', { name: 'Previous month' }).click();
 await p2.getByRole('button', { name: 'Calendar', exact: true }).click();
 await p2.locator('#month-calendar').getByRole('button', { name: new RegExp('^' + d2.getDate() + '$') }).first().click();
@@ -174,7 +174,7 @@ await pa.getByRole('button', { name: '+ Add to Dinner' }).click();
 // syncs to another device and survives reload
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(Object.values(book().meals || {}).some(m => m.name === 'Breakfast' && m.items.length === 3 && !m.items[0].id), 'meal saved to Drive');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 await pb.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pb.getByRole('button', { name: '+ Add' }).last().click();
 check(await pb.getByRole('button', { name: 'Add meal Breakfast' }).count() === 1, 'other device has the meal');

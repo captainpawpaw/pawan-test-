@@ -73,7 +73,7 @@ async function tag(p, name, tags) {
 const listNames = (p) => p.locator('[style*="flex-direction: column"] > div span').evaluateAll(() => 0);
 const visible = async (p) => (await p.locator('body').innerText());
 
-await pa.goto('http://localhost:4190/'); await ex(pa);
+await pa.goto('http://localhost:4190/?tab=log'); await ex(pa);
 await pa.getByText('3/4 Sit-Up').waitFor();
 await tag(pa, 'Back Squat', ['Legs Day', '#monday']);
 await tag(pa, 'Romanian Deadlift', ['legs day']);
@@ -102,11 +102,11 @@ check((await visible(pa)).includes('#legs day 2'), 'tags persist after reload');
 // sync tags via Drive to B
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(JSON.stringify(book().tags['Back Squat'].tags) === '["legs day"]', 'tags uploaded to Drive');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 await ex(pb); await pb.getByText('3/4 Sit-Up').waitFor();
 check((await visible(pb)).includes('#legs day 2'), 'B receives tags from Drive');
 await tag(pb, 'Rower', ['cardio warmup']); await pb.waitForTimeout(2500); await waitSynced(pb);
-await pa.getByText(/^Synced /).click(); await pa.waitForTimeout(300); await waitSynced(pa);
+await pa.getByText(/^Synced /).click(); await pa.getByRole('button', { name: 'Sync now' }).click(); await pa.waitForTimeout(300); await waitSynced(pa);
 check((await visible(pa)).includes('#cardio warmup'), 'A picks up B\'s new tag without reload');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

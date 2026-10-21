@@ -34,7 +34,7 @@ const logSet = async (name, sets, reps, kg) => {
   await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill(sets); await p.getByLabel('Reps').fill(reps); await p.getByLabel('Max weight (kg)').fill(kg);
   await p.getByRole('button', { name: 'Log a set' }).click();
 };
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor(); await p.waitForTimeout(400);
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor(); await p.waitForTimeout(400);
 await logSet('Back Squat', '3', '5', '105');
 await banner().waitFor();
 let t = await banner().innerText();

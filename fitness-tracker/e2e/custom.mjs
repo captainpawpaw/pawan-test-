@@ -63,7 +63,7 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 
 
 // ---- your own exercises ----
-await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 const strength = pa.locator('.ft-section').first();
 await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Landmine Press');
@@ -126,7 +126,7 @@ check(!(await pa.locator('body').innerText()).includes('Banded Hip Airplane'), '
 await pa.getByRole('button', { name: 'LOG', exact: true }).click();
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(Object.values(book().exercises || {}).some((e) => e.name === 'Landmine Press' && e.custom), 'your exercises sync to Drive');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 await pb.reload(); await pb.getByText('STRENGTH').waitFor();
 await pb.getByText('Your log may be out of date. Tap anywhere to sync with Google Drive.').waitFor();
 check(true, 'after reopening, notice says the log may be out of date');
@@ -164,7 +164,7 @@ await C.addInitScript(() => {
   localStorage.setItem('seeded', '1');
 });
 const pc = await C.newPage(); pc.on('pageerror', (e) => errs.push(e.message));
-await pc.goto('http://localhost:4190/');
+await pc.goto('http://localhost:4190/?tab=log');
 await pc.getByText("Added 4 exercises you've logged to your exercises.").waitFor({ timeout: 8000 });
 check(true, 'earlier logged names added once each (case ignored, built-in Back Squat skipped)');
 await pc.getByRole('button', { name: 'EXERCISES' }).click();

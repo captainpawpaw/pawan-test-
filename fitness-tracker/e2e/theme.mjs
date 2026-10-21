@@ -69,7 +69,7 @@ await A.addInitScript(() => {
 });
 const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^Theme/ }).click(); await p.getByRole('menuitemradio', { name }).click(); };
 const bg = (p, sel) => p.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
-await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'Classic by default');
 check(await pa.locator('header svg.ft-logo').count() === 1, 'logo mark beside the name');
 const icons = await pa.evaluate(() => [...document.querySelectorAll('link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest]')].map(l => l.getAttribute('href')));
@@ -133,7 +133,7 @@ await pa.screenshot({ path: 'theme-ledger-log.png', fullPage: true });
 await pa.getByRole('button', { name: 'PROGRESS' }).click();
 await pa.getByText('Change since start').waitFor();
 const badge = pa.getByText(/\d+\+ club/);
-check(await badge.count() === 1 && await badge.evaluate(el => getComputedStyle(el).backgroundColor) === 'rgb(204, 255, 0)', 'neon milestone badge #CCFF00');
+check(await badge.count() === 2 && await badge.last().evaluate(el => getComputedStyle(el).backgroundColor) === 'rgb(204, 255, 0)', 'neon milestone badge #CCFF00, in the top box and the tiles');
 await pa.screenshot({ path: 'theme-ledger-progress.png', fullPage: true });
 await pa.getByRole('button', { name: 'FOOD' }).click(); await pa.waitForTimeout(300);
 await pa.screenshot({ path: 'theme-ledger-food.png', fullPage: true });
@@ -141,7 +141,7 @@ await pa.reload(); await pa.getByText('STRENGTH').waitFor();
 check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'ledger', 'theme kept after reload');
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(book().profile?.theme?.name === 'ledger', 'theme syncs to Drive');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 await pb.waitForFunction(() => document.documentElement.dataset.theme === 'ledger', null, { timeout: 5000 }).catch(() => {});
 check(await pb.evaluate(() => document.documentElement.dataset.theme) === 'ledger', 'other device picks up the theme');
 

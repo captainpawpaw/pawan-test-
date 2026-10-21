@@ -29,7 +29,7 @@ const p = await ctx.newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 const strength = p.locator('.ft-section').first();
 const hint = () => p.getByRole('status', { name: 'Last time' });
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
 await strength.getByRole('button', { name: '+ Add' }).click();
 check(await hint().count() === 0, 'no message before an exercise is chosen');
 await p.getByLabel('Exercise').fill('back squat');
