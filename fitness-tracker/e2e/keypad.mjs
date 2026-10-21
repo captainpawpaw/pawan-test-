@@ -1,0 +1,40 @@
+import { chromium } from 'playwright';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+const DIST = process.argv[2];
+const srv = http.createServer((req, res) => {
+  let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
+  const f = path.join(DIST, p);
+  if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'Content-Type': f.endsWith('.js') ? 'text/javascript' : f.endsWith('.json') ? 'application/json' : 'text/html' });
+  fs.createReadStream(f).pipe(res);
+}).listen(4190);
+const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+await ctx.route('https://accounts.google.com/**', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
+await ctx.route('https://fonts.googleapis.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
+await ctx.route('https://*.openfoodfacts.org/**', r => r.fulfill({ status: 404, body: '{}' }));
+const p = await ctx.newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+// every number box on screen asks for the number pad
+const keypads = () => p.locator('input[type=number], input#barcode-input').evaluateAll(els => els.filter(e => e.offsetParent).map(e => `${e.getAttribute('aria-label') || e.labels?.[0]?.innerText?.split('\n')[0] || e.id}=${e.getAttribute('inputmode')}`));
+const allPads = (list) => list.length > 0 && list.every(x => /=(numeric|decimal)$/.test(x));
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.locator('.ft-section').nth(0).getByRole('button', { name: '+ Add' }).click();
+let k = await keypads();
+check(allPads(k) && k.some(x => x.startsWith('Sets=numeric')) && k.some(x => x.startsWith('Reps=numeric')) && k.some(x => /Max weight.*=decimal/.test(x)), 'strength: number pads ' + k.join(', '));
+await p.locator('.ft-section').nth(0).getByRole('button', { name: 'Cancel' }).click();
+await p.locator('.ft-section').nth(1).getByRole('button', { name: '+ Add' }).click();
+k = await keypads();
+check(allPads(k) && k.some(x => x.startsWith('Minutes=numeric')) && k.some(x => /Distance.*=decimal/.test(x)), 'cardio: number pads ' + k.join(', '));
+await p.getByRole('button', { name: 'FOOD', exact: true }).click();
+await p.getByRole('button', { name: '+ Add to Lunch' }).click();
+k = await keypads();
+check(allPads(k) && k.some(x => x.includes('barcode') || x.startsWith('Or type a barcode')), 'food: the barcode box gets the number pad ' + k.join(', '));
+await p.getByRole('button', { name: 'Enter manually' }).click();
+k = await keypads();
+check(allPads(k) && k.length >= 5, 'food, entered by hand: number pads ' + k.join(', '));
+check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
+await b.close(); srv.close();
