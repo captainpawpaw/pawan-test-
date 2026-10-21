@@ -101,7 +101,7 @@ export function applyTheme(name) {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(THEMES[t].vars)) root.style.setProperty(`--ft-${kebab(k)}`, v);
   root.dataset.theme = t;
-  root.style.colorScheme = THEMES[t].dark ? "dark" : "light";
+  root.style.colorScheme = THEMES[t].scheme || (THEMES[t].dark ? "dark" : "light");
   try { localStorage.setItem(KEY, t); } catch { /* private mode */ }
   return t;
 }
@@ -198,4 +198,33 @@ export const THEME_CSS = `
     background: rgba(44, 37, 89, 0.85) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
     border-color: rgba(255, 255, 255, 0.3) !important;
   }
+
+  /* Quiet structure, in every theme (the standalone version is /quiet in the
+     repo): no boxes, single-line inputs, and text only while it is needed. Each
+     theme keeps its own colours and fonts. Last, so it wins over the themes' boxes. */
+  html[data-theme] .ft-brand { visibility: hidden; }
+  /* Clear of the calendar pull-tab on the left edge */
+  html[data-theme] .ft-page { padding-left: 32px !important; }
+  html[data-theme] .ft-card {
+    background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    padding-left: 0 !important; padding-right: 0 !important;
+  }
+  html[data-theme] .ft-page button { border-color: transparent !important; box-shadow: none !important; }
+  html[data-theme] .ft-page button:focus:not(:focus-visible) { outline: none; }
+  html[data-theme] .ft-page :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+    border-width: 0 0 1px !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
+  }
+  html[data-theme] .ft-page :is(input, select, textarea):focus { outline: none; border-bottom-color: var(--ft-ink) !important; }
+  html[data-theme] .ft-bottom-nav { border-top-color: transparent !important; box-shadow: none !important; }
+  html[data-theme] .ft-cal-label { display: none; }
+  html[data-theme] .ft-cal-tab { min-height: 44px; justify-content: center; }
+  /* Text that appears only while it is needed */
+  html[data-theme] :is(.ft-hint, .ft-reveal, .ft-bottom-nav .ft-nav-label) { transition: opacity 0.15s; }
+  html[data-theme] :is(.ft-hint, .ft-reveal) { opacity: 0; }
+  /* Inline explanations leave no gap, but screen readers still hear them */
+  html[data-theme] .ft-card:not(:hover):not(:focus-within) .ft-hint-inline { font-size: 0; }
+  html[data-theme] .ft-card:is(:hover, :focus-within) :is(.ft-hint, .ft-reveal) { opacity: 1; }
+  html[data-theme] .ft-bottom-nav button:not([aria-current]) .ft-nav-label { opacity: 0; }
+  @media (hover: none) { html[data-theme] .ft-reveal { opacity: 1; } }
 `;

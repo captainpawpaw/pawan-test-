@@ -807,7 +807,7 @@ export default function App() {
         @keyframes ft-slide-right { from { opacity: 0; transform: translateX(-28px); } }
         @keyframes ft-fade { from { opacity: 0; } }
         @media (prefers-reduced-motion: reduce) {
-          .ft-bar, .ft-cal-tab, .ft-cal-drawer { transition: none !important; }
+          .ft-bar, .ft-cal-tab, .ft-cal-drawer, .ft-hint, .ft-reveal, .ft-nav-label { transition: none !important; }
           .ft-cal-backdrop, .ft-slide-left, .ft-slide-right { animation: none; }
         }
         /* iPhone Safari zooms in on any text box under 16px when it's tapped,
@@ -824,7 +824,7 @@ export default function App() {
 
       <header className="ft-masthead" style={styles.header}>
         <div style={styles.eyebrowRow}>
-          <div style={styles.brand}>
+          <div className="ft-brand" style={styles.brand}>
             <LogoMark size={22} />
             <span style={styles.eyebrow}>TRAINING LEDGER</span>
           </div>
@@ -914,7 +914,7 @@ export default function App() {
           <rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
           <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
         </svg>
-        <span style={styles.calTabLabel}>Calendar</span>
+        <span className="ft-cal-label" style={styles.calTabLabel}>Calendar</span>
       </button>
       <aside
         id="month-calendar"
@@ -1145,7 +1145,7 @@ export default function App() {
               <span aria-hidden="true" style={{ ...styles.navPill, background: on ? `color-mix(in srgb, ${ink} 12%, transparent)` : "transparent" }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={on ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">{TAB_ICONS[id]}</svg>
               </span>
-              <span style={{ ...styles.navLabel, fontWeight: on ? 700 : 500 }}>{label}</span>
+              <span className="ft-nav-label" style={{ ...styles.navLabel, fontWeight: on ? 700 : 500 }}>{label}</span>
             </button>
           );
         })}
@@ -1431,7 +1431,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit,
   return (
     <div style={styles.footerStack}>
       <span>
-        Volume (sets × reps × max weight): {liftValue(strengthVolume(entries, bodyweightKg), liftUnit).toLocaleString(undefined, { maximumFractionDigits: 1 })} {liftUnit}
+        Volume<span className="ft-hint ft-hint-inline"> (sets × reps × max weight)</span>: {liftValue(strengthVolume(entries, bodyweightKg), liftUnit).toLocaleString(undefined, { maximumFractionDigits: 1 })} {liftUnit}
         {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
       </span>
       {hasBw && !editing && (
@@ -1602,7 +1602,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
             </label>
           ))}
           {editingId && <span style={styles.editingNote}>Editing an entry. Change anything, then save.</span>}
-          <button type="submit" style={{ ...styles.submitBtn, background: accent }}>{editingId ? "Save changes" : addLabel}</button>
+          <button type="submit" className="ft-submit" style={{ ...styles.submitBtn, background: accent }}>{editingId ? "Save changes" : addLabel}</button>
           {editingId && (
             <button type="button" aria-label="Delete entry" onClick={() => { const id = editingId; closeForm(); onDelete(id); }} style={{ ...styles.formDeleteBtn, color: accent }}>
               Delete this entry
@@ -1935,6 +1935,7 @@ function ExerciseLibrary({ exercises, loading, onPick, tagMap, onSetTags, saveEr
                         aria-label={`Tag ${e.name}`}
                         aria-expanded={isEditing}
                         title="Add or remove tags"
+                        className={isEditing || tags.length ? undefined : "ft-reveal"}
                         style={{ ...styles.tagBtn, ...(isEditing || tags.length ? styles.tagBtnOn : {}) }}
                       >
                         #

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" class="quiet">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiet demo</title>
+  <link rel="stylesheet" href="quiet.css" />
+  <style>
+    /* Demo layout only: Quiet adds no spacing of its own. */
+    body { margin: 0; padding: 24px 20px 96px; max-width: 560px; margin-inline: auto; line-height: 1.45; }
+    h1 { font-size: 28px; margin: 0 0 4px; }
+    h2 { font-size: 18px; margin: 28px 0 8px; }
+    .faint { color: var(--q-faint); }
+    .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--q-line); }
+    .stack { display: flex; flex-direction: column; gap: 10px; }
+    button { font: inherit; padding: 10px 14px; min-height: 44px; border: 1px solid; border-radius: 4px; color: inherit; }
+    input { font: inherit; padding: 8px 0; }
+    nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 8px; padding: 8px; background: var(--q-paper); border-top: 1px solid; }
+    nav a { display: flex; flex-direction: column; align-items: center; min-width: 72px; color: inherit; text-decoration: none; font-size: 12px; }
+    nav a span:first-child { font-size: 20px; }
+    .toggle { position: fixed; top: 12px; right: 12px; }
+    /* An ordinary card, as a project might style it; Quiet takes the box away. */
+    .card { border: 1px solid #ccc; border-radius: 6px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.1); background: #fafafa; }
+  </style>
+</head>
+<body>
+  <button class="toggle" onclick="document.documentElement.classList.toggle('quiet'); document.documentElement.classList.toggle('quiet-structure')">Toggle palette</button>
+  <header>
+    <div class="q-brand faint">MY APP</div>
+    <h1>Monday 21 October</h1>
+  </header>
+
+  <section class="card q-card">
+    <h2>Strength <button class="q-reveal" aria-label="Edit section">✎</button></h2>
+    <div class="row"><span>Back squat</span><span>3 × 5 · 100 kg</span></div>
+    <div class="row"><span>Bench press</span><span>3 × 8 · 70 kg</span></div>
+    <p>Volume<span class="q-hint-inline faint"> (sets × reps × weight)</span>: 3,180 kg</p>
+    <p class="q-hint faint">Hover or tap inside this section to see its explanations.</p>
+  </section>
+
+  <section class="card q-card stack">
+    <h2>Add a set</h2>
+    <input placeholder="Exercise" aria-label="Exercise" />
+    <input placeholder="Weight (kg)" aria-label="Weight (kg)" inputmode="decimal" />
+    <button class="q-primary">Log a set</button>
+    <button>Cancel</button>
+  </section>
+
+  <nav class="q-nav" aria-label="Sections">
+    <a href="#" aria-current="page"><span aria-hidden="true">●</span><span class="q-nav-label">Log</span></a>
+    <a href="#"><span aria-hidden="true">○</span><span class="q-nav-label">Food</span></a>
+    <a href="#"><span aria-hidden="true">○</span><span class="q-nav-label">Progress</span></a>
+  </nav>
+</body>
+</html>

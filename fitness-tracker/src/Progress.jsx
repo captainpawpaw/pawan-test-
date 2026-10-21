@@ -500,7 +500,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg", 
       <div style={s.chartHead}>
         <div style={{ minWidth: 0 }}>
           <div style={s.chartTitle}>{m.label === title ? title : `${m.label} · ${title}`}</div>
-          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (${lu}) and reps per set` : <>{m.type === "body" ? (scale === "day" ? "Each weigh-in" : `Average weigh-in per ${periodWord}`) : m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
+          <div className="ft-hint" style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (${lu}) and reps per set` : <>{m.type === "body" ? (scale === "day" ? "Each weigh-in" : `Average weigh-in per ${periodWord}`) : m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
         </div>
         <div role="group" aria-label="Time scale" style={s.scaleRow}>
           {SCALES.map((sc) => (
@@ -657,7 +657,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg", 
       </div>
 
       <div style={s.zoomRow}>
-        <span style={s.hint}>Drag to move · pinch to zoom</span>
+        <span className="ft-hint" style={s.hint}>Drag to move · pinch to zoom</span>
         <span style={{ display: "inline-flex", gap: 6 }}>
           <button type="button" aria-label="Zoom out" onClick={() => zoomAt(1 / 0.7, PAD.left + plotW / 2)} style={s.zoomBtn}>−</button>
           <button type="button" aria-label="Zoom in" onClick={() => zoomAt(0.7, PAD.left + plotW / 2)} style={s.zoomBtn}>+</button>
