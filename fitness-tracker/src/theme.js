@@ -12,7 +12,27 @@
 const SANS = "'Inter', sans-serif";
 const DISPLAY = "'Barlow Condensed', sans-serif";
 
+// Quiet's colours are CSS variables themselves (set in THEME_CSS), so it can
+// follow the phone's light or dark setting.
+const QUIET_SANS = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+const q = (k) => `var(--q-${k})`;
+
 export const THEMES = {
+  // Nothing but the numbers: no boxes, no borders, one colour. Explanations,
+  // tab names and secondary buttons show only while you are using them.
+  quiet: {
+    label: "Quiet",
+    swatch: "linear-gradient(135deg, #FFFFFF 50%, #111111 50%)",
+    scheme: "light dark",
+    vars: {
+      ink: q("ink"), inkFaint: q("faint"), paper: q("paper"), raised: q("paper"), field: q("paper"),
+      line: q("line"), grid: q("grid"),
+      rust: q("ink"), rustSoft: q("soft"), teal: q("ink"), tealSoft: q("soft"),
+      plum: q("ink"), plumSoft: q("soft"), blue: q("faint"),
+      onFill: q("paper"), highlight: q("soft"), highlightInk: q("ink"),
+      sans: QUIET_SANS, display: QUIET_SANS,
+    },
+  },
   classic: {
     label: "Classic",
     swatch: "#EDE8DE",
@@ -90,18 +110,18 @@ const KEY = "fitness-tracker:theme";
 export function savedTheme() {
   try {
     const t = localStorage.getItem(KEY);
-    return THEMES[t] ? t : "classic";
+    return THEMES[t] ? t : "quiet";
   } catch {
-    return "classic";
+    return "quiet";
   }
 }
 
 export function applyTheme(name) {
-  const t = THEMES[name] ? name : "classic";
+  const t = THEMES[name] ? name : "quiet";
   const root = document.documentElement;
   for (const [k, v] of Object.entries(THEMES[t].vars)) root.style.setProperty(`--ft-${kebab(k)}`, v);
   root.dataset.theme = t;
-  root.style.colorScheme = THEMES[t].dark ? "dark" : "light";
+  root.style.colorScheme = THEMES[t].scheme || (THEMES[t].dark ? "dark" : "light");
   try { localStorage.setItem(KEY, t); } catch { /* private mode */ }
   return t;
 }
@@ -174,6 +194,41 @@ export const THEME_CSS = `
     ${sides("rgba(255, 255, 255, 0.2)")} border-radius: 16px !important; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   }
   html[data-theme="alpine"] option, html[data-theme="alpine"] optgroup { color: #1A1A1A; background: #FFFFFF; }
+
+  /* Quiet */
+  :root { --q-ink: #111111; --q-faint: #8A8A8A; --q-paper: #FFFFFF; --q-line: #ECECEC; --q-grid: #F2F2F2; --q-soft: #F6F6F6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --q-ink: #EDEDED; --q-faint: #7A7A7A; --q-paper: #0E0E0E; --q-line: #242424; --q-grid: #1A1A1A; --q-soft: #161616; }
+  }
+  html[data-theme="quiet"] .ft-page * { letter-spacing: normal !important; font-family: var(--ft-sans) !important; font-variant-numeric: tabular-nums; }
+  html[data-theme="quiet"] .ft-brand { visibility: hidden; }
+  /* Clear of the calendar pull-tab on the left edge */
+  html[data-theme="quiet"] .ft-page { padding-left: 32px !important; }
+  html[data-theme="quiet"] .ft-card {
+    background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+    padding-left: 0 !important; padding-right: 0 !important;
+  }
+  html[data-theme="quiet"] .ft-page button { border-color: transparent !important; box-shadow: none !important; }
+  html[data-theme="quiet"] .ft-page button:focus:not(:focus-visible) { outline: none; }
+  html[data-theme="quiet"] .ft-submit { color: var(--ft-on-fill) !important; }
+  html[data-theme="quiet"] .ft-page :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+    border-width: 0 0 1px !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
+  }
+  html[data-theme="quiet"] .ft-page :is(input, select, textarea):focus { outline: none; border-bottom-color: var(--ft-ink) !important; }
+  html[data-theme="quiet"] .ft-bottom-nav { border-top-color: transparent !important; box-shadow: none !important; }
+  html[data-theme="quiet"] .ft-cal-tab { background: var(--ft-paper) !important; border-color: transparent !important; box-shadow: none !important; }
+  html[data-theme="quiet"] .ft-cal-drawer { border-color: var(--ft-line) !important; }
+  html[data-theme="quiet"] .ft-cal-label { display: none; }
+  html[data-theme="quiet"] .ft-cal-tab { min-height: 44px; justify-content: center; }
+  /* Text that appears only while it is needed */
+  html[data-theme="quiet"] .ft-hint, html[data-theme="quiet"] .ft-reveal,
+  html[data-theme="quiet"] .ft-bottom-nav .ft-nav-label { transition: opacity 0.15s; }
+  html[data-theme="quiet"] .ft-hint, html[data-theme="quiet"] .ft-reveal { opacity: 0; }
+  /* Inline explanations leave no gap, but screen readers still hear them */
+  html[data-theme="quiet"] .ft-card:not(:hover):not(:focus-within) .ft-hint-inline { font-size: 0; }
+  html[data-theme="quiet"] .ft-card:is(:hover, :focus-within) :is(.ft-hint, .ft-reveal) { opacity: 1; }
+  html[data-theme="quiet"] .ft-bottom-nav button:not([aria-current]) .ft-nav-label { opacity: 0; }
+  @media (hover: none) { html[data-theme="quiet"] .ft-reveal { opacity: 1; } }
 
   /* Dark mastheads: light text inside */
   html[data-theme="ledger"] .ft-masthead, html[data-theme="krypton"] .ft-masthead, html[data-theme="gotham"] .ft-masthead {

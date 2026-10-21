@@ -70,7 +70,7 @@ await A.addInitScript(() => {
 const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^Theme/ }).click(); await p.getByRole('menuitemradio', { name }).click(); };
 const bg = (p, sel) => p.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
 await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
-check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'Classic by default');
+check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'quiet', 'Quiet by default');
 check(await pa.locator('header svg.ft-logo').count() === 1, 'logo mark beside the name');
 const icons = await pa.evaluate(() => [...document.querySelectorAll('link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest]')].map(l => l.getAttribute('href')));
 check(icons.join() === '/icon.svg,/apple-touch-icon.png,/manifest.webmanifest', 'page links its icons: ' + icons.join());
@@ -78,6 +78,25 @@ const got = await pa.evaluate(async (u) => Promise.all(u.map(x => fetch(x).then(
 check(got.every(s => s === 200), 'icon files are served: ' + got.join());
 const mf = await pa.evaluate(() => fetch('/manifest.webmanifest').then(r => r.json()));
 check(mf.name === 'Training Ledger' && mf.icons.length === 3, 'manifest names the app and its icons');
+// Quiet: white page, no card boxes, explanations only while you are in a section
+check(await bg(pa, 'body') === 'rgb(255, 255, 255)', 'quiet paper is white: ' + await bg(pa, 'body'));
+const qc = await pa.locator('.ft-section').first().evaluate(el => { const c = getComputedStyle(el); return { bg: c.backgroundColor, bw: c.borderLeftWidth, sh: c.boxShadow }; });
+check(qc.bg === 'rgba(0, 0, 0, 0)' && qc.bw === '0px' && qc.sh === 'none', 'quiet: sections have no box ' + JSON.stringify(qc));
+check(await pa.locator('.ft-section').first().locator('button', { hasText: '+ Add' }).evaluate(el => getComputedStyle(el).borderTopColor) === 'rgba(0, 0, 0, 0)', 'quiet: buttons have no outline box');
+await pa.mouse.move(400, 5);
+const navLabel = (name) => pa.getByRole('button', { name, exact: true }).locator('.ft-nav-label').evaluate(el => getComputedStyle(el).opacity);
+check(await navLabel('LOG') === '1' && await navLabel('FOOD') === '0', 'quiet: only the current tab shows its name');
+await pa.screenshot({ path: 'theme-quiet-log.png', fullPage: true });
+await pa.getByRole('button', { name: 'PROGRESS' }).click(); await pa.getByText('Change since start').waitFor();
+const hint = pa.locator('.ft-hint', { hasText: 'Drag to move' });
+check(await hint.evaluate(el => getComputedStyle(el).opacity) === '0', 'quiet: chart hint hidden at rest');
+await hint.locator('xpath=ancestor::*[contains(@class, "ft-card")][1]').hover(); await pa.waitForTimeout(250);
+check(await hint.evaluate(el => getComputedStyle(el).opacity) === '1', 'quiet: chart hint shows while you are on the chart');
+await pa.getByRole('button', { name: 'LOG', exact: true }).click(); await pa.getByText('STRENGTH').waitFor();
+await pa.emulateMedia({ colorScheme: 'dark' });
+check(await bg(pa, 'body') === 'rgb(14, 14, 14)', 'quiet follows dark mode: ' + await bg(pa, 'body'));
+await pa.emulateMedia({ colorScheme: 'light' });
+await pickTheme(pa, 'Classic');
 await pa.locator('header').screenshot({ path: 'logo-header-classic.png' });
 check(await bg(pa, 'body') === 'rgb(237, 232, 222)', 'classic paper: ' + await bg(pa, 'body'));
 await pa.getByRole('button', { name: 'Menu' }).click();
