@@ -38,3 +38,21 @@ export function bwValue(kg, unit) {
   return unit === "lb" ? r1(kg / LB) : unit === "st" ? Math.round((kg / LB / 14) * 100) / 100 : r1(kg);
 }
 export const bwUnitLabel = (unit) => (unit === "lb" ? "lb" : unit === "st" ? "st" : "kg");
+
+// Lifting weights: kg or lb. Stored in kg; shown and typed in the chosen unit.
+export const LIFT_UNITS = [["kg", "kg"], ["lb", "lb"]];
+export const validLiftUnit = (u) => (u === "lb" ? "lb" : "kg");
+// kg -> the number shown (lb to one decimal; kg as stored, up to two decimals)
+export const liftValue = (kg, unit) => (unit === "lb" ? r1(Number(kg) / LB) : Math.round(Number(kg) * 100) / 100);
+export const liftText = (kg, unit) => `${Number(liftValue(kg, unit)).toLocaleString(undefined, { maximumFractionDigits: unit === "lb" ? 1 : 2 })} ${unit === "lb" ? "lb" : "kg"}`;
+// A typed value -> kg as stored (a string, like the rest of an entry), "" stays "".
+export function liftToKg(value, unit) {
+  if (value === "" || value == null) return "";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return unit === "lb" ? String(Math.round(n * LB * 1000) / 1000) : String(value);
+}
+// kg as stored -> the text in a form field
+export const liftField = (kg, unit) => (kg === "" || kg == null ? "" : unit === "lb" ? String(liftValue(kg, unit)) : String(kg));
+// A suggested weight rounded to what plates allow: 2.5 kg, or 5 lb.
+export const roundLift = (kg, unit) => (unit === "lb" ? Math.max(0, Math.round(kg / LB / 5) * 5) * LB : Math.max(0, Math.round(kg / 2.5) * 2.5));
