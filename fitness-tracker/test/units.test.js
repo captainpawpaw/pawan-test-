@@ -20,3 +20,16 @@ test("kg to entry and text", () => {
   assert.equal(bwText(79.4, "lb"), "175 lb");
   assert.equal(bwValue(79.4, "st"), 12.5);
 });
+
+test("lifting weights in lb: stored in kg, shown in lb", async () => {
+  const { liftToKg, liftField, liftText, roundLift } = await import("../src/units.js");
+  assert.equal(liftToKg("135", "lb"), "61.235");
+  assert.equal(liftField("61.235", "lb"), "135");
+  assert.equal(liftText(61.235, "lb"), "135 lb");
+  assert.equal(liftText(100, "lb"), "220.5 lb");
+  assert.equal(liftText(57.5, "kg"), "57.5 kg");
+  assert.equal(liftToKg("80", "kg"), "80");
+  assert.equal(liftToKg("", "lb"), "");
+  assert.equal(Math.round(roundLift(100 * 0.7, "lb") / 0.45359237), 155); // 154.3 lb -> 155
+  assert.equal(roundLift(73.5, "kg"), 72.5);
+});
