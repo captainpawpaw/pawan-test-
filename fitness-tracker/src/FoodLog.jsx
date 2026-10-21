@@ -354,6 +354,13 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
   const groupOpen = (key) => searching || Boolean(openGroups[key]);
   const toggleGroup = (key) => setOpenGroups((g) => ({ ...g, [key]: !g[key] }));
   const online = onlineLookupsAllowed();
+  // With no connection the online lookups wait; the built-in lists still work.
+  const [connected, setConnected] = useState(() => navigator.onLine !== false);
+  useEffect(() => {
+    const up = () => setConnected(true), down = () => setConnected(false);
+    window.addEventListener("online", up); window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -382,13 +389,13 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
 
   // USDA online (only on the website, when the Pages Function is set up).
   useEffect(() => {
-    if (!online || usdaOnlineKnownOff() || q.trim().length < 3) return;
+    if (!online || !connected || usdaOnlineKnownOff() || q.trim().length < 3) return;
     const ctl = new AbortController();
     const t = setTimeout(() => {
       searchUsdaOnline(q, { signal: ctl.signal }).then((list) => { if (list) setUsda({ list, q }); }).catch(() => {});
     }, 600);
     return () => { clearTimeout(t); ctl.abort(); };
-  }, [q, online]);
+  }, [q, online, connected]);
 
   const searchOff = async () => {
     setOff({ state: "busy", list: [], q });
@@ -403,6 +410,7 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
     ev.preventDefault();
     const mine = mineByBarcode(myFoods, barcode);
     if (mine) { setBarcodeMsg(""); onPick(mine); return; }
+    if (navigator.onLine === false) { setBarcodeMsg("That barcode isn't in My foods. Looking up new ones needs a connection."); return; }
     setBarcodeMsg("Looking up…");
     try {
       const f = await lookupBarcode(barcode);
@@ -475,8 +483,8 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
       {online && (
         // Always here, above the suggestions: search Open Food Facts for branded products.
         <div style={st.resultGroup}>
-          <button type="button" disabled={q.trim().length < 2 || (off.q === q && off.state === "busy")} onClick={searchOff} style={{ ...st.secondaryBtn, width: "100%", textAlign: "center" }}>
-            {q.trim().length >= 2 ? <>Search branded products for “{q.trim()}”</> : "Search branded products (type a name above)"}
+          <button type="button" disabled={!connected || q.trim().length < 2 || (off.q === q && off.state === "busy")} onClick={searchOff} style={{ ...st.secondaryBtn, width: "100%", textAlign: "center" }}>
+            {!connected ? "Branded search needs a connection" : q.trim().length >= 2 ? <>Search branded products for “{q.trim()}”</> : "Search branded products (type a name above)"}
           </button>
           {off.q === q && off.state === "busy" ? (
             <span style={st.note}>Searching Open Food Facts…</span>

@@ -393,6 +393,14 @@ export default function App() {
     if (res) drive.scheduleSync();
   };
 
+  // Offline: everything is saved on this device; online extras say they need a connection.
+  const [online, setOnline] = useState(() => navigator.onLine !== false);
+  useEffect(() => {
+    const up = () => setOnline(true), down = () => setOnline(false);
+    window.addEventListener("online", up); window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []);
+
   // The panel opened from the menu, shown above the tabs: "weighin" (its
   // settings), "split" (sets and reps) or "backup". One at a time.
   const [panel, setPanel] = useState(null);
@@ -895,6 +903,11 @@ export default function App() {
       </header>
       {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps }); closeMenu(); }} firstPct={firstPct} onFirstSet={(pct) => { saveFirstSet(pct); closeMenu(); }} liftUnit={liftUnit} onLiftUnit={(u) => { saveLiftUnit(u); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
+      {!online && (
+        <div role="status" style={styles.offlineNote}>
+          You're offline. Everything you log is saved on this phone{drive.driveSupported() ? " and syncs when you're back online" : ""}.
+        </div>
+      )}
       {panel === "backup" ? (
         <Backup onClose={closePanel} />
       ) : panel === "split" ? (
@@ -1409,6 +1422,7 @@ function DriveStatus() {
     synced: { label: `Synced ${time}`, action: () => setOpen((o) => !o), hint: `Synced ${time}`, done: true, mark: "check" },
     "needs-auth": { label: "Tap to sync with Drive", action: drive.connect, hint: "Google needs you to sign in again", warn: true, mark: "alert" },
     error: { label: "Sync failed · retry", action: drive.connect, hint: "Sync failed: tap to retry", warn: true, mark: "alert" },
+    offline: { label: "Offline · changes will sync when you're back online", hint: "Offline: your changes are saved on this phone and sync when you're back online", mark: "offline" },
   }[st.state] || { label: "", mark: "plus" };
 
   const color = view.warn ? rust : view.done ? teal : inkFaint;
@@ -1418,6 +1432,7 @@ function DriveStatus() {
       {view.mark === "check" && <path d="M9.8 12.4l2.3 2.2 4.4-4.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
       {view.mark === "plus" && <path d="M13 9.6v5.4M10.3 12.3h5.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />}
       {view.mark === "alert" && <path d="M13 9.4v3.4M13 15.1v.1" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />}
+      {view.mark === "offline" && <path d="M5 3l16 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />}
       {view.mark === "dots" && <path d="M10.2 13h.01M13 13h.01M15.8 13h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />}
     </svg>
   );
@@ -2557,6 +2572,7 @@ const styles = {
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
   brand: { display: "flex", alignItems: "center", gap: 8, paddingTop: 2 },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
+  offlineNote: { margin: "10px 0 0", padding: "8px 10px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, lineHeight: 1.4, color: ink, background: raised, border: `1px solid ${line}`, borderRadius: 4 },
   syncNotice: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 11,
