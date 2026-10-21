@@ -133,7 +133,7 @@ await pa.screenshot({ path: 'theme-ledger-log.png', fullPage: true });
 await pa.getByRole('button', { name: 'PROGRESS' }).click();
 await pa.getByText('Change since start').waitFor();
 const badge = pa.getByText(/\d+\+ club/);
-check(await badge.count() === 1 && await badge.evaluate(el => getComputedStyle(el).backgroundColor) === 'rgb(204, 255, 0)', 'neon milestone badge #CCFF00');
+check(await badge.count() === 2 && await badge.last().evaluate(el => getComputedStyle(el).backgroundColor) === 'rgb(204, 255, 0)', 'neon milestone badge #CCFF00, in the top box and the tiles');
 await pa.screenshot({ path: 'theme-ledger-progress.png', fullPage: true });
 await pa.getByRole('button', { name: 'FOOD' }).click(); await pa.waitForTimeout(300);
 await pa.screenshot({ path: 'theme-ledger-food.png', fullPage: true });

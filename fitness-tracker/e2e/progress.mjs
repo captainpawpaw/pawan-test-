@@ -91,7 +91,7 @@ const scaleOn = async () => pa.locator('[aria-label="Time scale"] button[aria-pr
 await pa.goto('http://localhost:4190/');
 await pa.locator('#progress-pick').waitFor();
 check(await pa.locator('.ft-tabs button[aria-current="page"]').innerText() === 'PROGRESS', 'the app opens on Progress');
-check(await pa.locator('#progress-pick').inputValue() === 'all:strength' && await pa.getByRole('button', { name: 'Ledger score' }).getAttribute('aria-pressed') === 'true', 'opens on the Ledger score for all exercises');
+check(await pa.locator('#progress-pick').inputValue() === 'all:strength' && await pa.getByRole('button', { name: 'Ledger score', exact: true }).getAttribute('aria-pressed') === 'true', 'opens on the Ledger score for all exercises');
 await pa.locator('#progress-pick').selectOption('exercise:Back Squat');
 const opts = await pa.locator('#progress-pick option').allTextContents();
 check(opts.includes('#legs (248)') && opts.some(o => o.startsWith('Run (')), 'tags and exercises offered: ' + opts.slice(0, 4).join(' | '));
