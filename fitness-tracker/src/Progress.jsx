@@ -5,7 +5,9 @@ import {
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
   metricsFor, bucketize, bucketizeWeightReps, bucketizeScore, niceTicks, niceRange, compact, parseIso, daysOnTarget,
 } from "./progress";
-import { bwText, bwValue, bwUnitLabel } from "./units";
+import { bwText, bwValue, bwUnitLabel, liftText } from "./units";
+
+const LB = 0.45359237;
 
 const ink = C.ink;
 const inkFaint = C.inkFaint;
@@ -37,7 +39,7 @@ function writeSaved(v) {
   try { window.localStorage.setItem(SEL_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg", bests = [] }) {
+export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg", bests = [], liftUnit = "kg" }) {
   const [months, setMonths] = useState(null);
   const [selection, setSelection] = useState(() => readSaved()); // { kind, value }
   const [metric, setMetric] = useState(null);
@@ -48,7 +50,15 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
     return () => { live = false; };
   }, [loadAll, version]);
 
-  const rows = useMemo(() => flattenMonths(months || {}), [months]);
+  // In lb, strength weights (and body weight in body-weight sets) are converted
+  // before charting; weights are stored in kg.
+  const rows = useMemo(() => {
+    const all = flattenMonths(months || {});
+    if (liftUnit !== "lb") return all;
+    const lb = (v) => (v === "" || v == null ? v : Number(v) / LB);
+    return all.map((r) => (r.type === "strength" ? { ...r, e: { ...r.e, weight: lb(r.e.weight), minWeight: lb(r.e.minWeight) } } : r));
+  }, [months, liftUnit]);
+  const chartBwOn = useMemo(() => (liftUnit === "lb" ? (date) => { const kg = bwOn?.(date); return kg == null ? kg : Number(kg) / LB; } : bwOn), [bwOn, liftUnit]);
   const bodyRows = useMemo(() => weights.filter((w) => Number(w.kg) > 0).map((w) => ({ date: w.date, type: "body", name: "Body weight", e: { kg: bwValue(Number(w.kg), bwUnit), rawKg: Number(w.kg) } })), [weights, bwUnit]);
 
   // Choices: exercises and tags that have something logged.
@@ -178,14 +188,15 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
           key={`${selectValue}|${activeMetric}`}
           rows={selRows}
           metric={activeMetric}
-          bwOn={bwOn}
+          bwOn={chartBwOn}
+          liftUnit={liftUnit}
           target={activeMetric === "score" ? 100 : METRICS[activeMetric].target ? Number(targets?.[METRICS[activeMetric].target]) || null : null}
           targetLabel={activeMetric === "score" ? "Start = 100" : null}
           title={sel.kind === "tag" ? `#${sel.value}` : sel.kind === "food" ? "Food" : sel.kind === "body" ? "Body weight" : sel.kind === "all" ? "All exercises" : sel.value}
         />
       )}
 
-      <PersonalBests bests={bests} onPick={(name) => { if (exercises.some(([n]) => n === name)) choose("exercise", name); }} />
+      <PersonalBests bests={bests} unit={liftUnit} onPick={(name) => { if (exercises.some(([n]) => n === name)) choose("exercise", name); }} />
     </div>
   );
 }
@@ -194,11 +205,11 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
 const PB_SHOWN = 8;
 const shortDate = (iso) => { const d = parseIso(iso); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
 
-function PersonalBests({ bests, onPick }) {
+function PersonalBests({ bests, unit = "kg", onPick }) {
   const [all, setAll] = useState(false);
   if (!bests.length) return null;
   const shown = all ? bests : bests.slice(0, PB_SHOWN);
-  const kg = (v) => `${fmtNum(v)} kg`;
+  const kg = (v) => liftText(v, unit);
   return (
     <section aria-label="Personal bests" className="ft-card" style={s.pbCard}>
       <div style={s.pbHead}>
@@ -224,8 +235,9 @@ function PersonalBests({ bests, onPick }) {
 }
 
 /* ---------- chart ---------- */
-function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg" }) {
-  const m = metric === "bodyweight" ? { ...METRICS[metric], unit: bwUnitLabel(bwUnit) } : METRICS[metric];
+function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg", liftUnit = "kg" }) {
+  const lu = liftUnit === "lb" ? "lb" : "kg";
+  const m = metric === "bodyweight" ? { ...METRICS[metric], unit: bwUnitLabel(bwUnit) } : METRICS[metric].unit === "kg" ? { ...METRICS[metric], unit: lu } : METRICS[metric];
   const color = colorFor(m.type);
   const boxRef = useRef(null);
   const [width, setWidth] = useState(360);
@@ -441,8 +453,8 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg" }
       <div style={s.tiles}>
         {dual ? (
           <>
-            <Tile label="Heaviest in view" value={vals.length ? fmt(Math.max(...visible.map((b) => b.wMax ?? -Infinity)), "kg") : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
-            <Tile label={`Latest ${periodWord}`} value={latest?.wMax != null ? fmt(latest.wMax, "kg") : "–"} sub={latest?.rMax != null ? `up to ${fmtNum(latest.rMax)} reps` : ""} />
+            <Tile label="Heaviest in view" value={vals.length ? fmt(Math.max(...visible.map((b) => b.wMax ?? -Infinity)), lu) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            <Tile label={`Latest ${periodWord}`} value={latest?.wMax != null ? fmt(latest.wMax, lu) : "–"} sub={latest?.rMax != null ? `up to ${fmtNum(latest.rMax)} reps` : ""} />
             <Tile label="Most reps in a set" value={repVals.length ? fmtNum(Math.max(...repVals)) : "–"} sub="in view" />
           </>
         ) : metric === "score" ? (
@@ -488,7 +500,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg" }
       <div style={s.chartHead}>
         <div style={{ minWidth: 0 }}>
           <div style={s.chartTitle}>{m.label === title ? title : `${m.label} · ${title}`}</div>
-          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (kg) and reps per set` : <>{m.type === "body" ? (scale === "day" ? "Each weigh-in" : `Average weigh-in per ${periodWord}`) : m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
+          <div style={s.chartSub}>{dual ? `${SCALE_LABEL[scale]}: highest and lowest weight (${lu}) and reps per set` : <>{m.type === "body" ? (scale === "day" ? "Each weigh-in" : `Average weigh-in per ${periodWord}`) : m.agg === "avg" ? (scale === "day" ? "Daily total" : `Average day per ${periodWord}`) : `${SCALE_LABEL[scale]} ${m.agg === "max" ? "best" : m.agg === "score" ? "average" : "total"}`}, {`${m.unit}${m.note ? ` · ${m.note}` : ""}`}</>}</div>
         </div>
         <div role="group" aria-label="Time scale" style={s.scaleRow}>
           {SCALES.map((sc) => (
@@ -623,7 +635,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg" }
             {dual ? (
               <>
                 <span style={s.tipLabel}>{periodLabel(hb.start, scale, true)}</span>
-                {[["Max weight", hb.wMax, "kg", rust, 1], ["Min weight", hb.wMin, "kg", rust, 0.4], ["Max reps", hb.rMax, "reps", blue, 1], ["Min reps", hb.rMin, "reps", blue, 0.4]].map(([label, v, u, c, o]) => (
+                {[["Max weight", hb.wMax, lu, rust, 1], ["Min weight", hb.wMin, lu, rust, 0.4], ["Max reps", hb.rMax, "reps", blue, 1], ["Min reps", hb.rMin, "reps", blue, 0.4]].map(([label, v, u, c, o]) => (
                   <span key={label} style={s.tipRow}>
                     <span style={{ display: "inline-block", width: 10, height: 2, background: c, opacity: o, verticalAlign: "middle", marginRight: 5 }} />
                     <strong style={s.tipStrong}>{v == null ? "–" : `${fmtNum(v)} ${u}`}</strong> {label.toLowerCase()}
@@ -659,7 +671,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg" }
             <tr>
               <th style={s.th}>{SCALE_LABEL[scale].replace("ly", "").replace("Dai", "Day")}</th>
               {dual ? (
-                ["Max kg", "Min kg", "Max reps", "Min reps"].map((h) => <th key={h} style={{ ...s.th, textAlign: "right" }}>{h}</th>)
+                [`Max ${lu}`, `Min ${lu}`, "Max reps", "Min reps"].map((h) => <th key={h} style={{ ...s.th, textAlign: "right" }}>{h}</th>)
               ) : (
                 <th style={{ ...s.th, textAlign: "right" }}>{m.label} ({m.unit})</th>
               )}
