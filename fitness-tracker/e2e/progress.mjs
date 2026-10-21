@@ -89,9 +89,10 @@ const ticks = async () => (await pa.locator('svg text').allTextContents());
 const scaleOn = async () => pa.locator('[aria-label="Time scale"] button[aria-pressed="true"]').innerText();
 
 await pa.goto('http://localhost:4190/');
-await pa.getByRole('button', { name: 'PROGRESS' }).click();
 await pa.locator('#progress-pick').waitFor();
-check(await pa.locator('#progress-pick').inputValue() === 'exercise:Back Squat', 'defaults to the most-logged exercise');
+check(await pa.locator('.ft-tabs button[aria-current="page"]').innerText() === 'PROGRESS', 'the app opens on Progress');
+check(await pa.locator('#progress-pick').inputValue() === 'all:strength' && await pa.getByRole('button', { name: 'Ledger score' }).getAttribute('aria-pressed') === 'true', 'opens on the Ledger score for all exercises');
+await pa.locator('#progress-pick').selectOption('exercise:Back Squat');
 const opts = await pa.locator('#progress-pick option').allTextContents();
 check(opts.includes('#legs (248)') && opts.some(o => o.startsWith('Run (')), 'tags and exercises offered: ' + opts.slice(0, 4).join(' | '));
 const metrics = await pa.locator('[aria-label="Measure"] button').allTextContents();
@@ -201,7 +202,10 @@ await pa.locator('#progress-pick').selectOption('exercise:Run');
 check((await pa.locator('[aria-label="Measure"] button').allTextContents()).join(',') === 'Minutes,Distance', 'cardio metrics');
 // selection remembered
 await pa.reload(); await pa.getByRole('button', { name: 'PROGRESS' }).click(); await pa.locator('#progress-pick').waitFor();
-check(await pa.locator('#progress-pick').inputValue() === 'exercise:Run', 'selection remembered after reload');
+check(await pa.locator('#progress-pick').inputValue() === 'all:strength', 'each visit starts on the Ledger score');
+await pa.locator('#progress-pick').selectOption('exercise:Run');
+await pa.getByRole('button', { name: 'LOG', exact: true }).click(); await pa.getByRole('button', { name: 'PROGRESS' }).click(); await pa.locator('#progress-pick').waitFor();
+check(await pa.locator('#progress-pick').inputValue() === 'exercise:Run', 'within a visit, your pick is kept');
 // new log shows up
 await pa.getByRole('button', { name: 'LOG', exact: true }).click();
 await pa.locator('.ft-section').last().locator('button', { hasText: '+ Add' }).click();

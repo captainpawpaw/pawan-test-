@@ -62,7 +62,7 @@ const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
 // Device A: log, then connect
-await pa.goto('http://localhost:4190/'); await pa.getByText('Connect Google Drive').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('Connect Google Drive').waitFor();
 await addLift(pa, 'Device A squat');
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(JSON.stringify(allIds()) === '["Device A squat"]', 'A connect uploads existing entry to appDataFolder: ' + JSON.stringify(allIds()));
@@ -74,7 +74,7 @@ await addLift(pa, 'Device A bench'); await pa.waitForTimeout(2500); await waitSy
 check(allIds().includes('Device A bench'), 'new entry auto-syncs after logging');
 
 // Device B has its own local entry, then connects -> merge
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').waitFor();
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').waitFor();
 await addLift(pb, 'Device B deadlift');
 await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 const bText = await pb.locator('body').innerText();

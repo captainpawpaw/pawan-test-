@@ -83,7 +83,7 @@ await foodRoutes(A); await foodRoutes(B);
 const foodCard = (p) => p.locator('section, div').filter({ has: p.getByText('FOOD', { exact: true }) }).last();
 const foodText = async (p) => (await p.locator('div', { has: p.getByText('FOOD', { exact: true }) }).last().innerText());
 
-await pa.goto('http://localhost:4190/'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
 await pa.screenshot({ path: 'food-tab.png' });
 check(!(await pa.locator('body').innerText()).includes('STRENGTH'), 'food tab shows only food');
 let t = await pa.locator('body').innerText();
@@ -220,7 +220,7 @@ const [dl] = await Promise.all([pa.waitForEvent('download'), pa.getByRole('butto
 const file = await dl.path();
 const exported = JSON.parse(fs.readFileSync(file, 'utf8'));
 check(exported.app === 'training-ledger' && exported.profile.targets.protein === 150, 'export file contains data');
-await pb.goto('http://localhost:4190/'); await pb.getByText('STRENGTH', { exact: true }).waitFor(); await openBackup(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('STRENGTH', { exact: true }).waitFor(); await openBackup(pb);
 await pb.getByLabel('Import a backup file').setInputFiles(file);
 await pb.getByText(/logged day.*Add them to this log\?/).waitFor();
 await pb.getByRole('button', { name: 'Import', exact: true }).click();

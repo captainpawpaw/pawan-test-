@@ -62,7 +62,7 @@ const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
 
-await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 const strength = pa.locator('.ft-section').first();
 const cardio = pa.locator('.ft-section').last();
 async function logSet(name, sets, reps, kg) {
@@ -108,7 +108,7 @@ check((await cardio.innerText()).includes('42 min') && !(await cardio.innerText(
 
 // the edit reaches another device, without the old version coming back
 await pa.waitForTimeout(2500); await waitSynced(pa);
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 t = await pb.locator('body').innerText();
 check(t.includes('3×6 · max 105kg') && !t.includes('max 100kg') && t.includes('42 min') && !t.includes('30 min') && !t.includes('Leg Press'), 'other device gets the edits, not the old versions');
 // survives a further sync back

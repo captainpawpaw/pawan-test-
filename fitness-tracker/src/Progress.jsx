@@ -32,6 +32,10 @@ const SEL_KEY = "fitness-tracker:progress-selection";
 const fmtNum = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const fmt = (v, unit) => `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unit}`;
 
+// The first time Progress shows after the app opens, it shows the Ledger score
+// for all exercises; after that it keeps whatever you last picked.
+let openedThisVisit = false;
+
 function readSaved() {
   try { return JSON.parse(window.localStorage.getItem(SEL_KEY) || "null"); } catch { return null; }
 }
@@ -41,7 +45,10 @@ function writeSaved(v) {
 
 export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg", bests = [], liftUnit = "kg" }) {
   const [months, setMonths] = useState(null);
-  const [selection, setSelection] = useState(() => readSaved()); // { kind, value }
+  const [selection, setSelection] = useState(() => {
+    if (!openedThisVisit) { openedThisVisit = true; return { kind: "all", value: "strength" }; }
+    return readSaved();
+  }); // { kind, value }
   const [metric, setMetric] = useState(null);
 
   useEffect(() => {

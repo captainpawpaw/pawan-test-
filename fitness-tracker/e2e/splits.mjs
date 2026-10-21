@@ -32,7 +32,7 @@ const errs = []; p.on('pageerror', e => errs.push(e.message));
 const plan = () => p.getByRole('note', { name: "Today's plan" });
 const label = async () => (await p.locator('[data-dayswipe] > span').first().innerText()).trim();
 const goTo = async (dow) => { for (let i = 0; i < 8 && !(await label()).startsWith(dow); i++) await p.getByRole('button', { name: 'Next day' }).click(); };
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
 await p.waitForTimeout(500);
 check(await plan().count() === 0, 'Default: no day plan');
 // the Default split: picking an exercise fills 3 x 10

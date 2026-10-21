@@ -62,7 +62,7 @@ const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
 
-await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor(); await pa.waitForTimeout(500);
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor(); await pa.waitForTimeout(500);
 const strengthCard = pa.locator('.ft-section').first();
 await strengthCard.locator('button', { hasText: '+ Add' }).click();
 check(await pa.getByRole('button', { name: 'kg', exact: true }).getAttribute('aria-pressed') === 'true', 'kg selected by default');
@@ -124,7 +124,7 @@ check(t.includes('3×12 · BW') && t.includes('max BW + 10kg'), 'body-weight set
 check(t.includes('Body weight 78.5 kg included'), 'body weight persists after reload');
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(book().profile?.bodyweight?.weights?.[0]?.kg === 78.5, 'body weight syncs to Drive');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 check((await pb.locator('.ft-section').first().innerText()).includes('Volume (sets × reps × max weight): 6,450 kg'), 'other device uses the synced body weight');
 await pa.screenshot({ path: 'bw-list.png' });
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));

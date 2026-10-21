@@ -164,7 +164,11 @@ export default function App() {
   const [selected, setSelected] = useState(isSameMonth(new Date()) ? todayDayNum() : "01");
   const [baseExercises, setFullExercises] = useState([...CUSTOM_EXERCISES].sort((a, b) => a.name.localeCompare(b.name)));
   const [exercisesLoading, setExercisesLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("log");
+  // Opens on Progress; a link can ask for another tab with ?tab=log (or food, exercises).
+  const [activeTab, setActiveTab] = useState(() => {
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    return TABS.some(([id]) => id === asked) ? asked : "progress";
+  });
   // Swipe left or right to move between tabs (touch only). Swipes that start
   // on something that drags or scrolls sideways itself are left alone.
   const [slideDir, setSlideDir] = useState(null);
