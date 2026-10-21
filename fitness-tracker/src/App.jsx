@@ -12,7 +12,7 @@ import { weighInDue, describeWeighIn } from "./weighin";
 import { strengthHistory, lastSession, firstSetPct, FIRST_SET_OPTIONS } from "./lastTime";
 import { personalBests, newBests, recordIds, bestsList } from "./bests";
 import { BodyWeightField } from "./BodyWeight";
-import { validUnit, toKg, fromKg, bwText } from "./units";
+import { validUnit, toKg, fromKg, bwText, validLiftUnit, liftValue, liftText, liftToKg, liftField } from "./units";
 import { SplitSettings, DayPlan } from "./Split";
 import { SPLITS, activeSplit, sessionOn, suggestFor } from "./splits";
 import { C, THEMES, THEME_NAMES, THEME_CSS, applyTheme, savedTheme } from "./theme";
@@ -95,7 +95,6 @@ function bodyweightReps(entries) {
   return (entries || []).filter((e) => e.bw).reduce((sum, e) => sum + (Number(e.sets) || 0) * (Number(e.reps) || 0), 0);
 }
 const todayIso = () => { const d = new Date(); return `${monthKey(d)}-${pad2(d.getDate())}`; };
-const kgText = (n) => `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
 
 // weights: [{ date: "YYYY-MM-DD", kg }]. The weight in force on a date: the
 // latest entry on or before it, else the earliest one.
@@ -107,14 +106,15 @@ function bodyweightOn(weights, date) {
   return (found || sorted[0]).kg;
 }
 
-const weightLabel = (e) => (e.bw ? (Number(e.weight) ? `BW + ${e.weight}kg` : "BW") : `${e.weight || 0}kg`);
+// Weights are stored in kg; u is the unit to show them in ("kg" or "lb").
+const weightLabel = (e, u = "kg") => (e.bw ? (Number(e.weight) ? `BW + ${liftValue(e.weight, u)}${u}` : "BW") : `${liftValue(e.weight || 0, u)}${u}`);
 const hasMin = (e) => e.minWeight !== "" && e.minWeight != null && Number(e.weight) > 0;
 // "4×10 · 20–23.75kg", "4×10 · max 23.75kg", "3×8 · BW + 5–10kg"
-const weightRange = (e) => {
+const weightRange = (e, u = "kg") => {
   if (e.bw && !Number(e.weight)) return "BW";
-  if (!hasMin(e)) return `max ${weightLabel(e)}`;
-  const lo = Math.min(Number(e.minWeight), Number(e.weight));
-  return e.bw ? `BW + ${lo}–${e.weight}kg` : `${lo}–${e.weight}kg`;
+  if (!hasMin(e)) return `max ${weightLabel(e, u)}`;
+  const lo = liftValue(Math.min(Number(e.minWeight), Number(e.weight)), u), hi = liftValue(e.weight, u);
+  return e.bw ? `BW + ${lo}–${hi}${u}` : `${lo}–${hi}${u}`;
 };
 function cardioDuration(entries) {
   return (entries || []).reduce((sum, e) => sum + (Number(e.duration) || 0), 0);
@@ -368,6 +368,15 @@ export default function App() {
     const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
     if (res) drive.scheduleSync();
     return Boolean(res);
+  };
+
+  // Lifting weights unit (kg or lb), chosen in the menu; weights stay stored in kg.
+  const liftUnit = validLiftUnit(profile.units?.lift);
+  const saveLiftUnit = async (unit) => {
+    const next = { ...profile, units: { ...(profile.units || {}), lift: unit, at: Date.now() } };
+    setProfile(next);
+    const res = await storage.set("profile", JSON.stringify(next), false).catch(() => null);
+    if (res) drive.scheduleSync();
   };
 
   // Body weight unit (kg, lb, or st & lb), chosen wherever you enter it.
@@ -845,7 +854,7 @@ export default function App() {
           </div>
         )}
       </header>
-      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps }); closeMenu(); }} firstPct={firstPct} onFirstSet={(pct) => { saveFirstSet(pct); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
+      {menuOpen && <AppMenu theme={theme} onTheme={(t) => { chooseTheme(t); closeMenu(); }} onWeighIn={() => { openPanel("weighin"); closeMenu(); }} split={split.id} onSplit={(id) => { const sp = SPLITS.find((x) => x.id === id); saveSplit({ id, sets: sp.sets, reps: sp.reps }); closeMenu(); }} firstPct={firstPct} onFirstSet={(pct) => { saveFirstSet(pct); closeMenu(); }} liftUnit={liftUnit} onLiftUnit={(u) => { saveLiftUnit(u); closeMenu(); }} onAdjustSplit={() => { openPanel("split"); closeMenu(); }} onBackup={() => { openPanel("backup"); closeMenu(); }} onClose={closeMenu} buttonRef={menuBtnRef} />}
       <SyncNotice />
       {panel === "backup" ? (
         <Backup onClose={closePanel} />
@@ -871,7 +880,7 @@ export default function App() {
         className={slideDir ? `ft-slide-${slideDir}` : undefined}
       >
       {activeTab === "progress" ? (
-        <Progress bests={bestsList(bests)} bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
+        <Progress bests={bestsList(bests)} liftUnit={liftUnit} bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -1028,7 +1037,7 @@ export default function App() {
               <span aria-hidden="true" style={{ fontSize: 22 }}>🏆</span>
               <span style={{ flex: 1 }}>
                 <strong>New personal best</strong> on {pbNote.name}
-                {pbNote.weight && <span style={styles.pbLine}>Heaviest: {pbNote.bw ? "body weight + " : ""}{kgText(pbNote.weight.value)} (was {kgText(pbNote.weight.was)})</span>}
+                {pbNote.weight && <span style={styles.pbLine}>Heaviest: {pbNote.bw ? "body weight + " : ""}{liftText(pbNote.weight.value, liftUnit)} (was {liftText(pbNote.weight.was, liftUnit)})</span>}
                 {pbNote.reps && <span style={styles.pbLine}>Most reps: {pbNote.reps.value} (was {pbNote.reps.was})</span>}
               </span>
               <button type="button" aria-label="Dismiss" onClick={() => setPbNote(null)} style={styles.pbClose}>×</button>
@@ -1057,8 +1066,8 @@ export default function App() {
                 { key: "exercise", label: "Exercise", type: "text", placeholder: "Back squat", options: strengthNames, listId: "strength-exercise-list" },
                 { key: "sets", label: "Sets", type: "number", placeholder: "3" },
                 { key: "reps", label: "Reps", type: "number", placeholder: "5" },
-                { key: "weight", label: "Max weight (kg)", type: "number", placeholder: "80", bodyweightToggle: true },
-                { key: "minWeight", label: "Min weight (kg), optional", bwLabel: "Min added weight (kg), optional", type: "number", placeholder: "60" },
+                { key: "weight", label: `Max weight (${liftUnit})`, type: "number", placeholder: liftUnit === "lb" ? "175" : "80", bodyweightToggle: true },
+                { key: "minWeight", label: `Min weight (${liftUnit}), optional`, bwLabel: `Min added weight (${liftUnit}), optional`, type: "number", placeholder: liftUnit === "lb" ? "135" : "60" },
               ]}
               onAdd={(vals) => addEntry("strength", vals)}
               renderRow={(e) => (
@@ -1067,7 +1076,7 @@ export default function App() {
                     {e.exercise || "Exercise"}
                     {pbIds.has(e.id) && <span title="Personal best" style={styles.pbBadge}>PB</span>}
                   </span>
-                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} · {weightRange(e)}</span>
+                  <span style={styles.rowMono}>{e.sets || 0}×{e.reps || 0} · {weightRange(e, liftUnit)}</span>
                 </>
               )}
               entries={dayEntries.strength}
@@ -1076,13 +1085,15 @@ export default function App() {
               isBodyweight={isBodyweight}
               bodyweightKg={bwOnDay(cursor, selected)}
               bwUnit={bwUnit}
-              lastFor={(name) => lastSession(history, name, `${key}-${selected}`, firstPct)}
+              lastFor={(name) => lastSession(history, name, `${key}-${selected}`, firstPct, liftUnit)}
+              liftUnit={liftUnit}
               defaults={{ sets: String(split.sets), reps: String(split.reps) }}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
                 <StrengthFooter
                   entries={dayEntries.strength}
                   bodyweightKg={bwOnDay(cursor, selected)}
                   onSaveBodyweight={saveBodyweight}
+                  liftUnit={liftUnit}
                   unit={bwUnit}
                   onUnit={saveBwUnit}
                 />
@@ -1160,7 +1171,7 @@ function LogoMark({ size = 22 }) {
 
 // The ☰ menu under the header. It sits outside the header so the header's
 // theme styling (dark text overrides, Gotham's cut corner) doesn't reach it.
-function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, firstPct, onFirstSet, onBackup, onClose, buttonRef }) {
+function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, firstPct, onFirstSet, liftUnit, onLiftUnit, onBackup, onClose, buttonRef }) {
   const ref = useRef(null);
   // "main", or a sub-menu: "theme", "split" or "firstset".
   const [view, setView] = useState("main");
@@ -1221,12 +1232,13 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, fir
   );
   const splitName = (SPLITS.find((sp) => sp.id === split) || SPLITS[0]).name.split(" ·")[0];
   return (
-    <div id="app-menu" ref={ref} role="menu" aria-label={view === "theme" ? "Theme" : view === "split" ? "Training split" : view === "firstset" ? "First set weight" : "Menu"} onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
+    <div id="app-menu" ref={ref} role="menu" aria-label={view === "theme" ? "Theme" : view === "split" ? "Training split" : view === "firstset" ? "First set weight" : view === "lift" ? "Lifting weights" : "Menu"} onKeyDown={onKeyDown} style={{ ...styles.menu, ...(pos || { visibility: "hidden" }) }}>
       {view === "main" && (
         <>
           {subItem("theme", "Theme", THEMES[theme]?.label)}
           {subItem("split", "Training split", splitName)}
           {subItem("firstset", "First set weight", `${firstPct}%`)}
+          {subItem("lift", "Lifting weights", liftUnit)}
           <button type="button" role="menuitem" onClick={onWeighIn} style={styles.menuItem}>
             <span style={{ flex: 1 }}>Weekly weigh-in…</span>
           </button>
@@ -1255,6 +1267,27 @@ function AppMenu({ theme, onTheme, onWeighIn, split, onSplit, onAdjustSplit, fir
                 </span>
                 <span style={{ flex: 1 }}>{THEMES[t].label}</span>
                 {theme === t && <span aria-hidden="true">✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {view === "lift" && (
+        <>
+          {backItem("Lifting weights")}
+          <p style={styles.menuNote}>The unit for the weights you lift: in the log, last time, personal bests and Progress. Your log is kept the same either way.</p>
+          <div role="group" aria-label="Lifting weights">
+            {[["kg", "Kilograms (kg)"], ["lb", "Pounds (lb)"]].map(([u, label]) => (
+              <button
+                key={u}
+                type="button"
+                role="menuitemradio"
+                aria-checked={liftUnit === u}
+                onClick={() => onLiftUnit(u)}
+                style={{ ...styles.menuItem, ...(liftUnit === u ? styles.menuItemOn : {}) }}
+              >
+                <span style={{ flex: 1 }}>{label}</span>
+                {liftUnit === u && <span aria-hidden="true">✓</span>}
               </button>
             ))}
           </div>
@@ -1378,7 +1411,7 @@ function planValues(sectionType, plan) {
   return mins ? { duration: mins[1] } : {};
 }
 
-function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit }) {
+function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit, liftUnit = "kg" }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState({ main: "", extra: "" });
   const [error, setError] = useState("");
@@ -1398,7 +1431,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit 
   return (
     <div style={styles.footerStack}>
       <span>
-        Volume<span className="ft-hint ft-hint-inline"> (sets × reps × max weight)</span>: {strengthVolume(entries, bodyweightKg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+        Volume<span className="ft-hint ft-hint-inline"> (sets × reps × max weight)</span>: {liftValue(strengthVolume(entries, bodyweightKg), liftUnit).toLocaleString(undefined, { maximumFractionDigits: 1 })} {liftUnit}
         {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
       </span>
       {hasBw && !editing && (
@@ -1428,7 +1461,9 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit 
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, bwUnit, lastFor, defaults }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, bwUnit, lastFor, defaults, liftUnit = "kg" }) {
+  // Strength weights are typed in liftUnit and stored in kg.
+  const WEIGHT_KEYS = sectionType === "strength" ? ["weight", "minWeight"] : [];
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
   const [open, setOpen] = useState(false);
@@ -1437,7 +1472,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
 
   const startEdit = (e) => {
     const v = {};
-    for (const f of fields) if (e[f.key] != null) v[f.key] = String(e[f.key]);
+    for (const f of fields) if (e[f.key] != null) v[f.key] = WEIGHT_KEYS.includes(f.key) ? liftField(e[f.key], liftUnit) : String(e[f.key]);
     if (e.bw) v.bw = true;
     setVals(v);
     setEditingId(e.id);
@@ -1468,6 +1503,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       [entry.minWeight, entry.weight] = [entry.weight, entry.minWeight];
     }
     if (entry.minWeight === "") delete entry.minWeight;
+    for (const k of WEIGHT_KEYS) if (entry[k] !== undefined) entry[k] = liftToKg(entry[k], liftUnit);
     if (editingId) onEdit(editingId, entry);
     else onAdd(entry);
     closeForm();
@@ -1508,15 +1544,15 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               accent={accent}
             />
             {lastFor && !editingId && vals[f.key] && (
-              <LastTime last={lastFor(vals[f.key])} accent={accent} />
+              <LastTime last={lastFor(vals[f.key])} accent={accent} unit={liftUnit} />
             )}
             </React.Fragment>
           ) : f.bodyweightToggle ? (
             <div key={f.key} style={styles.fieldLabel}>
               <div style={styles.weightHead}>
-                <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? "Max added weight (kg), optional" : f.label}</label>
+                <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? `Max added weight (${liftUnit}), optional` : f.label}</label>
                 <div role="group" aria-label="Weight type" style={styles.unitToggle}>
-                  {[[false, "kg"], [true, "Body weight"]].map(([on, label], i) => {
+                  {[[false, liftUnit], [true, "Body weight"]].map(([on, label], i) => {
                     const active = Boolean(vals.bw) === on;
                     return (
                       <button
@@ -1546,7 +1582,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               {vals.bw && (
                 <span style={styles.bwHint}>
                   {bodyweightKg != null
-                    ? `Counts as ${bwText(bodyweightKg, bwUnit)} body weight${Number(vals[f.key]) ? ` + ${vals[f.key]} kg` : ""}.`
+                    ? `Counts as ${bwText(bodyweightKg, bwUnit)} body weight${Number(vals[f.key]) ? ` + ${vals[f.key]} ${liftUnit}` : ""}.`
                     : "Set your body weight under the day's sets to count it in volume."}
                 </span>
               )}
@@ -1601,9 +1637,9 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
 
 // "Last time" for the exercise being logged: the previous session's top
 // weight, and a first set 30% lighter (70% of it).
-function LastTime({ last, accent }) {
+function LastTime({ last, accent, unit = "kg" }) {
   if (!last) return null;
-  const load = (kg) => (last.bw ? (kg > 0 ? `body weight + ${kgText(kg)}` : "body weight") : kgText(kg));
+  const load = (kg) => (last.bw ? (kg > 0 ? `body weight + ${liftText(kg, unit)}` : "body weight") : liftText(kg, unit));
   return (
     <div role="status" aria-label="Last time" style={{ ...styles.lastTime, borderColor: accent }}>
       <span>

@@ -2,6 +2,7 @@
 // again, with a first-set weight: a share (70% by default) of that session's top weight.
 
 import { nameKey } from "./importParser.js";
+import { roundLift } from "./units.js";
 
 export const FIRST_SET_PCT = 70;
 // The choices offered in the menu.
@@ -40,7 +41,8 @@ export const roundPlate = (kg) => Math.max(0, Math.round(kg / 2.5) * 2.5);
 
 // The latest session of `name` before `beforeDate` (YYYY-MM-DD): its top set
 // (heaviest, then most reps) and the first-set weight. null if there isn't one.
-export function lastSession(history, name, beforeDate, firstPct = FIRST_SET_PCT) {
+// unit: "kg" or "lb", for rounding the first set to plates (2.5 kg or 5 lb); weights stay in kg.
+export function lastSession(history, name, beforeDate, firstPct = FIRST_SET_PCT, unit = "kg") {
   const sessions = history?.get(nameKey(name || ""));
   if (!sessions) return null;
   let s = null;
@@ -56,6 +58,6 @@ export function lastSession(history, name, beforeDate, firstPct = FIRST_SET_PCT)
     reps: num(top.reps),
     sets: num(top.sets),
     bw,
-    warmUp: weight > 0 ? roundPlate((weight * firstPct) / 100) : null,
+    warmUp: weight > 0 ? roundLift((weight * firstPct) / 100, unit) : null,
   };
 }
