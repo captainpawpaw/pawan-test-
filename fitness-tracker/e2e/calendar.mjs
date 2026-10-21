@@ -96,7 +96,7 @@ check((await drawer(pa).innerText()).includes('calories'), 'food calendar explai
 check(await pa.evaluate(() => document.getElementById('month-calendar').contains(document.activeElement)) && (await drawer(pa).getAttribute('aria-modal')) === 'true', 'focus moves into the open sidebar');
 await pa.screenshot({ path: 'cal-pinned-food.png' });
 await drawer(pa).getByRole('button', { name: 'Show next month' }).click();
-check((await drawer(pa).innerText()).includes('NOVEMBER') && (await pa.locator('header').innerText()).includes('NOVEMBER'), 'sidebar arrows change the month');
+check((await drawer(pa).innerText()).includes('NOVEMBER') && (await pa.locator('header').innerText()).includes(' NOV'), 'sidebar arrows change the month');
 await drawer(pa).getByRole('button', { name: 'Show previous month' }).click();
 await pa.keyboard.press('Escape');
 check(await shut(pa) && (await focusedLabel(pa)) === 'Calendar', 'Escape closes it and returns focus to the tab');

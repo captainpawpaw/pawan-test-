@@ -221,6 +221,24 @@ export function scoreSessions(rows, bwOn) {
 // Score per period: each exercise's average session score in the period,
 // then the average across exercises (so a tag or all training weighs each
 // exercise equally, however often it's done).
+// The badge for a Ledger score of 110 and over: "110+ club", "120+ club"…
+export const milestone = (v) => `${Math.floor(v / 10) * 10}+ club`;
+
+// The headline Ledger score: the latest week's score, the change since the
+// start (= 100) and since the week before. null until there's a score.
+export function ledgerHeadline(rows, bwOn) {
+  const weeks = bucketizeScore(rows.filter((r) => r.type === "strength"), "week", bwOn);
+  if (!weeks.length) return null;
+  const latest = weeks[weeks.length - 1], prev = weeks[weeks.length - 2];
+  return {
+    value: latest.value,
+    sinceStart: Math.round((latest.value - 100) * 10) / 10,
+    sinceLastWeek: prev ? Math.round((latest.value - prev.value) * 10) / 10 : null,
+    badge: latest.value >= 110 ? milestone(latest.value) : null,
+    week: latest.start,
+  };
+}
+
 export function bucketizeScore(rows, scale, bwOn) {
   const map = new Map();
   for (const s of scoreSessions(rows, bwOn)) {

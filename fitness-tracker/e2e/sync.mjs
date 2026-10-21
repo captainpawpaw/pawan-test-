@@ -89,7 +89,7 @@ await pb.getByRole('button', { name: 'Delete entry' }).click();
 check(!(await pb.locator('body').innerText()).includes('Device A squat') && (await pb.locator('body').innerText()).includes('Device A bench'), 'B deleted exactly the squat');
 await pb.waitForTimeout(2500); await waitSynced(pb);
 check(!allIds().includes('Device A squat'), 'deletion syncs to Drive');
-await pa.getByText(/^Synced /).click(); await pa.waitForTimeout(300); await waitSynced(pa);
+await pa.getByText(/^Synced /).click(); await pa.getByRole('button', { name: 'Sync now' }).click(); await pa.waitForTimeout(300); await waitSynced(pa);
 const aText = await pa.locator('body').innerText();
 check(!aText.includes('Device A squat') && aText.includes('Device B deadlift'), 'A picks up B\'s delete and addition without reload');
 
@@ -108,6 +108,7 @@ drive.fail401 = false; await pa.getByText('Tap to sync with Drive').click(); awa
 check(allIds().includes('Offline curl'), 'pending entry uploads after re-sign-in');
 
 // disconnect
+await pa.getByRole('button', { name: /^Synced / }).click(); // the cloud opens Sync now / Disconnect
 await pa.getByText('Disconnect').click(); await pa.getByText('Connect Google Drive').waitFor();
 check((await pa.locator('body').innerText()).includes('Offline curl'), 'disconnect keeps local data');
 await pa.reload(); await pa.getByText('Connect Google Drive').waitFor();

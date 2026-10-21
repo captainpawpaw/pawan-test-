@@ -3,7 +3,7 @@ import { C } from "./theme";
 import {
   DAY, SCALES, SCALE_LABEL, SCALE_SPAN_DAYS, METRICS,
   adjustScale, periodStart, nextPeriod, periodLabel, flattenMonths,
-  metricsFor, bucketize, bucketizeWeightReps, bucketizeScore, niceTicks, niceRange, compact, parseIso, daysOnTarget,
+  metricsFor, bucketize, bucketizeWeightReps, bucketizeScore, niceTicks, niceRange, compact, parseIso, daysOnTarget, milestone,
 } from "./progress";
 import { bwText, bwValue, bwUnitLabel, liftText } from "./units";
 
@@ -705,7 +705,6 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg", 
 }
 
 // Milestones every 10 points above the start: 110, 120, 130 …
-const milestone = (v) => `${Math.floor(v / 10) * 10}+ club`;
 
 function Tile({ label, value, sub, badge }) {
   return (

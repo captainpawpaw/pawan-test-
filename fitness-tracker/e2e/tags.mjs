@@ -106,7 +106,7 @@ await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Goo
 await ex(pb); await pb.getByText('3/4 Sit-Up').waitFor();
 check((await visible(pb)).includes('#legs day 2'), 'B receives tags from Drive');
 await tag(pb, 'Rower', ['cardio warmup']); await pb.waitForTimeout(2500); await waitSynced(pb);
-await pa.getByText(/^Synced /).click(); await pa.waitForTimeout(300); await waitSynced(pa);
+await pa.getByText(/^Synced /).click(); await pa.getByRole('button', { name: 'Sync now' }).click(); await pa.waitForTimeout(300); await waitSynced(pa);
 check((await visible(pa)).includes('#cardio warmup'), 'A picks up B\'s new tag without reload');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();
