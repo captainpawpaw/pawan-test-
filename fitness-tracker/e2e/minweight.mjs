@@ -62,7 +62,7 @@ const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
 
-await pa.goto('http://localhost:4190/'); await pa.getByText('STRENGTH').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 const strength = pa.locator('.ft-section').first();
 const foot = async () => ((await strength.innerText()).match(/Volume \(sets × reps × max weight\): [\d,.]+ kg/) || [''])[0];
 async function logSet(name, sets, reps, max, min) {

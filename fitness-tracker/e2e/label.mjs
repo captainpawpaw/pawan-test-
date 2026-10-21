@@ -108,7 +108,7 @@ const label = await shot(`<div style="padding:30px;font-size:30px">
 fs.writeFileSync('label-front.png', front); fs.writeFileSync('label-table.png', label);
 
 // --- on the website: read on the device, barcode looked up
-await pa.goto('http://localhost:4190/'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
+await pa.goto('http://localhost:4190/?tab=log'); await pa.getByRole('button', { name: 'FOOD', exact: true }).click(); await pa.getByText('Set daily targets').waitFor();
 await pa.getByRole('button', { name: '+ Add' }).last().click();
 await pa.getByRole('button', { name: 'Photograph a label' }).click();
 check(await pa.getByRole('button', { name: 'Read label' }).isDisabled(), 'Read label waits for a photo');
@@ -156,7 +156,7 @@ await pa.screenshot({ path: 'label-myfoods.png', fullPage: true });
 await pa.reload(); await pa.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(Object.values(book().myfoods || {}).some(f => f.name === 'Crunchy Granola' && f.per100.kcal === 441 && f.thumb?.startsWith('data:image/jpeg')), 'saved to Drive with a thumbnail');
-await pb.goto('http://localhost:4190/'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
+await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 await pb.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pb.getByRole('button', { name: '+ Add' }).last().click();
 const mineOn = (p, n) => p.getByRole('button', { name: `Remove ${n} from My foods` });

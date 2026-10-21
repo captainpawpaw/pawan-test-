@@ -28,7 +28,7 @@ const p = await ctx.newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 const prompt = () => p.getByRole('region', { name: 'Weekly weigh-in', exact: true });
 const profile = () => p.evaluate(() => JSON.parse(localStorage.getItem('fitness-tracker:profile')));
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
 await prompt().waitFor();
 check((await prompt().innerText()).includes('Time for your weekly weigh-in') && (await prompt().innerText()).includes('Last time: 79.5 kg'), 'asks for the weight when the weigh-in time has passed');
 await p.screenshot({ path: 'weighin-prompt.png' });

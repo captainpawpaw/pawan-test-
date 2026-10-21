@@ -32,7 +32,7 @@ const swipe = async (x0, y0, x1, y1, steps = 8) => {
   await p.waitForTimeout(300);
 };
 const tab = () => p.locator('.ft-tabs button[aria-current="page"]').innerText();
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor();
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
 check(await tab() === 'LOG', 'starts on Log');
 await swipe(320, 600, 80, 610);
 check(await tab() === 'FOOD', 'swipe left: Food');

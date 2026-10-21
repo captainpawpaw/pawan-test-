@@ -25,7 +25,7 @@ await ctx.addInitScript(() => {
 const p = await ctx.newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 const strength = p.locator('.ft-section').first();
-await p.goto('http://localhost:4190/'); await p.getByText('STRENGTH', { exact: true }).waitFor(); await p.waitForTimeout(300);
+await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor(); await p.waitForTimeout(300);
 await p.getByRole('button', { name: 'Menu' }).click();
 check((await p.getByRole('menuitem', { name: /^Lifting weights/ }).innerText()).includes('kg'), 'menu: Lifting weights starts in kg');
 await p.getByRole('menuitem', { name: /^Lifting weights/ }).click();
