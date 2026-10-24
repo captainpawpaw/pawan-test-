@@ -840,9 +840,8 @@ export default function App() {
 
       <header className="ft-masthead" style={styles.header}>
         <div style={styles.eyebrowRow}>
-          <div className="ft-brand" style={styles.brand}>
-            <LogoMark size={22} />
-            <span style={styles.eyebrow}>TRAINING LEDGER</span>
+          <div style={styles.brand}>
+            <img src={`${import.meta.env.BASE_URL}logo-badge.png`} alt="Ledger Score" width="44" height="44" className="ft-logo-badge" style={styles.logoBadge} />
           </div>
           <div style={styles.headerRight}>
             <DriveStatus />
@@ -1194,21 +1193,6 @@ export default function App() {
         })}
       </nav>
     </div>
-  );
-}
-
-// The logo: Train, Progress and Fuel loops inside the hexagon. Colours are
-// CSS variables so dark headers can brighten them.
-function LogoMark({ size = 22 }) {
-  const loop = (d, v) => <path d={d} fill="none" style={{ stroke: `var(${v})` }} strokeWidth="11" strokeLinejoin="round" />;
-  return (
-    <svg className="ft-logo" width={size} height={size} viewBox="0 0 200 200" aria-hidden="true" style={{ flex: "none" }}>
-      <polyline points="12,100 56,23.8 144,23.8 188,100" fill="none" style={{ stroke: "var(--ft-logo-blue)" }} strokeWidth="13" strokeLinejoin="round" strokeLinecap="round" />
-      <polyline points="188,100 144,176.2 56,176.2 12,100" fill="none" style={{ stroke: "var(--ft-logo-orange)" }} strokeWidth="13" strokeLinejoin="round" strokeLinecap="round" />
-      {loop("M100,110 L84.5,134.0 A22,22 0 1 1 72.9,101.1 Z", "--ft-logo-red")}
-      {loop("M100,110 L127.1,101.1 A22,22 0 1 1 115.5,134.0 Z", "--ft-logo-yellow")}
-      {loop("M100,110 L82.1,84.7 A22,22 0 1 1 117.9,84.7 Z", "--ft-logo-cyan")}
-    </svg>
   );
 }
 
@@ -2570,6 +2554,7 @@ const styles = {
   menuBack: { color: inkFaint, borderBottom: `1px solid ${line}`, borderRadius: 0, marginBottom: 4 },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
   themeSwatchDot: { width: 7, height: 7, borderRadius: "50%" },
+  logoBadge: { display: "block", width: 44, height: 44, borderRadius: "50%", flex: "none" },
   brand: { display: "flex", alignItems: "center", gap: 8, paddingTop: 2 },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
   offlineNote: { margin: "10px 0 0", padding: "8px 10px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, lineHeight: 1.4, color: ink, background: raised, border: `1px solid ${line}`, borderRadius: 4 },
