@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 
 // Files from public/ the app needs to open and work offline. The label
 // reader (public/ocr, ~15 MB) is kept the first time it's used instead.
-const OFFLINE_PUBLIC = ["exercises.json", "foods.json", "foods-uk.json", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "logo-badge.png"];
+const OFFLINE_PUBLIC = ["exercises.json", "foods.json", "foods-uk.json", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "logo-badge.png", "bg-score.jpg", "bg-score-portrait.jpg"];
 
 // Writes sw.js, the offline worker, listing this build's files.
 function offlineWorker() {

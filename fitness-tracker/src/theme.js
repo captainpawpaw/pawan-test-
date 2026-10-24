@@ -13,6 +13,20 @@ const SANS = "'Inter', sans-serif";
 const DISPLAY = "'Barlow Condensed', sans-serif";
 
 export const THEMES = {
+  // The Ledger Score logo's navy, grey and red, over its artwork. The default.
+  score: {
+    label: "Ledger Score",
+    swatch: "#161C2C",
+    dark: true,
+    vars: {
+      ink: "#ECEEF2", inkFaint: "#9AA3B4", paper: "#161C2C", raised: "#1E2536", field: "#232B3D",
+      line: "#353E53", grid: "#283044",
+      rust: "#EE5258", rustSoft: "#4A1C24", teal: "#A3B8D8", tealSoft: "#24314A",
+      plum: "#E393A6", plumSoft: "#43232E", blue: "#A3B8D8",
+      onFill: "#161C2C", highlight: "#C8343B", highlightInk: "#FFFFFF",
+      sans: SANS, display: DISPLAY,
+    },
+  },
   classic: {
     label: "Classic",
     swatch: "#EDE8DE",
@@ -90,14 +104,14 @@ const KEY = "fitness-tracker:theme";
 export function savedTheme() {
   try {
     const t = localStorage.getItem(KEY);
-    return THEMES[t] ? t : "classic";
+    return THEMES[t] ? t : "score";
   } catch {
-    return "classic";
+    return "score";
   }
 }
 
 export function applyTheme(name) {
-  const t = THEMES[name] ? name : "classic";
+  const t = THEMES[name] ? name : "score";
   const root = document.documentElement;
   for (const [k, v] of Object.entries(THEMES[t].vars)) root.style.setProperty(`--ft-${kebab(k)}`, v);
   root.dataset.theme = t;
@@ -113,7 +127,25 @@ const sides = (c) => `border-top-color: ${c} !important; border-right-color: ${c
 export const THEME_CSS = `
   body { background: var(--ft-paper); font-family: var(--ft-sans); }
   html[data-theme="krypton"] .ft-page, html[data-theme="gotham"] .ft-page,
-  html[data-theme="alpine"] .ft-page, html[data-theme="ledger"] .ft-page { background: transparent !important; }
+  html[data-theme="alpine"] .ft-page, html[data-theme="ledger"] .ft-page, html[data-theme="score"] .ft-page { background: transparent !important; }
+
+  /* Ledger Score: the logo artwork, fixed behind the page (a fixed layer, as
+     phones ignore background-attachment: fixed), dimmed a little for reading. */
+  html[data-theme="score"] { background: #161C2C; }
+  html[data-theme="score"] body { background: transparent; min-height: 100vh; }
+  html[data-theme="score"] body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(rgba(14, 18, 30, 0.45), rgba(14, 18, 30, 0.45)), url("/bg-score.jpg") center / cover no-repeat, #161C2C;
+  }
+  /* Upright phones: a portrait cut of the artwork, the logo fading into the
+     navy, with the original's red glow around the screen's edges. */
+  @media (max-aspect-ratio: 1/1) {
+    html[data-theme="score"] body::before {
+      background: linear-gradient(rgba(14, 18, 30, 0.35), rgba(14, 18, 30, 0.35)), url("/bg-score-portrait.jpg") center / cover no-repeat, #161C2C;
+      box-shadow: inset 0 0 90px rgba(200, 52, 59, 0.28);
+    }
+  }
+  html[data-theme="score"] .ft-bottom-nav { background: rgba(22, 28, 44, 0.92) !important; }
 
   /* Ledger */
   html[data-theme="ledger"] body {

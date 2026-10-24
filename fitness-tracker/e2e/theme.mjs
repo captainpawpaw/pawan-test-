@@ -67,10 +67,15 @@ await A.addInitScript(() => {
   for (const [k, v] of Object.entries(months)) localStorage.setItem('fitness-tracker:month:' + k, JSON.stringify(v));
   localStorage.setItem('seeded', '1');
 });
-const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^Theme/ }).click(); await p.getByRole('menuitemradio', { name }).click(); };
+const pickTheme = async (p, name) => { await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^Theme/ }).click(); await p.getByRole('menuitemradio', { name, exact: true }).click(); };
 const bg = (p, sel) => p.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
 await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
-check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'Classic by default');
+check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'score', 'Ledger Score by default');
+const scoreBg = await pa.evaluate(() => getComputedStyle(document.body, '::before').backgroundImage);
+check(/bg-score(-portrait)?\.jpg/.test(scoreBg) && await pa.evaluate(() => getComputedStyle(document.body, '::before').position) === 'fixed', 'its logo artwork sits fixed behind the page');
+check(await pa.evaluate(() => Promise.all(['/bg-score.jpg', '/bg-score-portrait.jpg'].map(u => fetch(u).then(r => r.ok))).then(a => a.every(Boolean))), 'the background image is served');
+await pa.screenshot({ path: 'theme-score.png' });
+await pickTheme(pa, 'Classic');
 check(await pa.locator('header img.ft-logo-badge').evaluate(el => el.complete && el.naturalWidth === 160), 'the Ledger Score badge shows at the top');
 const icons = await pa.evaluate(() => [...document.querySelectorAll('link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest]')].map(l => l.getAttribute('href')));
 check(icons.join() === '/icon.svg,/apple-touch-icon.png,/manifest.webmanifest', 'page links its icons: ' + icons.join());
@@ -105,7 +110,7 @@ check(await pa.getByRole('menuitemradio', { name: 'Quiet' }).count() === 0, 'Qui
 await pa.keyboard.press('Escape');
 await pa.evaluate(() => { localStorage.setItem('fitness-tracker:theme', 'quiet'); const pr = JSON.parse(localStorage.getItem('fitness-tracker:profile') || '{}'); pr.theme = { name: 'quiet', at: Date.now() }; localStorage.setItem('fitness-tracker:profile', JSON.stringify(pr)); });
 await pa.reload(); await pa.getByText('STRENGTH').waitFor(); await pa.waitForTimeout(300);
-check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'classic', 'a saved Quiet choice falls back to Classic');
+check(await pa.evaluate(() => document.documentElement.dataset.theme) === 'score', 'a saved Quiet choice falls back to the default, Ledger Score');
 await pickTheme(pa, 'Classic');
 await pa.locator('header').screenshot({ path: 'logo-header-classic.png' });
 check(await bg(pa, 'body') === 'rgb(237, 232, 222)', 'classic paper: ' + await bg(pa, 'body'));
