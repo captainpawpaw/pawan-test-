@@ -1,11 +1,9 @@
-// Food lookup: the built-in UK (CoFID) and USDA lists, and, where the app runs as a normal
-// website, Open Food Facts (branded products, barcodes) and USDA FoodData
-// Central online (through the /api/usda Cloudflare Pages Function). Inside a
-// claude.ai artifact those online sources are blocked, and Claude can
-// estimate meals instead.
+// Food lookup: the built-in UK list (CoFID) and, where the app runs as a normal
+// website, Open Food Facts UK (branded products, barcodes). Inside a claude.ai
+// artifact the online source is blocked, and Claude can estimate meals instead.
 
 import { getSample, getImageLimits } from "./claudeRead";
-import { measuredDensity, densityIndex, similarDensity, withSpoons } from "./spoons.js";
+import { withSpoons } from "./spoons.js";
 
 export const NUTRIENTS = ["kcal", "protein", "carbs", "fat", "fibre", "sugar"];
 export const MACRO_LABEL = { kcal: "Calories", protein: "Protein", carbs: "Carbs", fat: "Fat", fibre: "Fibre", sugar: "Sugar" };
@@ -28,46 +26,24 @@ export function sumFood(entries) {
   return out;
 }
 
-/* ---------- built-in lists ---------- */
-// Two lists ship with the app: CoFID (McCance and Widdowson, the UK national
-// food composition data) and USDA SR28. UK foods come first in a search.
-const LISTS = [
-  { file: "foods-uk.json", source: "cofid" },
-  { file: "foods.json", source: "usda" },
-];
+/* ---------- built-in list ---------- */
+// CoFID (McCance and Widdowson), the UK national food composition data. Each
+// food carries a spoon density borrowed from a similar food when one was found
+// (scripts/uk-spoons.mjs), else spoons use a typical density for its kind.
 let foodsPromise = null;
 export function loadFoods() {
   if (!foodsPromise) {
-    foodsPromise = Promise.all(LISTS.map(({ file, source }) =>
-      fetch(`${import.meta.env.BASE_URL}${file}`)
-        .then((r) => { if (!r.ok) throw new Error(`${file} ${r.status}`); return r.json(); })
-        .then((j) => j.foods.map(([name, group, kcal, protein, carbs, fat, fibre, sugar, portions], i) => ({
-          id: `${source}:${i}`,
-          name,
-          group,
-          source,
-          per100: { kcal, protein, carbs, fat, fibre, sugar },
-          portions: (portions || []).map(([g, label]) => ({ g, label })),
-          lower: name.toLowerCase(),
-        })))
-        // One list failing to load still leaves the other.
-        .catch(() => null)))
-      .then((lists) => {
-        const ok = lists.filter(Boolean);
-        if (!ok.length) throw new Error("food lists unavailable");
-        // Spoons: USDA foods from their own measures, UK foods borrowing from
-        // the closest USDA food, else a typical density.
-        const all = ok.flat().map((f) => {
-          const d = measuredDensity(f.portions);
-          return d ? { ...f, density: { d, how: "measured" } } : f;
-        });
-        const idx = densityIndex(all);
-        return all.map((f) => {
-          if (f.density) return withSpoons(f, f.density);
-          const d = f.source === "cofid" ? similarDensity(idx, f.name) : null;
-          return withSpoons(f, d ? { d, how: "similar" } : null);
-        });
-      })
+    foodsPromise = fetch(`${import.meta.env.BASE_URL}foods-uk.json`)
+      .then((r) => { if (!r.ok) throw new Error(`foods-uk.json ${r.status}`); return r.json(); })
+      .then((j) => j.foods.map(([name, group, kcal, protein, carbs, fat, fibre, sugar, portions, spoon], i) => withSpoons({
+        id: `cofid:${i}`,
+        name,
+        group,
+        source: "cofid",
+        per100: { kcal, protein, carbs, fat, fibre, sugar },
+        portions: (portions || []).map(([g, label]) => ({ g, label })),
+        lower: name.toLowerCase(),
+      }, spoon > 0 ? { d: spoon, how: "similar" } : null)))
       .catch((e) => { foodsPromise = null; throw e; });
   }
   return foodsPromise;
@@ -94,7 +70,6 @@ export function searchFoods(list, query, limit = 25) {
     if (PROCESSED.test(f.lower)) score += 2;
     if (DELI_GROUPS.has(f.group)) score += 3; // "Chicken breast, oven-roasted, sliced" is deli meat
     score += f.lower.length / 30;
-    if (f.source === "cofid") score -= 1.5; // prefer UK data
     res.push([score, f]);
   }
   return res.sort((a, b) => a[0] - b[0]).slice(0, limit).map(([, f]) => f);
@@ -160,25 +135,6 @@ export async function lookupBarcode(code, { signal } = {}) {
   const j = await res.json();
   const f = j.status === 1 || j.product ? fromOff({ ...j.product, code: clean }) : null;
   return f ? withSpoons(f) : null;
-}
-
-/* ---------- USDA online (Cloudflare Pages Function) ---------- */
-let usdaState = "unknown"; // "unknown" | "on" | "off"
-export const usdaOnlineKnownOff = () => usdaState === "off";
-
-export async function searchUsdaOnline(query, { signal } = {}) {
-  if (usdaState === "off") return null;
-  try {
-    const res = await fetch(`/api/usda?q=${encodeURIComponent(query.trim())}`, { signal });
-    const type = res.headers.get("content-type") || "";
-    if (!res.ok || !type.includes("json")) { if (res.status === 404 || res.status === 503 || !type.includes("json")) usdaState = "off"; return null; }
-    usdaState = "on";
-    const j = await res.json();
-    return (j.foods || []).map((f) => withSpoons({ ...f, source: "usda-online", group: f.group || "USDA" }));
-  } catch (e) {
-    if (e?.name === "AbortError") throw e;
-    return null;
-  }
 }
 
 /* ---------- barcode camera ---------- */

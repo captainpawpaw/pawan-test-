@@ -67,7 +67,7 @@ await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { 
 await p.evaluate(async () => { await navigator.serviceWorker.ready; for (let i = 0; i < 50 && !navigator.serviceWorker.controller; i++) await new Promise(r => setTimeout(r, 100)); });
 check(await p.evaluate(() => Boolean(navigator.serviceWorker.controller)), 'the offline worker is running');
 const cached = await p.evaluate(async () => { const ks = await caches.keys(); const c = await caches.open(ks.find(k => k.startsWith('ledger-') && k !== 'ledger-runtime')); return (await c.keys()).map(r => new URL(r.url).pathname); });
-check(['/', '/foods.json', '/foods-uk.json', '/exercises.json'].every(x => cached.includes(x)) && cached.some(x => x.startsWith('/assets/')), 'the app, exercises and food lists are stored: ' + cached.length + ' files');
+check(['/', '/foods-uk.json', '/exercises.json'].every(x => cached.includes(x)) && cached.some(x => x.startsWith('/assets/')), 'the app, exercises and food lists are stored: ' + cached.length + ' files');
 check(await offline().count() === 0, 'no offline note while online');
 await p.getByText('Connect Google Drive').click(); await waitSynced(p);
 
@@ -88,7 +88,7 @@ check((await p.locator('body').innerText()).includes('Offline squat'), 'still th
 await p.getByRole('button', { name: 'FOOD', exact: true }).click();
 await p.getByRole('button', { name: '+ Add to Lunch' }).click();
 await p.getByLabel('Search foods').fill('banana');
-await p.getByText(/Foods \(UK CoFID and USDA\)/i).waitFor({ timeout: 8000 });
+await p.getByText(/UK foods \(CoFID\)/i).waitFor({ timeout: 8000 });
 check(await p.getByRole('button', { name: /^Bananas?/ }).count() > 0, 'food search works offline');
 check(await p.getByRole('button', { name: 'Branded search needs a connection' }).isDisabled(), 'branded search says it needs a connection');
 await p.getByLabel('Or type a barcode').fill('5000159484695'); await p.getByRole('button', { name: 'Look up' }).click();

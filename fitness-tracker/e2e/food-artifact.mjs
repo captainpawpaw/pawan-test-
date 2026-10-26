@@ -64,7 +64,6 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 
 let external = 0;
 await A.route('https://*.openfoodfacts.org/**', (r) => { external++; r.abort(); });
-await A.route('http://localhost:4190/api/usda*', (r) => { external++; r.abort(); });
 await A.addInitScript(() => {
   window.__saved = []; window.__prompts = [];
   const sample = async () => ({ text: '' });
@@ -84,7 +83,7 @@ await pa.getByRole('button', { name: '+ Add' }).last().click();
 await pa.getByLabel('Search foods').fill('banana');
 await pa.waitForTimeout(900);
 let t = await pa.locator('body').innerText();
-check(t.includes('Bananas, raw'), 'built-in foods work on the claude.ai link');
+check(t.includes('Bananas, flesh only'), 'built-in foods work on the claude.ai link');
 check(!t.includes('Search branded products') && !t.includes('Or type a barcode') && !t.includes('Scan barcode'), 'online-only options hidden');
 check(external === 0, 'no calls to outside services');
 await pa.getByRole('button', { name: 'Describe a meal for Claude' }).click();

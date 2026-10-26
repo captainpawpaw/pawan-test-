@@ -140,13 +140,12 @@ Where the data comes from:
 
 | Source | Where it works | What it covers |
 |---|---|---|
-| UK list (`public/foods-uk.json`) | Everywhere, offline | ~2,850 UK foods and recipes from McCance and Widdowson's Composition of Foods Integrated Dataset (CoFID) 2021, listed first in searches. Contains public sector information licensed under the Open Government Licence v3.0. Rebuild with `python3 scripts/build-foods-uk.py CoFID.xlsx` (file from [GOV.UK](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid)). |
-| US list (`public/foods.json`) | Everywhere, offline | ~8,250 everyday foods with portions, from the USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Rebuild with `node scripts/build-foods.mjs ABBREV.txt FOOD_DES.txt`. |
+| UK list (`public/foods-uk.json`) | Everywhere, offline | ~2,850 UK foods and recipes from McCance and Widdowson's Composition of Foods Integrated Dataset (CoFID) 2021, the only built-in list. Contains public sector information licensed under the Open Government Licence v3.0. Rebuild with `python3 scripts/build-foods-uk.py CoFID.xlsx` (file from [GOV.UK](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid)), then `node scripts/uk-spoons.mjs` to add spoon weights. |
+| Spoon weights | Everywhere, offline | Tablespoons and teaspoons for UK foods come from the closest food in a USDA list kept out of the app (`scripts/data/foods-usda.json`, from the USDA National Nutrient Database for Standard Reference, Release 28, public domain; rebuild with `node scripts/build-foods.mjs ABBREV.txt FOOD_DES.txt`), else a typical density for the kind of food. They're shown as estimates (≈). |
 | Label photos → My foods | Everywhere | Photograph a pack and its nutrition label; the values are read, you check them, and the food is saved to **My foods** (synced, in backups, found by name or barcode next time). On the website the label is read on the device with Tesseract (served from `public/ocr`, copied from `node_modules` by `scripts/copy-ocr.mjs` before each build), any barcode in the photos is looked up on Open Food Facts, and `src/labelParse.js` rebuilds the table from word positions. In the claude.ai artifact Claude reads the photos. |
-| Offline mode | Website | A service worker (`scripts/sw.template.js`, written to `sw.js` with this build's file list by the `offlineWorker` plugin in `vite.config.js`) keeps the app, the exercise library and the food lists on the device, so the app opens and logs with no signal. Pages come from the network when online; the label reader is kept the first time it's used. Drive sync waits while offline and runs when the connection is back; branded search and new barcode look-ups say they need a connection. |
+| Offline mode | Website | A service worker (`scripts/sw.template.js`, written to `sw.js` with this build's file list by the `offlineWorker` plugin in `vite.config.js`) keeps the app, the exercise library and the food list on the device, so the app opens and logs with no signal. Pages come from the network when online; the label reader is kept the first time it's used. Drive sync waits while offline and runs when the connection is back; branded search and new barcode look-ups say they need a connection. |
 | Claude estimates | claude.ai artifact | Describe a meal, or add a photo; results are marked as estimates. |
 | Open Food Facts (UK site) | Website (e.g. Cloudflare Pages) | UK branded products first, barcode lookup and camera scanning. Data © Open Food Facts contributors, ODbL. |
-| USDA FoodData Central online | Website with the Pages Function and a key | More foods and US branded products, through `functions/api/usda.js`. |
 
 ## Deploy on Cloudflare Pages
 
@@ -159,18 +158,12 @@ Where the data comes from:
    - **Build output directory:** `dist`
 3. **Environment variables** (Settings → Variables and secrets), for
    Production and Preview:
-   - `USDA_API_KEY`: a free key from https://fdc.nal.usda.gov/api-key-signup
-     (mark it as a secret). Without it the app still works; USDA online
-     search just stays off.
    - `VITE_GOOGLE_CLIENT_ID`: only if you want Google Drive sync (see above);
      add your `https://<project>.pages.dev` address to the client's
      **Authorized JavaScript origins**.
    - `NODE_VERSION`: `20`
 4. **Save and Deploy.** Each push to the production branch redeploys; other
    branches get preview addresses.
-
-The `functions/` folder is picked up automatically: `/api/usda` runs as a
-Pages Function, so the USDA key never reaches the browser.
 
 Moving data between the claude.ai link and the website: use **Back up or move
 your data** at the bottom of the app to export a file on one and import it on

@@ -119,8 +119,8 @@ check((t.match(/Back Squat/g) || []).length === 1 && !t.includes('max 100kg'), '
 // food
 await pa.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pa.getByRole('button', { name: '+ Add' }).last().click();
-await pa.getByLabel('Search foods').fill('banana raw');
-await pa.getByRole('button', { name: /^Bananas, raw\W*\d/ }).first().click();
+await pa.getByLabel('Search foods').fill('bananas flesh');
+await pa.getByRole('button', { name: /^Bananas, flesh only\W*\d/ }).first().click();
 await pa.getByLabel('Amount').fill('100');
 await pa.getByRole('button', { name: 'Add to day' }).click();
 await pa.getByRole('button', { name: 'Enter manually' }).click();
@@ -128,19 +128,19 @@ await pa.getByLabel('Name').fill('Protein bar'); await pa.getByRole('spinbutton'
 await pa.getByRole('button', { name: 'Add to day' }).click();
 await pa.getByRole('button', { name: 'Done adding' }).click();
 await pa.locator('.ft-card section[aria-label] button[aria-controls^="food-"][aria-expanded="false"]:not([disabled])').first().click(); // open the folded part
-await pa.getByRole('button', { name: 'Edit Bananas, raw' }).click();
+await pa.getByRole('button', { name: 'Edit Bananas, flesh only' }).click();
 await pa.getByLabel('Amount').fill('150');
-check((await pa.locator('form[aria-label="Edit Bananas, raw"]').innerText()).includes('134 kcal'), 'food edit previews rescaled nutrients');
+check((await pa.locator('form[aria-label="Edit Bananas, flesh only"]').innerText()).includes('122 kcal'), 'food edit previews rescaled nutrients');
 await pa.screenshot({ path: 'edit-food.png' });
 await pa.getByRole('button', { name: 'Save changes' }).click();
 t = await pa.locator('body').innerText();
-check(t.includes('150 g') && t.includes('134 kcal'), 'food amount edited');
+check(t.includes('150 g') && t.includes('122 kcal'), 'food amount edited');
 await pa.getByRole('button', { name: 'Edit Protein bar' }).click();
 await pa.locator('form[aria-label="Edit Protein bar"]').getByLabel('Calories').fill('230');
 await pa.locator('form[aria-label="Edit Protein bar"]').getByLabel('Name').fill('Protein bar (choc)');
 await pa.getByRole('button', { name: 'Save changes' }).click();
 t = await pa.locator('body').innerText();
-check(t.includes('Protein bar (choc)') && t.includes('230 kcal') && /364\s*kcal/.test(t), 'manual food numbers and name edited, totals updated');
+check(t.includes('Protein bar (choc)') && t.includes('230 kcal') && /352\s*kcal/.test(t), 'manual food numbers and name edited, totals updated');
 await pa.reload(); await pa.getByRole('button', { name: 'FOOD', exact: true }).click();
 await pa.locator('.ft-card section[aria-label] button[aria-controls^="food-"][aria-expanded="false"]:not([disabled])').first().click();
 check((await pa.locator('body').innerText()).includes('Protein bar (choc)'), 'food edits persist after reload');
