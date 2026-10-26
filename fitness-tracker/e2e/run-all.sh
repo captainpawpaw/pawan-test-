@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Browser tests: builds the app with a test Google client ID, then drives it in
-# Chromium with simulated Google Drive, Open Food Facts, USDA and Claude.
+# Chromium with simulated Google Drive, Open Food Facts and Claude.
 # Needs Playwright: npm install --no-save playwright
 set -euo pipefail
 cd "$(dirname "$0")"

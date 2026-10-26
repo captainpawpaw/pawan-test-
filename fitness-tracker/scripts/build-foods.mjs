@@ -1,4 +1,4 @@
-// Builds public/foods.json from the USDA National Nutrient Database for
+// Builds scripts/data/foods-usda.json from the USDA National Nutrient Database for
 // Standard Reference, Release 28 (public domain). Takes the release's
 // ABBREV.txt and FOOD_DES.txt (e.g. from the fda-nutrient-database npm
 // package's data/ folder):
@@ -51,7 +51,7 @@ for (const f of rows(abbrevPath)) {
   foods.push([d.name, group, Math.round(kcal), r1(num(f[4])), r1(num(f[7])), r1(num(f[5])), r1(num(f[8])), r1(num(f[9])), portions]);
 }
 foods.sort((a, b) => a[0].localeCompare(b[0]));
-fs.writeFileSync(new URL("../public/foods.json", import.meta.url), JSON.stringify({
+fs.writeFileSync(new URL("./data/foods-usda.json", import.meta.url), JSON.stringify({
   source: "USDA National Nutrient Database for Standard Reference, Release 28 (2015). Public domain.",
   fields: ["name", "group", "kcal", "protein", "carbs", "fat", "fibre", "sugar", "portions"],
   foods,

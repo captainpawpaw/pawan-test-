@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { C } from "./theme";
 import {
   NUTRIENTS, MACRO_LABEL, MACRO_UNIT, scale, sumFood, loadFoods, searchFoods,
-  onlineLookupsAllowed, searchOpenFoodFacts, lookupBarcode, searchUsdaOnline, usdaOnlineKnownOff,
+  onlineLookupsAllowed, searchOpenFoodFacts, lookupBarcode,
   cameraAllowed, startBarcodeScan, claudeEstimateAvailable, claudePhotoLimits, estimateWithClaude,
 } from "./food";
 import { withSpoons } from "./spoons.js";
@@ -344,7 +344,6 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
   const [foods, setFoods] = useState(null);
   const [loadErr, setLoadErr] = useState(false);
   const [off, setOff] = useState({ state: "idle", list: [], q: "" });
-  const [usda, setUsda] = useState({ list: [], q: "" });
   const [barcode, setBarcode] = useState("");
   const [barcodeMsg, setBarcodeMsg] = useState("");
   const [canClaude, setCanClaude] = useState(false);
@@ -387,16 +386,6 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
     return (w ? recent.filter((f) => f.name.toLowerCase().includes(w)) : recent).slice(0, w ? 5 : 8);
   }, [recent, q]);
 
-  // USDA online (only on the website, when the Pages Function is set up).
-  useEffect(() => {
-    if (!online || !connected || usdaOnlineKnownOff() || q.trim().length < 3) return;
-    const ctl = new AbortController();
-    const t = setTimeout(() => {
-      searchUsdaOnline(q, { signal: ctl.signal }).then((list) => { if (list) setUsda({ list, q }); }).catch(() => {});
-    }, 600);
-    return () => { clearTimeout(t); ctl.abort(); };
-  }, [q, online, connected]);
-
   const searchOff = async () => {
     setOff({ state: "busy", list: [], q });
     try {
@@ -437,15 +426,13 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
           <li key={f.id}>
             <button type="button" onClick={() => onPick(f)} style={st.result}>
               <span style={st.resultName}>{f.name}</span>
-              <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g{f.group ? ` · ${f.group}` : ""}{f.source === "cofid" ? " · UK" : f.source === "usda" ? " · US" : ""}</span>
+              <span style={st.resultMeta}>{f.per100.kcal} kcal · P {fmtG(f.per100.protein)} g per 100 g{f.group ? ` · ${f.group}` : ""}{f.source === "usda" ? " · US" : ""}</span>
             </button>
           </li>
         ))}
       </ul>}
     </div>
   ) : null;
-
-  const usdaShown = usda.q === q ? usda.list.filter((f) => !local.some((l) => l.name === f.name)).slice(0, 10) : [];
 
   return (
     <div style={st.stack}>
@@ -547,8 +534,7 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
         </div>
       )}
       <ResultList items={recentHits} label={q.trim() ? "Logged before" : "Recent"} fold="recent" />
-      <ResultList items={local.slice(0, 15)} label="Foods (UK CoFID and USDA)" />
-      <ResultList items={usdaShown} label="More from USDA online" />
+      <ResultList items={local.slice(0, 15)} label="UK foods (CoFID)" />
       {q.trim().length >= 2 && foods && !local.length && !recentHits.length && <span style={st.note}>No match in the built-in list.</span>}
 
     </div>

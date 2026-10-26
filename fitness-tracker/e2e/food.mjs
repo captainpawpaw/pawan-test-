@@ -62,7 +62,7 @@ const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
 
-let offCalls = 0, usdaCalls = 0;
+let offCalls = 0;
 async function foodRoutes(ctx) {
   await ctx.route('https://*.openfoodfacts.org/**', async (r) => {
     offCalls++;
@@ -73,10 +73,6 @@ async function foodRoutes(ctx) {
       { code: '111', product_name: 'Greek Style Yogurt', brands: 'Fage', serving_quantity: 170, serving_size: '170 g', nutriments: { 'energy-kcal_100g': 97, proteins_100g: 9, carbohydrates_100g: 3, fat_100g: 5 } },
       { code: '222', product_name: 'No nutrition', nutriments: {} } ] }) });
     r.fulfill({ status: 404, body: '' });
-  });
-  await ctx.route('http://localhost:4190/api/usda*', async (r) => {
-    usdaCalls++;
-    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ foods: [{ id: 'fdc:9', name: 'Skyr, plain (Icelandic Provisions)', group: 'Branded (USDA)', per100: { kcal: 63, protein: 11, carbs: 4, fat: 0.2, fibre: 0, sugar: 3 }, portions: [{ g: 150, label: '1 serving' }] }] }) });
   });
 }
 await foodRoutes(A); await foodRoutes(B);
@@ -102,49 +98,45 @@ const addBtn = pa.getByRole('button', { name: '+ Add' }).last();
 await addBtn.click();
 const offIdle = pa.getByRole('button', { name: 'Search branded products (type a name above)' });
 check(await offIdle.isVisible() && await offIdle.isDisabled(), 'branded search always shown, waiting for a name');
-await pa.getByLabel('Search foods').fill('chicken breast roasted');
+await pa.getByLabel('Search foods').fill('chicken breast grilled');
 const first = pa.locator('ul li button').first();
 await first.waitFor();
 const firstName = await first.locator('span').first().innerText();
-check(/^Chicken, broilers or fryers, breast/.test(firstName), 'built-in search ranks: ' + firstName);
+check(/^Chicken, breast, grilled/.test(firstName), 'built-in search ranks: ' + firstName);
 await pa.screenshot({ path: 'food-search.png' });
-await pa.getByRole('button', { name: /Chicken, broilers or fryers, breast, meat only, cooked, roasted/ }).first().click();
+await pa.getByRole('button', { name: /^Chicken, breast, grilled without skin, meat only/ }).first().click();
 await pa.getByLabel('Amount').fill('150');
 t = await pa.locator('body').innerText();
-check(t.includes('248 kcal') && t.includes('Protein 46.5 g'), 'amount preview scales per 100 g (165 kcal x 1.5)');
+check(t.includes('222 kcal') && t.includes('Protein 48 g'), 'amount preview scales per 100 g (148 kcal x 1.5)');
 await pa.getByRole('button', { name: 'Add to day' }).click();
 check((await pa.getByRole('status').allInnerTexts()).some(x => x.includes('Added Chicken')), 'added message');
 
-// UK foods (CoFID) come first and say where they're from
+// the built-in list is UK data (CoFID)
 await pa.getByLabel('Search foods').fill('cheddar english');
 const ukFirst = pa.locator('ul li button').first();
 await ukFirst.waitFor();
 const ukText = (await ukFirst.innerText()).replace(/\s+/g, ' ');
-check(ukText.startsWith('Cheese, Cheddar, English') && ukText.includes('416 kcal') && ukText.endsWith('· UK'), 'UK CoFID food found: ' + ukText);
+check(ukText.startsWith('Cheese, Cheddar, English') && ukText.includes('416 kcal') && !ukText.includes('· US'), 'UK CoFID food found: ' + ukText);
+check(await pa.getByText('UK foods (CoFID)', { exact: true }).count() === 1, 'the list is labelled as UK foods');
 await pa.screenshot({ path: 'food-uk.png' });
 
 // portion unit
-await pa.getByLabel('Search foods').fill('egg whole raw fresh');
-await pa.getByRole('button', { name: /^Egg, whole, raw, fresh/ }).first().click();
+await pa.getByLabel('Search foods').fill('eggs whole raw');
+await pa.getByRole('button', { name: /^Eggs, chicken, whole, raw/ }).first().click();
 const unitOpts = await pa.getByLabel('Unit').locator('option').allTextContents();
 check(unitOpts.some(o => /^1 tbsp \((≈ )?[\d.]+ g\)$/.test(o)) && unitOpts.some(o => /^1 tsp \((≈ )?[\d.]+ g\)$/.test(o)), 'tbsp and tsp offered: ' + unitOpts.join(' | '));
 await pa.getByLabel('Unit').selectOption({ label: unitOpts.find(o => o.startsWith('1 tbsp')) });
 check(!unitOpts.find(o => o.startsWith('1 tbsp')).includes('≈') || (await pa.locator('body').innerText()).includes('Spoon weight is an estimate'), 'estimated spoon weights say so');
 await pa.screenshot({ path: 'food-spoons.png' });
-await pa.getByLabel('Unit').selectOption({ label: '1 large (50 g)' });
-await pa.getByLabel('Amount').fill('2');
+await pa.getByLabel('Unit').selectOption({ label: 'grams' });
+await pa.getByLabel('Amount').fill('100');
 await pa.getByRole('button', { name: 'Add to day' }).click();
-
-// USDA online (Pages Function) appears on the website
-await pa.getByLabel('Search foods').fill('skyr');
-await pa.getByText('More from USDA online').waitFor({ timeout: 5000 });
-check(usdaCalls >= 1, 'USDA online function queried');
 
 // Open Food Facts on demand
 await pa.getByLabel('Search foods').fill('greek yogurt');
 check(!(await pa.locator('body').innerText()).includes('Branded products (Open Food Facts)'), 'branded search waits for a tap');
 const offBtn = pa.getByRole('button', { name: /Search branded products for/ });
-const offY = (await offBtn.boundingBox()).y, firstSuggestion = await pa.getByText(/^(Recent|Logged before|My foods|Foods \(UK CoFID and USDA\))$/).first().boundingBox();
+const offY = (await offBtn.boundingBox()).y, firstSuggestion = await pa.getByText(/^(Recent|Logged before|My foods|UK foods \(CoFID\))$/).first().boundingBox();
 check(!firstSuggestion || offY < firstSuggestion.y, 'branded search sits above the suggestions');
 const searchY = (await pa.getByLabel('Search foods').boundingBox()).y, manualY = (await pa.getByRole('button', { name: 'Enter manually' }).boundingBox()).y, barcodeY = (await pa.getByLabel('Or type a barcode').boundingBox()).y;
 check(manualY < barcodeY && barcodeY < searchY && searchY < offY, 'photo, barcode and manual options sit above the search box, with branded search right under it');
@@ -174,9 +166,9 @@ await pa.getByRole('button', { name: 'Done adding' }).click();
 await pa.locator('.ft-card section[aria-label] button[aria-controls^="food-"][aria-expanded="false"]:not([disabled])').first().click(); // open the folded part
 
 t = await pa.locator('body').innerText();
-// 248 + 2 eggs 143 + yogurt 165 + chocolate 240 + bar 200 = 996
-check(t.includes('996') && t.includes('1,204 kcal left'), 'day total calories: ' + (t.match(/[\d,]+ \/ 2,200 kcal|[\d,]+ kcal left/g) || []).join(' '));
-check(t.includes('2 × 1 large'), 'portion shown on the entry');
+// chicken 222 + egg 131 + yogurt 165 + chocolate 240 + bar 200 = 958
+check(t.includes('958') && t.includes('1,242 kcal left'), 'day total calories: ' + (t.match(/[\d,]+ \/ 2,200 kcal|[\d,]+ kcal left/g) || []).join(' '));
+check(t.includes('× 1 serving'), 'portion shown on the entry');
 await pa.screenshot({ path: 'food-day.png', fullPage: true });
 
 // delete one: the row has no buttons of its own; Delete is in the edit form
@@ -184,7 +176,7 @@ check(await pa.getByRole('button', { name: 'Delete Protein bar' }).count() === 0
 await pa.getByRole('button', { name: 'Edit Protein bar' }).click();
 await pa.screenshot({ path: 'food-edit-delete.png' });
 await pa.getByRole('button', { name: 'Delete Protein bar' }).click();
-check((await pa.locator('body').innerText()).includes('1,404 kcal left'), 'delete updates totals');
+check((await pa.locator('body').innerText()).includes('1,442 kcal left'), 'delete updates totals');
 
 // recent foods
 await pa.getByRole('button', { name: '+ Add' }).last().click();
@@ -227,7 +219,7 @@ await pb.getByRole('button', { name: 'Import', exact: true }).click();
 await pb.getByText(/^Imported\./).waitFor();
 await pb.getByRole('button', { name: 'FOOD', exact: true }).click();
 t = await pb.locator('body').innerText();
-check(t.includes('1,404 kcal left'), 'import shows food on the other device without reload');
+check(t.includes('1,442 kcal left'), 'import shows food on the other device without reload');
 await pb.getByLabel('Import a backup file').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
 check(await pb.getByText("That file isn't a Training Ledger backup.").waitFor({ timeout: 5000 }).then(() => true, () => false), 'bad file rejected');
 await backupPanel(pb).getByRole('button', { name: 'Close' }).click();
