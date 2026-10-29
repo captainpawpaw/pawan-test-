@@ -304,6 +304,7 @@ function AddFood({ slotLabel, recent, onAdd, onDone, myFoods, onSaveMyFood, onRe
 
   return (
     <div style={st.addBox}>
+      <button type="button" onClick={onDone} style={{ ...st.linkBtn, alignSelf: "flex-end" }}>Done adding</button>
       {flash && mode === "search" && <div role="status" style={st.flash}>{flash}</div>}
       {mode === "search" && (
         <FoodSearch
@@ -326,7 +327,6 @@ function AddFood({ slotLabel, recent, onAdd, onDone, myFoods, onSaveMyFood, onRe
       {mode === "manual" && <ManualFood onAdd={added} onBack={() => setMode("search")} />}
       {mode === "claude" && <ClaudeEstimate onAdd={(items) => { onAdd(items); setFlash(`Added ${items.length} item${items.length === 1 ? "" : "s"} from Claude's estimate.`); setMode("search"); }} onBack={() => setMode("search")} />}
       {mode === "scan" && <BarcodeScan onFound={pick} onBack={() => setMode("search")} myFoods={myFoods} />}
-      <button type="button" onClick={onDone} style={{ ...st.linkBtn, alignSelf: "flex-end" }}>Done adding</button>
       <span style={st.note}>UK foods: McCance and Widdowson’s CoFID 2021. Contains public sector information licensed under the Open Government Licence v3.0.</span>
     </div>
   );
@@ -361,6 +361,12 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
     return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
   }, []);
   const inputRef = useRef(null);
+  // On a phone the keyboard covers the lower half of the screen: once it's up,
+  // bring the search box to the top so the results show above it.
+  const searchToTop = () => {
+    if (!window.matchMedia?.("(hover: none)").matches) return;
+    setTimeout(() => inputRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 350);
+  };
 
   useEffect(() => {
     let live = true;
@@ -458,11 +464,12 @@ function FoodSearch({ recent, onPick, onMode, myFoods = [], onRemoveMyFood, meal
       <input
         id="food-search"
         ref={inputRef}
+        onFocus={searchToTop}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="e.g. chicken breast, oats, banana"
         autoComplete="off"
-        style={{ ...st.input, width: "100%" }}
+        style={{ ...st.input, width: "100%", scrollMarginTop: 40 }}
       />
       {loadErr && <span style={st.error}>The food list didn't load. Check your connection and reopen this.</span>}
       {!foods && !loadErr && <span style={st.note}>Loading foods…</span>}
