@@ -292,6 +292,18 @@ export default function App() {
 
   useEffect(() => { loadTags(); }, [loadTags]);
 
+  // On a touch screen, typing brings up the keyboard: the bottom bar goes
+  // while it's up, so it doesn't sit over what's being typed and its results.
+  useEffect(() => {
+    if (!window.matchMedia?.("(hover: none)").matches) return;
+    const typing = (el) => el?.matches?.('textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="button"], [type="submit"])');
+    const on = (e) => { if (typing(e.target)) document.documentElement.dataset.keyboard = ""; };
+    const off = () => setTimeout(() => { if (!typing(document.activeElement)) delete document.documentElement.dataset.keyboard; }, 50);
+    document.addEventListener("focusin", on);
+    document.addEventListener("focusout", off);
+    return () => { document.removeEventListener("focusin", on); document.removeEventListener("focusout", off); delete document.documentElement.dataset.keyboard; };
+  }, []);
+
   const loadImported = useCallback(async () => {
     try {
       const res = await storage.get("exercises", false);
@@ -836,6 +848,7 @@ export default function App() {
         /* Room for the bottom navigation bar and the phone's home indicator. */
         .ft-page { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
         .ft-bottom-nav { padding-bottom: env(safe-area-inset-bottom, 0px); }
+        html[data-keyboard] .ft-bottom-nav { display: none !important; }
       `}</style>
 
       <header className="ft-masthead" style={styles.header}>
