@@ -25,6 +25,8 @@ await p.getByRole('button', { name: '+ Add to Lunch' }).click();
 const search = p.getByLabel('Search foods');
 const doneY = (await p.getByRole('button', { name: 'Done adding' }).boundingBox()).y, searchY = (await search.boundingBox()).y;
 check(await p.getByRole('button', { name: 'Done adding' }).count() === 1 && doneY < searchY, 'Done adding sits at the top of the add box, above the search');
+const doneLook = await p.getByRole('button', { name: 'Done adding' }).evaluate(e => { const c = getComputedStyle(e); return { bg: c.backgroundColor, h: e.getBoundingClientRect().height, u: c.textDecorationLine }; });
+check(doneLook.bg !== 'rgba(0, 0, 0, 0)' && doneLook.h >= 44 && doneLook.u === 'none', 'Done adding is a filled button, big enough to tap: ' + JSON.stringify(doneLook));
 await p.locator('body').click({ position: { x: 5, y: 5 } }); await p.waitForTimeout(100);
 check(await nav.isVisible(), 'bottom bar shows when nothing is being typed');
 await search.tap(); await search.fill('chi');

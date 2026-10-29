@@ -304,7 +304,7 @@ function AddFood({ slotLabel, recent, onAdd, onDone, myFoods, onSaveMyFood, onRe
 
   return (
     <div style={st.addBox}>
-      <button type="button" onClick={onDone} style={{ ...st.linkBtn, alignSelf: "flex-end" }}>Done adding</button>
+      <button type="button" onClick={onDone} style={st.doneBtn}><span aria-hidden="true">✓ </span>Done adding</button>
       {flash && mode === "search" && <div role="status" style={st.flash}>{flash}</div>}
       {mode === "search" && (
         <FoodSearch
@@ -1072,6 +1072,8 @@ const st = {
   fill: { height: "100%", background: plum, borderRadius: 4 },
   meterNote: { fontFamily: mono, fontSize: 11, color: inkFaint },
   macroLine: { fontFamily: mono, fontSize: 11, color: inkFaint, display: "flex", flexWrap: "wrap", gap: "2px 10px", alignItems: "baseline" },
+  // A tinted button: clear to see, without competing with the filled Close above it.
+  doneBtn: { alignSelf: "flex-end", fontFamily: mono, fontSize: 13, fontWeight: 600, color: plum, background: plumSoft, border: "none", borderRadius: 4, padding: "10px 16px", minHeight: 44 },
   linkBtn: { fontFamily: mono, fontSize: 11, color: plum, background: "none", border: "none", padding: 0, textDecoration: "underline" },
   targetForm: { display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" },
   rows: { display: "flex", flexDirection: "column", gap: 6 },
