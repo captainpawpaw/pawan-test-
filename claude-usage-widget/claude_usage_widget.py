@@ -41,6 +41,8 @@ DEFAULTS = {
     "interval": 60,  # seconds between refreshes
     "alert_at": 80,  # percent; bars turn amber and you get a beep
     "on_top": True,
+    "fade": True,  # fade out when the mouse isn't over the widget
+    "faded_opacity": 25,  # percent
     "x": None,
     "y": None,
 }
@@ -303,6 +305,8 @@ class Widget:
         self.fetching = False
         self.next_fetch = None
         self.status = ("Loading…", MUTED)
+        self.alpha = 1.0
+        self.solid_until = time.time() + 3  # stay visible briefly after starting
 
         self.root = root = tk.Tk()
         root.title(APP_NAME)
@@ -339,6 +343,8 @@ class Widget:
         self.menu.add_command(label="Settings…", command=self.open_settings)
         self.on_top_var = tk.BooleanVar(value=bool(self.cfg["on_top"]))
         self.menu.add_checkbutton(label="Always on top", variable=self.on_top_var, command=self.toggle_on_top)
+        self.fade_var = tk.BooleanVar(value=bool(self.cfg["fade"]))
+        self.menu.add_checkbutton(label="Fade when not hovered", variable=self.fade_var, command=self.toggle_fade)
         self.menu.add_separator()
         self.menu.add_command(label="Quit", command=self.quit)
         root.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
@@ -346,6 +352,7 @@ class Widget:
         self.render()
         self.refresh_now()
         self.tick()
+        self.update_fade()
 
     # --- window placement -------------------------------------------------
 
@@ -371,6 +378,31 @@ class Widget:
         self.cfg["on_top"] = self.on_top_var.get()
         self.root.attributes("-topmost", self.cfg["on_top"])
         save_config(self.cfg)
+
+    def toggle_fade(self):
+        self.cfg["fade"] = self.fade_var.get()
+        save_config(self.cfg)
+
+    def update_fade(self):
+        """Runs every 30 ms: fades the widget out when the mouse isn't over it."""
+        now = time.time()
+        root = self.root
+        px, py = root.winfo_pointerxy()
+        x, y = root.winfo_rootx(), root.winfo_rooty()
+        if x <= px < x + root.winfo_width() and y <= py < y + root.winfo_height():
+            self.solid_until = max(self.solid_until, now + 1)  # linger a moment after leaving
+        settings_open = getattr(self, "settings_win", None) is not None and self.settings_win.winfo_exists()
+        if not self.cfg["fade"] or settings_open or now < self.solid_until:
+            target = 1.0
+        else:
+            target = min(100, max(5, int(self.cfg["faded_opacity"]))) / 100
+        if abs(self.alpha - target) > 0.001:
+            if target > self.alpha:
+                self.alpha = min(target, self.alpha + 0.15)  # fade in quickly
+            else:
+                self.alpha = max(target, self.alpha - 0.04)  # fade out gently
+            root.attributes("-alpha", self.alpha)
+        root.after(30, self.update_fade)
 
     # --- refreshing ---------------------------------------------------------
 
@@ -434,6 +466,7 @@ class Widget:
                 self.alerted.discard(key)
         if crossed:
             beep()
+            self.solid_until = time.time() + 5  # show the warning before fading again
             self.status = (f"Over {threshold:.0f}%: {', '.join(crossed)}", AMBER)
 
     # --- drawing ----------------------------------------------------------
@@ -520,9 +553,17 @@ class Widget:
         ttk.Spinbox(frm, from_=10, to=100, increment=5, textvariable=alert_at, width=8).grid(
             row=8, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
 
+        fade = tk.BooleanVar(value=bool(self.cfg["fade"]))
+        ttk.Checkbutton(frm, text="Fade when the mouse isn't over it", variable=fade).grid(
+            row=9, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(frm, text="Faded opacity (%)").grid(row=10, column=0, sticky="w", pady=(6, 0))
+        faded_opacity = tk.IntVar(value=int(self.cfg["faded_opacity"]))
+        ttk.Spinbox(frm, from_=5, to=100, increment=5, textvariable=faded_opacity, width=8).grid(
+            row=10, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+
         autostart = tk.BooleanVar(value=get_autostart())
         auto_cb = ttk.Checkbutton(frm, text="Start with Windows", variable=autostart)
-        auto_cb.grid(row=9, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        auto_cb.grid(row=11, column=0, columnspan=2, sticky="w", pady=(8, 0))
         if sys.platform != "win32":
             auto_cb.state(["disabled"])
 
@@ -530,6 +571,7 @@ class Widget:
             try:
                 new_interval = max(15, int(interval.get()))
                 new_alert = min(100, max(1, int(alert_at.get())))
+                new_opacity = min(100, max(5, int(faded_opacity.get())))
             except (tk.TclError, ValueError):
                 messagebox.showerror("Settings", "Please enter whole numbers.", parent=win)
                 return
@@ -537,7 +579,9 @@ class Widget:
             if new_key != self.cfg["session_key"]:
                 self.cfg["org_id"] = ""  # a new key may belong to a different account
             self.cfg.update(auth=auth.get(), session_key=new_key,
-                            interval=new_interval, alert_at=new_alert)
+                            interval=new_interval, alert_at=new_alert,
+                            fade=fade.get(), faded_opacity=new_opacity)
+            self.fade_var.set(self.cfg["fade"])
             save_config(self.cfg)
             if sys.platform == "win32":
                 try:
@@ -549,7 +593,7 @@ class Widget:
             self.refresh_now()
 
         buttons = ttk.Frame(frm)
-        buttons.grid(row=10, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        buttons.grid(row=12, column=0, columnspan=2, sticky="e", pady=(14, 0))
         ttk.Button(buttons, text="Cancel", command=win.destroy).pack(side="right")
         ttk.Button(buttons, text="Save", command=save).pack(side="right", padx=(0, 6))
 

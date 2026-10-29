@@ -32,6 +32,7 @@ The session key works like a password for your Claude account. It is saved only 
 
 - **Drag** the title bar to move the widget. It remembers where you put it.
 - **⟳** refreshes now, **⚙** opens Settings, **✕** quits.
+- It **fades** to 25% opacity when the mouse isn't over it, and comes back as soon as you hover. It also stays fully visible for a few seconds when a limit passes your warning level. Turn fading off with right-click → *Fade when not hovered*, or change how faint it gets in Settings.
 - **Right-click** anywhere on the widget for the same options, plus *Always on top*.
 - In Settings you can set the refresh interval (60 seconds by default, minimum 15), the warning level, and **Start with Windows**.
 
