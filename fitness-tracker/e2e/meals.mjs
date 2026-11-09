@@ -127,6 +127,7 @@ await pa.screenshot({ path: 'food-parts.png', fullPage: true });
 await pa.getByRole('button', { name: 'Calendar', exact: true }).click();
 await pa.locator('#month-calendar').getByRole('button', { name: /^1$/ }).first().click();
 await pa.getByRole('button', { name: '+ Add to Lunch' }).click();
+await pa.getByText(/^Recent$/i).waitFor({ timeout: 5000 }).catch(() => {}); // it's filled in a moment after the box opens
 const mealsY = (await pa.getByText(/^Meals · one tap adds them all$/i).boundingBox())?.y, recentY = (await pa.getByText(/^Recent$/i).boundingBox())?.y;
 check(mealsY != null && recentY != null && mealsY < recentY && (await body(pa)).includes('Porridge oats + Skyr + Banana'), 'Meals listed first when adding');
 const recentBtn = pa.getByRole('button', { name: /^Recent \d/ });

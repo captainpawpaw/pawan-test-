@@ -88,7 +88,9 @@ const mt = await p.locator('#cal-title').textContent();
 check(mt.toUpperCase().startsWith(plus(-today.getDate()).toLocaleDateString('en-US', { month: 'long' }).toUpperCase()), 'and the month changes with it: ' + mt);
 await p.getByRole('button', { name: 'Next day' }).click();
 check(await label() === fmtDay(plus(1 - today.getDate())), 'and forward again into this month');
-await swipe(320, 600, 80, 610);
+// start on plain page, not a text box: those keep sideways drags for themselves
+const plainY = (await p.locator('.ft-section').nth(0).boundingBox()).y + 12;
+await swipe(200, plainY, 20, plainY + 10);
 check(await tab() === 'FOOD', 'swiping below the heading still changes tab');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();
