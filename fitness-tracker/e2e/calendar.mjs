@@ -56,8 +56,10 @@ const status = p => p.locator('header').innerText();
 const waitSynced = p => p.getByText(/^Synced /).waitFor({ timeout: 8000 });
 
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
-const A = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(A);
-const B = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(B);
+// The checks below name October 2026 dates, so the browser's clock is held there.
+const NOW = new Date('2026-10-20T12:00:00');
+const A = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(A); await A.clock.setFixedTime(NOW);
+const B = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(B); await B.clock.setFixedTime(NOW);
 const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
@@ -115,7 +117,7 @@ check(await tab(pa).count() === 0, 'no calendar tab on the exercises tab');
 await pa.getByRole('button', { name: 'LOG', exact: true }).click();
 
 // phone: tap to open, tap a day to close, tap outside to close
-const M = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }); await setup(M);
+const M = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }); await setup(M); await M.clock.setFixedTime(NOW);
 const pm = await M.newPage(); pm.on('pageerror', (e) => errs.push(e.message));
 await pm.goto('http://localhost:4190/?tab=log'); await pm.getByText('STRENGTH').waitFor();
 check(!(await drawer(pm).isVisible()), 'phone: tucked away at first');

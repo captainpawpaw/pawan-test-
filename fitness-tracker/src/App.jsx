@@ -843,6 +843,19 @@ export default function App() {
         @media (max-width: 720px) {
           input, select, textarea { font-size: 16px !important; }
         }
+        /* Touch targets. Apple's Human Interface Guidelines and WCAG 2.5.5 ask for
+           at least 44 x 44 px for anything tapped with a finger and Material
+           Design asks for 48, so on touch screens and phone-width windows every
+           control gets the larger, 48. Two can't without breaking their layout and
+           keep WCAG 2.5.8's 24 px minimum: the calendar's day cells (seven to a
+           row) and the calendar tab on the screen edge, both 48 or taller. */
+        @media (pointer: coarse), (max-width: 720px) {
+          button, select, summary, [role="button"], label:has(input[type="file"]) { min-height: 48px !important; min-width: 48px !important; }
+          input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), textarea { min-height: 48px !important; }
+          label:has(input[type="file"]) { display: inline-flex !important; align-items: center; justify-content: center; }
+          summary { padding-top: 15px !important; padding-bottom: 15px !important; }
+          .ft-cal-day, .ft-cal-tab { min-width: 0 !important; }
+        }
         /* Example text in empty boxes: clearly fainter than anything typed. */
         ::placeholder { color: var(--ft-ink-faint); opacity: 0.45; }
         /* Room for the bottom navigation bar and the phone's home indicator. */
@@ -1025,6 +1038,7 @@ export default function App() {
               <button
                 key={i}
                 type="button"
+                className="ft-cal-day"
                 aria-pressed={isSelected}
                 aria-current={isToday ? "date" : undefined}
                 onClick={(e) => { setSelected(day); calPickedAt.current = Date.now(); closeCal(e.detail === 0); }}

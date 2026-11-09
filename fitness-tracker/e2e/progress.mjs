@@ -56,8 +56,10 @@ const status = p => p.locator('header').innerText();
 const waitSynced = p => p.getByText(/^Synced /).waitFor({ timeout: 8000 });
 
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
-const A = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(A);
-const B = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(B);
+// The checks below name October 2026 dates, so the browser's clock is held there.
+const NOW = new Date('2026-10-20T12:00:00');
+const A = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(A); await A.clock.setFixedTime(NOW);
+const B = await b.newContext({ viewport: { width: 420, height: 900 } }); await setup(B); await B.clock.setFixedTime(NOW);
 const pa = await A.newPage(), pb = await B.newPage();
 const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.message));
 
@@ -172,6 +174,7 @@ await pa.locator('[role="img"]').evaluate((el) => {
   for (let k = 1; k <= 10; k++) { ev('pointermove', 1, cx - 100 + k * 8); ev('pointermove', 2, cx + 100 - k * 8); }
   ev('pointerup', 1, cx - 20); ev('pointerup', 2, cx + 20);
 });
+await pa.waitForFunction(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some(b => /^(Weekly|Monthly)$/.test(b.innerText.trim())), null, { timeout: 3000 }).catch(() => {});
 check(['Weekly', 'Monthly'].includes(await scaleOn()), 'pinch in with two fingers zooms out: ' + await scaleOn());
 
 // tap shows a value

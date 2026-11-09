@@ -244,7 +244,7 @@ export const THEME_CSS = `
   html[data-theme] .ft-page :is(input, select, textarea):focus { outline: none; border-bottom-color: var(--ft-ink) !important; }
   html[data-theme] .ft-bottom-nav { border-top-color: transparent !important; box-shadow: none !important; }
   html[data-theme] .ft-cal-label { display: none; }
-  html[data-theme] .ft-cal-tab { min-height: 44px; justify-content: center; }
+  html[data-theme] .ft-cal-tab { min-height: 48px; justify-content: center; }
   /* Text that appears only while it is needed */
   html[data-theme] :is(.ft-hint, .ft-reveal, .ft-bottom-nav .ft-nav-label) { transition: opacity 0.15s; }
   html[data-theme] :is(.ft-hint, .ft-reveal) { opacity: 0; }
