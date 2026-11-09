@@ -32,7 +32,7 @@ const scan = async (where) => {
     }
     return out;
   });
-  for (const r of rows) if (r.w < 44 || r.h < 44) { const k = `${r.tag}|${r.name}`; if (!seen.has(k)) seen.set(k, { ...r, where }); }
+  for (const r of rows) if (r.w < 48 || r.h < 48) { const k = `${r.tag}|${r.name}`; if (!seen.has(k)) seen.set(k, { ...r, where }); }
 };
 const tab = (n) => p.locator('.ft-bottom-nav').getByRole('button', { name: n }).click();
 await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor();
@@ -66,16 +66,16 @@ await p.evaluate(() => document.activeElement?.blur()); await p.waitForTimeout(2
 await p.locator('.ft-bottom-nav button').nth(2).click(); await p.waitForTimeout(400); await scan('tab3');
 await p.locator('.ft-bottom-nav button').nth(3).click(); await p.waitForTimeout(600); await scan('progress');
 const small = [...seen.values()];
-const allowed = (r) => (r.cls === 'ft-cal-tab' || r.cls === 'ft-cal-day') && r.w >= 24 && r.h >= 44;
+const allowed = (r) => (r.cls === 'ft-cal-tab' || r.cls === 'ft-cal-day') && r.w >= 24 && r.h >= 48;
 const bad = small.filter(r => !allowed(r));
-check(bad.length === 0, 'every control on a phone is at least 44 x 44 px' + (bad.length ? ': ' + JSON.stringify(bad.slice(0, 8)) : ''));
-check(small.filter(allowed).length <= 2, 'only the calendar tab and day cells are narrower, and both are 44 px tall: ' + small.filter(allowed).map(r => `${r.name} ${r.w}x${r.h}`).join(', '));
+check(bad.length === 0, 'every control on a phone is at least 48 x 48 px' + (bad.length ? ': ' + JSON.stringify(bad.slice(0, 8)) : ''));
+check(small.filter(allowed).length <= 2, 'only the calendar tab and day cells are narrower, and both are 48 px or taller: ' + small.filter(allowed).map(r => `${r.name} ${r.w}x${r.h}`).join(', '));
 check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'nothing pushes the page wider than the screen');
 // with a mouse on a wide screen the compact sizes stay
 const d = await (await b.newContext({ viewport: { width: 1100, height: 800 } })).newPage();
 await d.route('https://accounts.google.com/**', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
 await d.goto('http://localhost:4190/?tab=log'); await d.getByText('STRENGTH', { exact: true }).waitFor();
 const menuH = (await d.getByRole('button', { name: 'Menu' }).boundingBox()).height;
-check(menuH < 44, 'desktop with a mouse keeps its compact buttons: Menu is ' + menuH + ' px');
+check(menuH < 48, 'desktop with a mouse keeps its compact buttons: Menu is ' + menuH + ' px');
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();
