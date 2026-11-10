@@ -2319,7 +2319,7 @@ function ImportPanel({ library, onImport, onClose }) {
             value={r.name}
             onChange={(e) => update(r.key, { name: e.target.value })}
             aria-label="Exercise name"
-            style={{ ...styles.input, flex: "1 1 160px", minWidth: 0, fontSize: 13, padding: "5px 7px" }}
+            style={{ ...styles.input, flex: "1 1 160px", minWidth: 0, fontSize: 16, padding: "5px 7px" }}
           />
           {r.inLibrary ? (
             <span style={styles.importBadge}>In library</span>
@@ -2360,7 +2360,7 @@ function ImportPanel({ library, onImport, onClose }) {
             }}
             placeholder="+ tag"
             aria-label={`Add a tag to ${r.name}`}
-            style={{ ...styles.input, width: 90, fontSize: 12, padding: "2px 7px", fontFamily: "'IBM Plex Mono', monospace" }}
+            style={{ ...styles.input, width: 90, fontSize: 14, padding: "2px 7px", fontFamily: "'IBM Plex Mono', monospace" }}
           />
         </div>
       </div>
@@ -2401,7 +2401,7 @@ function ImportPanel({ library, onImport, onClose }) {
             placeholder="Paste the page here"
             aria-label="Pasted web page"
             rows={6}
-            style={{ ...styles.input, width: "100%", resize: "vertical", fontSize: 13 }}
+            style={{ ...styles.input, width: "100%", resize: "vertical", fontSize: 16 }}
           />
           {html && <div style={styles.importNote}>Page layout kept: tables, lists and headings will be read.</div>}
           <div style={styles.importBtnRow}>
@@ -2474,7 +2474,7 @@ function ImportPanel({ library, onImport, onClose }) {
               onChange={(e) => setExtraTag(e.target.value)}
               placeholder="e.g. greek god"
               aria-label="Tag for every imported exercise"
-              style={{ ...styles.input, flex: 1, minWidth: 0, fontSize: 12, padding: "5px 7px" }}
+              style={{ ...styles.input, flex: 1, minWidth: 0, fontSize: 14, padding: "5px 7px" }}
             />
           </label>
           <div style={styles.importBtnRow}>
@@ -2571,12 +2571,12 @@ const styles = {
   headerRight: { display: "flex", alignItems: "flex-start", gap: 8, marginLeft: "auto" },
   menuBtn: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, flex: "none", color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
   menu: { position: "absolute", top: 58, right: 16, zIndex: 20, width: 250, maxHeight: "calc(100dvh - 90px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
-  menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
-  menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
+  menuHeading: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase", color: inkFaint, padding: "4px 8px 6px" },
+  menuItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
   menuItemOn: { fontWeight: 600, background: paper },
-  menuValue: { fontSize: 12, color: inkFaint, whiteSpace: "nowrap" },
-  menuChev: { fontSize: 16, color: inkFaint, marginLeft: 2 },
-  menuNote: { margin: "2px 8px 6px", fontSize: 12, lineHeight: 1.4, color: inkFaint },
+  menuValue: { fontSize: 14, color: inkFaint, whiteSpace: "nowrap" },
+  menuChev: { fontSize: 17, color: inkFaint, marginLeft: 2 },
+  menuNote: { margin: "2px 8px 6px", fontSize: 14, lineHeight: 1.4, color: inkFaint },
   menuRule: { height: 1, background: line, margin: "4px 8px" },
   menuBack: { color: inkFaint, borderBottom: `1px solid ${line}`, borderRadius: 0, marginBottom: 4 },
   themeSwatch: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 2, width: 26, height: 26, borderRadius: "50%", border: "1px solid" },
@@ -2584,10 +2584,10 @@ const styles = {
   logoBadge: { display: "block", width: 44, height: 44, borderRadius: "50%", flex: "none" },
   brand: { display: "flex", alignItems: "center", gap: 8, paddingTop: 2 },
   eyebrowRow: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "4px 12px", marginBottom: 6 },
-  offlineNote: { margin: "10px 0 0", padding: "8px 10px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, lineHeight: 1.4, color: ink, background: raised, border: `1px solid ${line}`, borderRadius: 4 },
+  offlineNote: { margin: "10px 0 0", padding: "8px 10px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, lineHeight: 1.4, color: ink, background: raised, border: `1px solid ${line}`, borderRadius: 4 },
   syncNotice: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: ink,
     background: raised,
     border: `1px solid ${rust}`,
@@ -2598,15 +2598,15 @@ const styles = {
   driveIconBtn: { position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 34, padding: 0, background: "none", border: "none", color: ink },
   srOnly: { position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 },
   drivePop: { position: "absolute", top: 40, right: 0, zIndex: 25, display: "flex", flexDirection: "column", gap: 2, width: 220, padding: 8, background: C.field, color: ink, border: `1px solid ${line}`, borderRadius: 6, boxShadow: "0 10px 28px rgba(0,0,0,0.25)" },
-  drivePopText: { fontSize: 12.5, color: inkFaint, padding: "4px 8px 6px" },
-  drivePopBtn: { minHeight: 40, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
+  drivePopText: { fontSize: 14, color: inkFaint, padding: "4px 8px 6px" },
+  drivePopBtn: { minHeight: 40, padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, color: ink, background: "transparent", border: "none", borderRadius: 4, textAlign: "left" },
   driveWrap: { position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: "4px 10px", marginLeft: "auto" },
   driveBtn: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     letterSpacing: "0.04em",
     color: ink,
     background: "transparent",
@@ -2620,30 +2620,30 @@ const styles = {
   driveDot: { width: 6, height: 6, borderRadius: "50%", flex: "none" },
   driveLink: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
     background: "none",
     border: "none",
     padding: 0,
     textDecoration: "underline",
   },
-  driveMsg: { flexBasis: "100%", textAlign: "right", fontSize: 12, color: rust },
+  driveMsg: { flexBasis: "100%", textAlign: "right", fontSize: 14, color: rust },
   eyebrow: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     letterSpacing: "0.18em",
     color: inkFaint,
   },
   scoreBlock: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, width: "100%", margin: "2px 0 0", padding: "4px 0", background: "none", border: "none", color: "inherit", textAlign: "left", font: "inherit" },
-  scoreLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: inkFaint },
+  scoreLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase", color: inkFaint },
   scoreValue: { fontFamily: C.display, fontWeight: 700, fontSize: 56, lineHeight: 1, letterSpacing: "0.01em" },
   scoreEmpty: { fontFamily: C.display, fontWeight: 600, fontSize: 22, lineHeight: 1.2 },
-  scoreSub: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", fontSize: 13, color: inkFaint },
-  scoreWeek: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 },
-  scoreBadge: { display: "inline-block", padding: "1px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, color: C.highlightInk, background: C.highlight, borderRadius: 999 },
+  scoreSub: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", fontSize: 16, color: inkFaint },
+  scoreWeek: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 14 },
+  scoreBadge: { display: "inline-block", padding: "1px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 600, color: C.highlightInk, background: C.highlight, borderRadius: 999 },
   headerDayWrap: { display: "flex", flexDirection: "column", gap: 2, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${line}` },
   headerDay: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontFamily: C.display, fontWeight: 600, fontSize: 22, letterSpacing: "0.03em" },
-  headerSub: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: inkFaint },
+  headerSub: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: inkFaint },
   dayBody: { marginTop: 14 },
   monthRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
   monthTitle: {
@@ -2672,7 +2672,7 @@ const styles = {
   filterRow: { display: "flex", gap: 8, marginBottom: 12 },
   filterChip: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     border: "1px solid",
     borderRadius: 999,
     padding: "5px 12px",
@@ -2699,14 +2699,14 @@ const styles = {
     background: "transparent",
     color: inkFaint,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 13,
+    fontSize: 16,
     lineHeight: 1,
   },
   tagBtnOn: { borderColor: ink, color: ink },
   rowTags: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 },
   rowTag: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: ink,
     background: paper,
     border: `1px solid ${line}`,
@@ -2718,7 +2718,7 @@ const styles = {
   unitToggle: { display: "inline-flex" },
   unitBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     background: "transparent",
     border: "1px solid",
     padding: "3px 9px",
@@ -2729,7 +2729,7 @@ const styles = {
     flexDirection: "column",
     gap: 1,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
     marginTop: 2,
   },
@@ -2738,22 +2738,22 @@ const styles = {
     flexDirection: "column",
     gap: 1,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: ink,
     marginTop: 2,
     overflowWrap: "anywhere",
   },
   libraryActions: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 },
   newExerciseGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 },
-  pbNote: { display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "10px 12px", fontSize: 14, lineHeight: 1.4, color: C.highlightInk, background: C.highlight, borderRadius: 4 },
-  pbLine: { display: "block", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5 },
+  pbNote: { display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "10px 12px", fontSize: 16, lineHeight: 1.4, color: C.highlightInk, background: C.highlight, borderRadius: 4 },
+  pbLine: { display: "block", fontFamily: "'IBM Plex Mono', monospace", fontSize: 14 },
   pbClose: { background: "none", border: "none", color: "inherit", fontSize: 20, lineHeight: 1, padding: "4px 6px", minWidth: 36, minHeight: 36 },
-  pbBadge: { display: "inline-block", marginLeft: 8, padding: "1px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", color: C.highlightInk, background: C.highlight, borderRadius: 999, verticalAlign: "middle" },
-  newExerciseNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: teal, fontWeight: 400, letterSpacing: 0 },
+  pbBadge: { display: "inline-block", marginLeft: 8, padding: "1px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", color: C.highlightInk, background: C.highlight, borderRadius: 999, verticalAlign: "middle" },
+  newExerciseNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: teal, fontWeight: 400, letterSpacing: 0 },
   importOpenBtn: {
     width: "100%",
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: ink,
     background: "transparent",
     border: `1px dashed ${inkFaint}`,
@@ -2776,12 +2776,12 @@ const styles = {
   importTitle: {
     fontFamily: C.display,
     fontWeight: 700,
-    fontSize: 17,
+    fontSize: 18,
     letterSpacing: "0.04em",
   },
-  importSteps: { margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.45, display: "flex", flexDirection: "column", gap: 2 },
+  importSteps: { margin: 0, paddingLeft: 18, fontSize: 16, lineHeight: 1.45, display: "flex", flexDirection: "column", gap: 2 },
   importBtnRow: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2 },
-  importSummary: { fontSize: 13, lineHeight: 1.4 },
+  importSummary: { fontSize: 16, lineHeight: 1.4 },
   importList: { display: "flex", flexDirection: "column", gap: 6 },
   importRow: {
     display: "flex",
@@ -2796,7 +2796,7 @@ const styles = {
   importRowTop: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
   importBadge: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: "0.06em",
     color: teal,
     border: `1px solid ${teal}`,
@@ -2806,7 +2806,7 @@ const styles = {
   },
   importSelect: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: ink,
     background: C.field,
     border: `1px solid ${line}`,
@@ -2819,17 +2819,17 @@ const styles = {
     alignItems: "center",
     gap: 8,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
   },
-  importStatus: { fontSize: 13, color: teal },
-  importNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
+  importStatus: { fontSize: 16, color: teal },
+  importNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: inkFaint },
   shotBox: { display: "flex", flexDirection: "column", gap: 8, borderTop: `1px dashed ${line}`, paddingTop: 10, marginTop: 4 },
   shotPick: {
     alignSelf: "flex-start",
     position: "relative",
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: ink,
     border: `1px solid ${ink}`,
     borderRadius: 4,
@@ -2840,13 +2840,13 @@ const styles = {
   shotList: { display: "flex", flexWrap: "wrap", gap: 8 },
   shotThumb: { position: "relative", width: 64, height: 88, borderRadius: 3, overflow: "hidden", border: `1px solid ${line}`, background: paper },
   shotImg: { width: "100%", height: "100%", objectFit: "cover", objectPosition: "top", display: "block" },
-  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: C.onFill, background: ink, borderRadius: 2, padding: "0 4px" },
-  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: C.onFill, fontSize: 13, lineHeight: 1, padding: 0 },
-  importError: { fontSize: 13, color: rust },
+  shotNum: { position: "absolute", left: 3, bottom: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: C.onFill, background: ink, borderRadius: 2, padding: "0 4px" },
+  shotX: { position: "absolute", right: 2, top: 2, width: 20, height: 20, borderRadius: "50%", border: "none", background: ink, color: C.onFill, fontSize: 16, lineHeight: 1, padding: 0 },
+  importError: { fontSize: 16, color: rust },
   removeImportedBtn: {
     alignSelf: "flex-start",
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: rust,
     background: "none",
     border: "none",
@@ -2855,7 +2855,7 @@ const styles = {
   },
   pickItem: {
     fontFamily: C.sans,
-    fontSize: 13,
+    fontSize: 16,
     background: raised,
     border: "1px solid",
     borderRadius: 4,
@@ -2885,14 +2885,14 @@ const styles = {
     gap: 10,
     padding: "8px 10px",
     fontFamily: C.sans,
-    fontSize: 14,
+    fontSize: 16,
     color: ink,
     cursor: "pointer",
     borderBottom: `1px solid ${raised}`,
   },
   suggestTags: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
     textAlign: "right",
     flexShrink: 1,
@@ -2902,14 +2902,14 @@ const styles = {
   tagFilterRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 12 },
   tagFilterLabel: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: "0.18em",
     color: inkFaint,
     marginRight: 2,
   },
   tagChip: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: ink,
     background: "transparent",
     border: `1px dashed ${inkFaint}`,
@@ -2931,7 +2931,7 @@ const styles = {
     alignItems: "center",
     gap: 2,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: C.onFill,
     background: ink,
     borderRadius: 999,
@@ -2941,13 +2941,13 @@ const styles = {
     background: "none",
     border: "none",
     color: C.onFill,
-    fontSize: 14,
+    fontSize: 16,
     lineHeight: 1,
     padding: "0 4px",
   },
   tagAddBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: C.onFill,
     background: ink,
     border: `1px solid ${ink}`,
@@ -2957,7 +2957,7 @@ const styles = {
   },
   tagDoneBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: ink,
     background: "transparent",
     border: `1px solid ${line}`,
@@ -2968,7 +2968,7 @@ const styles = {
   libraryRowText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   libraryMeta: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
     textTransform: "capitalize",
   },
@@ -2979,12 +2979,12 @@ const styles = {
     borderRadius: "50%",
     border: "1.5px solid",
     background: "transparent",
-    fontSize: 16,
+    fontSize: 17,
     lineHeight: 1,
   },
   libraryTruncated: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
     marginTop: 10,
     textAlign: "center",
@@ -3013,7 +3013,7 @@ const styles = {
     writingMode: "vertical-rl",
     transform: "rotate(180deg)",
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     letterSpacing: "0.16em",
     textTransform: "uppercase",
   },
@@ -3034,11 +3034,11 @@ const styles = {
   },
   calBackdrop: { position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.32)" },
   calHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  calEyebrow: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: inkFaint },
+  calEyebrow: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, letterSpacing: "0.18em", textTransform: "uppercase", color: inkFaint },
   calClose: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, color: ink, background: "transparent", border: `1px solid ${line}`, borderRadius: 4, padding: 0 },
   calMonthRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 },
   calMonth: { margin: 0, fontFamily: C.display, fontWeight: 700, fontSize: 24, letterSpacing: "0.02em", lineHeight: 1, textTransform: "uppercase" },
-  calLegend: { display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 12, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
+  calLegend: { display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 12, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: inkFaint },
   calKey: { display: "inline-block", width: 8, height: 8, borderRadius: 1, marginRight: 6, verticalAlign: "middle" },
   dowRow: {
     display: "grid",
@@ -3049,7 +3049,7 @@ const styles = {
   },
   dowCell: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     textAlign: "center",
     color: inkFaint,
   },
@@ -3082,7 +3082,7 @@ const styles = {
   },
   dayNum: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: ink,
   },
   barTrack: {
@@ -3101,7 +3101,7 @@ const styles = {
   loading: {
     marginTop: 24,
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 13,
+    fontSize: 16,
     color: inkFaint,
   },
   selectedHeader: {
@@ -3118,12 +3118,12 @@ const styles = {
     borderBottom: `2px solid ${ink}`,
     paddingBottom: 6,
   },
-  lastTime: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 13, lineHeight: 1.45, color: ink, background: C.field, border: "1px solid", borderLeftWidth: 3, borderRadius: 3, padding: "8px 10px" },
+  lastTime: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 16, lineHeight: 1.45, color: ink, background: C.field, border: "1px solid", borderLeftWidth: 3, borderRadius: 3, padding: "8px 10px" },
   dayNav: { display: "inline-flex", gap: 6, marginLeft: "auto", alignSelf: "center" },
   dayNavBtn: { background: "none", border: `1px solid ${line}`, borderRadius: 4, width: 34, height: 34, fontSize: 18, lineHeight: 1, color: ink, padding: 0 },
   errorTag: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: rust,
     fontWeight: 500,
   },
@@ -3144,7 +3144,7 @@ const styles = {
   },
   addBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 13,
+    fontSize: 16,
     border: "1px solid",
     borderRadius: 4,
     padding: "8px 14px",
@@ -3153,7 +3153,7 @@ const styles = {
   form: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${line}` },
   fieldLabel: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: inkFaint,
     display: "flex",
     flexDirection: "column",
@@ -3161,7 +3161,7 @@ const styles = {
   },
   input: {
     fontFamily: C.sans,
-    fontSize: 14,
+    fontSize: 16,
     padding: "7px 8px",
     border: `1px solid ${line}`,
     borderRadius: 3,
@@ -3170,7 +3170,7 @@ const styles = {
   },
   submitBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     color: "#fff",
     border: "none",
     borderRadius: 3,
@@ -3181,7 +3181,7 @@ const styles = {
   rows: { display: "flex", flexDirection: "column", gap: 6 },
   emptyText: {
     fontFamily: C.sans,
-    fontSize: 13,
+    fontSize: 16,
     color: inkFaint,
     fontStyle: "italic",
     padding: "6px 2px",
@@ -3194,17 +3194,17 @@ const styles = {
     padding: "7px 9px",
     gap: 8,
   },
-  rowMain: { fontFamily: C.sans, fontSize: 13.5, fontWeight: 500, flex: 1 },
-  rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: ink },
+  rowMain: { fontFamily: C.sans, fontSize: 16, fontWeight: 500, flex: 1 },
+  rowMono: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: ink },
   rowBtn: { width: "100%", border: "none", color: ink, font: "inherit", textAlign: "left", minHeight: 44 },
   rowChev: { fontSize: 18, lineHeight: 1, color: inkFaint, marginLeft: 2 },
-  formDeleteBtn: { alignSelf: "flex-start", marginTop: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, background: "transparent", border: "none", textDecoration: "underline", padding: "8px 0", minHeight: 40 },
-  editingNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: inkFaint },
+  formDeleteBtn: { alignSelf: "flex-start", marginTop: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, background: "transparent", border: "none", textDecoration: "underline", padding: "8px 0", minHeight: 40 },
+  editingNote: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: inkFaint },
   footerStack: { display: "flex", flexDirection: "column", gap: 4 },
-  bwLine: { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 8px", fontWeight: 400, color: inkFaint, fontSize: 11 },
+  bwLine: { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 8px", fontWeight: 400, color: inkFaint, fontSize: 13 },
   bwEditBtn: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
+    fontSize: 13,
     color: rust,
     background: "none",
     border: "none",
@@ -3212,13 +3212,13 @@ const styles = {
     textDecoration: "underline",
   },
   bwForm: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 4, fontWeight: 400 },
-  bwLabel: { flexBasis: "100%", fontSize: 11, color: inkFaint },
-  bwError: { flexBasis: "100%", fontSize: 11, color: rust },
-  bwNote: { flexBasis: "100%", fontSize: 11, color: inkFaint },
-  bwHint: { fontSize: 11, color: inkFaint },
+  bwLabel: { flexBasis: "100%", fontSize: 13, color: inkFaint },
+  bwError: { flexBasis: "100%", fontSize: 13, color: rust },
+  bwNote: { flexBasis: "100%", fontSize: 13, color: inkFaint },
+  bwHint: { fontSize: 13, color: inkFaint },
   footer: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12,
+    fontSize: 14,
     marginTop: 10,
     paddingTop: 8,
     borderTop: `1px solid ${line}`,
