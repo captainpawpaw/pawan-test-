@@ -119,6 +119,7 @@ const svgText = await pa.locator('svg text').allTextContents();
 check(svgText.includes('kg') && svgText.includes('reps'), 'left kg axis and right reps axis');
 check((await pa.locator('svg g[opacity="0.38"]').count()) === 2 && (await pa.locator('svg g[opacity="1"] path').count()) === 2, 'two solid max lines and two faint min lines');
 check(/Heaviest in view\n\d+ kg/.test(wt) && /Most reps in a set\n\d+/.test(wt), 'weight & reps tiles');
+await pa.locator('[role="img"]').evaluate(el => el.scrollIntoView({ block: 'center' })); // clear of the bottom bar
 const bx = await pa.locator('[role="img"]').boundingBox();
 await pa.mouse.click(bx.x + bx.width - 60, bx.y + 120);
 const tipDual = (await pa.locator('[role="status"]').allInnerTexts()).join(' ');

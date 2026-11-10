@@ -20,6 +20,7 @@ const p = await ctx.newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 // Walks the app at phone size and measures everything that can be tapped.
 const seen = new Map();
+const text = { min: 99, what: '', big: 0, all: 0 };
 const scan = async (where) => {
   const rows = await p.evaluate(() => {
     const out = [];
@@ -32,6 +33,10 @@ const scan = async (where) => {
     }
     return out;
   });
+  const t = await p.evaluate(() => { let min = 99, what = '', big = 0, all = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) { const txt = n.textContent.trim(), e = n.parentElement; if (!txt || !e || !e.getClientRects().length) continue; const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.opacity === '0') continue; const f = parseFloat(cs.fontSize); all += txt.length; if (f >= 16) big += txt.length; if (f < min) { min = f; what = txt.slice(0, 30); } }
+    return { min, what, big, all }; });
+  if (t.min < text.min) { text.min = t.min; text.what = `${t.what} (${where})`; } text.big += t.big; text.all += t.all;
   for (const r of rows) if (r.w < 48 || r.h < 48) { const k = `${r.tag}|${r.name}`; if (!seen.has(k)) seen.set(k, { ...r, where }); }
 };
 const tab = (n) => p.locator('.ft-bottom-nav').getByRole('button', { name: n }).click();
@@ -70,6 +75,7 @@ const allowed = (r) => (r.cls === 'ft-cal-tab' || r.cls === 'ft-cal-day') && r.w
 const bad = small.filter(r => !allowed(r));
 check(bad.length === 0, 'every control on a phone is at least 48 x 48 px' + (bad.length ? ': ' + JSON.stringify(bad.slice(0, 8)) : ''));
 check(small.filter(allowed).length <= 2, 'only the calendar tab and day cells are narrower, and both are 48 px or taller: ' + small.filter(allowed).map(r => `${r.name} ${r.w}x${r.h}`).join(', '));
+check(text.min >= 12, `no text under 12 px: smallest is ${text.min} px` + (text.min < 12 ? ' ' + text.what : ''));
 check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'nothing pushes the page wider than the screen');
 // with a mouse on a wide screen the compact sizes stay
 const d = await (await b.newContext({ viewport: { width: 1100, height: 800 } })).newPage();

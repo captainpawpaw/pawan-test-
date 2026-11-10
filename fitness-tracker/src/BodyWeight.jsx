@@ -56,10 +56,10 @@ export function BodyWeightField({ id, unit, onUnit, value, onChange, placeholder
 const s = {
   wrap: { display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: 8 },
   toggle: { display: "inline-flex" },
-  btn: { fontFamily: mono, fontSize: 12, color: C.ink, background: "transparent", border: `1px solid ${C.line}`, marginLeft: -1, padding: "6px 9px", minHeight: 34 },
+  btn: { fontFamily: mono, fontSize: 14, color: C.ink, background: "transparent", border: `1px solid ${C.line}`, marginLeft: -1, padding: "6px 9px", minHeight: 34 },
   btnOn: { background: C.ink, color: C.onFill, borderColor: C.ink },
   fields: { display: "inline-flex", gap: 6 },
   part: { display: "inline-flex", alignItems: "center", gap: 4 },
-  input: { fontFamily: C.sans, fontSize: 14, padding: "7px 8px", border: `1px solid ${C.line}`, borderRadius: 3, background: C.field, color: C.ink, width: 72 },
-  unit: { fontFamily: mono, fontSize: 12, color: C.inkFaint },
+  input: { fontFamily: C.sans, fontSize: 16, padding: "7px 8px", border: `1px solid ${C.line}`, borderRadius: 3, background: C.field, color: C.ink, width: 72 },
+  unit: { fontFamily: mono, fontSize: 14, color: C.inkFaint },
 };
