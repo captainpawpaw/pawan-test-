@@ -1603,6 +1603,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
             <React.Fragment key={f.key}>
             <ExercisePicker
               field={f}
+              loggedToday={entries}
               value={vals[f.key] || ""}
               onChange={(v) => setVals((cur) => ({ ...cur, [f.key]: v }))}
               onPicked={(name, tag) => {
@@ -1733,7 +1734,7 @@ function LastTime({ last, accent, unit = "kg" }) {
 // suggestions that match the name or any of its tags.
 const SUGGEST_CAP = 8;
 
-function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accent }) {
+function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accent, loggedToday }) {
   const [focused, setFocused] = useState(false);
   const [tag, setTag] = useState(null);
   const id = `pick-${field.listId}`;
@@ -1755,6 +1756,11 @@ function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accen
     () => (tag ? field.options.filter((n) => tagsOf(tagMap, n).includes(tag)) : []),
     [tag, field.options, tagMap],
   );
+  // What's already in this day's log drops off the tag's list: it shows what's left to do.
+  const left = useMemo(() => {
+    const done = new Set((loggedToday || []).map((e) => nameKey(e.exercise || e.activity || "")));
+    return tagged.filter((n) => !done.has(nameKey(n)));
+  }, [tagged, loggedToday]);
 
   const suggestions = useMemo(() => {
     const raw = value.trim().toLowerCase();
@@ -1801,11 +1807,12 @@ function ExercisePicker({ field, value, onChange, onPicked, plans, tagMap, accen
       )}
       {tag && (
         <div style={styles.pickList}>
-          {tagged.map((n) => (
+          {left.map((n) => (
             <button key={n} type="button" onClick={() => choose(n)} style={{ ...styles.pickItem, borderColor: accent, color: accent }}>
               {n}
             </button>
           ))}
+          {tagged.length > 0 && left.length === 0 && <span style={{ ...styles.emptyText, margin: 0 }}>All {tagged.length} logged for this day.</span>}
         </div>
       )}
       <div style={{ position: "relative" }}>
