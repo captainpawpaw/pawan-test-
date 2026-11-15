@@ -114,6 +114,29 @@ await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8'); aw
 await pa.getByRole('button', { name: 'Log a set' }).click();
 check((await pa.locator('body').innerText()).includes('3×8 · max 30kg'), 'logging still works');
 
+// an exercise already logged for the day drops off its tag's list
+const logOne = async (name) => {
+  if (!(await pa.getByLabel('Exercise').count())) await pa.locator('button', { hasText: '+ Add' }).first().click();
+  await pa.getByLabel('Exercise').fill(name);
+  await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('5'); await pa.getByLabel('Max weight (kg)').fill('80');
+  await pa.getByRole('button', { name: 'Log a set' }).click();
+};
+const openLegs = async () => {
+  if (!(await pa.getByLabel('Exercise').count())) await pa.locator('button', { hasText: '+ Add' }).first().click();
+  await pa.getByLabel('Exercise').fill('');
+  const chip = pa.locator('form').first().getByRole('button', { name: '#legs day' });
+  if (await chip.getAttribute('aria-pressed') !== 'true') await chip.click();
+  return pa.locator('form').first();
+};
+await logOne('Back Squat');
+let legs = await openLegs();
+check(await legs.getByRole('button', { name: 'Back Squat', exact: true }).count() === 0 && await legs.getByRole('button', { name: 'Romanian Deadlift', exact: true }).count() === 1, 'a logged exercise leaves the tag list; the rest stay');
+await pa.screenshot({ path: 'log-tagpick-left.png' });
+await logOne('Romanian Deadlift');
+legs = await openLegs();
+check((await legs.innerText()).includes('All 2 logged for this day.'), 'when every exercise in the tag is logged, it says so');
+await pa.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {});
+
 // cardio form
 await pa.locator('.ft-section').last().locator('button', { hasText: '+ Add' }).click();
 const cardio = pa.locator('.ft-section').last().locator('form');
