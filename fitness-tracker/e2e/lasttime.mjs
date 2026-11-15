@@ -37,6 +37,9 @@ await hint().waitFor();
 let t = await hint().innerText();
 check(t.trim() === 'Last time: max 100 kg, first set 70 kg', 'shows last time\'s max and a first set at 70%: ' + t);
 check(await p.getByRole('button', { name: /warm-up/i }).count() === 0, 'no warm-up button');
+// sets and reps come back as they were for last time's top set
+check(await p.getByLabel('Sets').inputValue() === '4' && await p.getByLabel('Reps').inputValue() === '5', 'sets and reps are filled in from last time: ' + await p.getByLabel('Sets').inputValue() + ' x ' + await p.getByLabel('Reps').inputValue());
+check(await p.getByLabel('Max weight (kg)').inputValue() === '', 'the weight is left for you to enter');
 await p.screenshot({ path: 'last-time.png' });
 await p.getByLabel('Sets').fill('1'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('70');
 await p.getByRole('button', { name: 'Log a set' }).click();
@@ -46,8 +49,12 @@ await strength.getByRole('button', { name: '+ Add' }).click();
 await p.getByLabel('Exercise').fill('Back Squat');
 t = await hint().innerText();
 check(t.trim() === 'Last time: max 70 kg, first set 50 kg', 'the latest earlier session counts: ' + t);
+check(await p.getByLabel('Sets').inputValue() === '1' && await p.getByLabel('Reps').inputValue() === '5', 'and so do its sets and reps');
 await p.getByLabel('Exercise').fill('Deadlift');
 check(await hint().count() === 0, 'nothing for an exercise never logged');
+check(await p.getByLabel('Sets').inputValue() === '' && await p.getByLabel('Reps').inputValue() === '', 'another exercise does not keep the first one\'s sets and reps');
+await p.getByLabel('Sets').fill('6'); await p.getByLabel('Exercise').fill('Back Squat');
+check(await p.getByLabel('Sets').inputValue() === '6' && await p.getByLabel('Reps').inputValue() === '5', 'a number you typed yourself is kept');
 await strength.getByRole('button', { name: 'Cancel' }).click();
 // editing an entry: no message
 await p.getByRole('button', { name: 'Previous day' }).click();

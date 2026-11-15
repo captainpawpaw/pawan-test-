@@ -1554,7 +1554,33 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
     setEditingId(e.id);
     setOpen(true);
   };
-  const closeForm = () => { setOpen(false); setEditingId(null); setVals({}); };
+  const closeForm = () => { setOpen(false); setEditingId(null); setVals({}); autoFilled.current = {}; };
+  // Choosing an exercise fills the empty boxes: sets and reps as they were
+  // last time, else from its plan, else the split's defaults. What was filled
+  // this way is replaced when another exercise is chosen; anything typed stays.
+  const autoFilled = useRef({});
+  const pickExercise = (key, name, tag, picked = true) => {
+    const plans = (plansByName || {})[name] || [];
+    const plan = plans.find((pl) => tag && pl.tag === tag) || plans[0];
+    const last = lastFor && !editingId ? lastFor(name) : null;
+    const known = last || plan || fields.find((f) => f.key === key)?.options?.some((o) => nameKey(o) === nameKey(name));
+    const fill = {};
+    if (known) {
+      Object.assign(fill, defaults || {}, planValues(sectionType, plan));
+      if (last?.sets) fill.sets = String(last.sets);
+      if (last?.reps) fill.reps = String(last.reps);
+    }
+    setVals((cur) => {
+      const next = { ...cur, [key]: name, ...(known && (picked || !editingId) ? bwFor(name) : {}) };
+      const auto = autoFilled.current, now = {};
+      for (const k of new Set([...Object.keys(fill), ...Object.keys(auto)])) {
+        if (cur[k] && cur[k] !== auto[k]) continue; // typed by hand: leave it
+        if (fill[k]) { next[k] = fill[k]; now[k] = fill[k]; } else delete next[k];
+      }
+      autoFilled.current = now;
+      return next;
+    });
+  };
   const formRef = useRef(null);
   useEffect(() => {
     if (editingId) formRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
@@ -1605,17 +1631,8 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
               field={f}
               loggedToday={entries}
               value={vals[f.key] || ""}
-              onChange={(v) => setVals((cur) => ({ ...cur, [f.key]: v }))}
-              onPicked={(name, tag) => {
-                const plans = (plansByName || {})[name] || [];
-                const plan = plans.find((pl) => tag && pl.tag === tag) || plans[0];
-                const fill = { ...(defaults || {}), ...planValues(sectionType, plan) };
-                setVals((cur) => {
-                  const next = { ...cur, [f.key]: name, ...bwFor(name) };
-                  for (const [k, v] of Object.entries(fill)) if (!cur[k]) next[k] = v;
-                  return next;
-                });
-              }}
+              onChange={(v) => pickExercise(f.key, v, undefined, false)}
+              onPicked={(name, tag) => pickExercise(f.key, name, tag)}
               plans={(plansByName || {})[vals[f.key]] || null}
               tagMap={tagMap || {}}
               accent={accent}
