@@ -43,7 +43,7 @@ await p.getByRole('button', { name: 'Log a set' }).click();
 t = await p.getByRole('status', { name: 'New personal best' }).innerText();
 check(t.includes('Heaviest: 225 lb (was 220.5 lb)'), 'personal best in lb: ' + t.replace(/\n/g, ' | '));
 t = await strength.innerText();
-check(t.includes('3×5 · 185 / 225 / 225lb') && /Volume \(sets × reps × max weight\): 3,375 lb/.test(t), 'row and volume in lb: ' + t.replace(/\n/g, ' | '));
+check(t.includes('3×5 · 185 / 225 / 225lb') && /Volume \(reps × each set's weight\): 3,175 lb/.test(t), 'row and volume in lb: ' + t.replace(/\n/g, ' | '));
 await p.screenshot({ path: 'lift-lb.png' });
 const day = await p.evaluate(() => { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return JSON.parse(localStorage.getItem(`fitness-tracker:month:${d.getFullYear()}-${pad(d.getMonth() + 1)}`))[pad(d.getDate())]; });
 check(day.strength[0].weight === '102.058' && day.strength[0].minWeight === '83.915' && day.strength[0].setWeights.join(',') === '83.915,102.058,102.058', 'stored in kg, each set too: ' + day.strength[0].weight + ' / ' + day.strength[0].minWeight + ' / ' + day.strength[0].setWeights);

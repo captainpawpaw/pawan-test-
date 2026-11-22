@@ -79,7 +79,7 @@ export const METRICS = {
   weightreps: { label: "Weight & reps", unit: "kg", agg: "dual", type: "strength", form: "dual", note: "max and min weight on the left, reps per set on the right" },
   best: { label: "Best weight", unit: "kg", agg: "max", type: "strength", form: "line" },
   e1rm: { label: "Est. 1-rep max", unit: "kg", agg: "max", type: "strength", form: "line", note: "Epley: weight × (1 + reps ÷ 30)" },
-  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "sets × reps × max weight" },
+  volume: { label: "Volume", unit: "kg", agg: "sum", type: "strength", form: "column", note: "reps × each set's weight; dumbbells count both" },
   reps: { label: "Reps", unit: "reps", agg: "sum", type: "strength", form: "column" },
   sets: { label: "Sets", unit: "sets", agg: "sum", type: "strength", form: "column" },
   minutes: { label: "Minutes", unit: "min", agg: "sum", type: "cardio", form: "column" },
@@ -106,6 +106,17 @@ function minLoadOf(e, date, bwOn) {
 }
 
 
+// Volume of one entry: reps times each set's weight, body weight added for
+// body-weight sets. A dumbbell weight is one of a pair, so it counts twice.
+// Entries from before there was a weight per set count every set at the max.
+export function entryVolume(e, bodyKg = null) {
+  const sets = Number(e.sets) || 0, reps = Number(e.reps) || 0;
+  const body = e.bw ? Number(bodyKg) || 0 : 0;
+  const pair = e.perDumbbell && !e.bw ? 2 : 1;
+  const ws = Array.isArray(e.setWeights) && e.setWeights.length ? e.setWeights.map((w) => Number(w) || 0) : Array(sets).fill(Number(e.weight) || 0);
+  return reps * ws.reduce((sum, w) => sum + w * pair + body, 0);
+}
+
 // The value one logged entry contributes to a metric (null = none).
 export function entryValue(metric, row, bwOn) {
   const { e, date } = row;
@@ -118,7 +129,7 @@ export function entryValue(metric, row, bwOn) {
       if (!(l > 0) || !(reps > 0)) return null;
       return reps === 1 ? l : l * (1 + reps / 30);
     }
-    case "volume": { const v = sets * reps * loadOf(e, date, bwOn); return v > 0 ? v : null; }
+    case "volume": { const v = entryVolume(e, e.bw ? bwOn?.(date) : null); return v > 0 ? v : null; }
     case "reps": { const v = sets * reps; return v > 0 ? v : null; }
     case "sets": return sets > 0 ? sets : null;
     case "minutes": { const v = Number(e.duration) || 0; return v > 0 ? v : null; }
