@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Set 1 weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -67,7 +67,7 @@ const strength = pa.locator('.ft-section').first();
 const cardio = pa.locator('.ft-section').last();
 async function logSet(name, sets, reps, kg) {
   await strength.locator('button', { hasText: '+ Add' }).click();
-  await pa.getByLabel('Exercise').fill(name); await pa.getByLabel('Sets').fill(sets); await pa.getByLabel('Reps').fill(reps); await pa.getByLabel('Max weight (kg)').fill(kg);
+  await pa.getByLabel('Exercise').fill(name); await pa.getByLabel('Sets').fill(sets); await pa.getByLabel('Reps').fill(reps); await pa.getByLabel('Set 1 weight (kg)').fill(kg);
   await pa.getByRole('button', { name: 'Log a set' }).click();
 }
 await logSet('Back Squat', '3', '5', '100');
@@ -76,26 +76,26 @@ await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 
 // edit the squat
 await strength.getByRole('button', { name: 'Edit Back Squat' }).click();
-check(await pa.getByLabel('Exercise').inputValue() === 'Back Squat' && await pa.getByLabel('Max weight (kg)').inputValue() === '100', 'edit opens the form filled in');
+check(await pa.getByLabel('Exercise').inputValue() === 'Back Squat' && await pa.getByLabel('Set 1 weight (kg)').inputValue() === '100' && await pa.getByLabel('Set 3 weight (kg)').inputValue() === '100', 'edit opens the form filled in, a box per set');
 check((await strength.innerText()).includes('Editing an entry'), 'form says it is editing');
 await pa.screenshot({ path: 'edit-set.png' });
-await pa.getByLabel('Max weight (kg)').fill('105'); await pa.getByLabel('Reps').fill('6');
+await pa.getByLabel('Set 1 weight (kg)').fill('105'); await pa.getByLabel('Reps').fill('6');
 await pa.getByRole('button', { name: 'Save changes' }).click();
 let t = await strength.innerText();
-check(t.includes('3×6 · max 105kg') && !t.includes('3×5 · max 100kg'), 'set updated in place');
+check(t.includes('3×6 · 105 / 100 / 100kg') && !t.includes('3×5 · 100kg each'), 'set updated in place: one set changed');
 check(t.indexOf('Back Squat') < t.indexOf('Leg Press'), 'keeps its place in the list');
 check(t.includes('Volume (sets × reps × max weight): 6,690 kg'), 'volume recalculated: ' + (t.match(/Volume \(sets × reps × max weight\): [\d,]+ kg/) || [''])[0]);
 // cancel leaves it alone
 await strength.getByRole('button', { name: 'Edit Leg Press' }).click();
 await pa.getByLabel('Reps').fill('99');
 await strength.locator('button', { hasText: 'Cancel' }).click();
-check((await strength.innerText()).includes('4×10 · max 120kg'), 'cancel keeps the original');
+check((await strength.innerText()).includes('4×10 · 120kg each'), 'cancel keeps the original');
 // switching to body weight while editing
 await strength.getByRole('button', { name: 'Edit Leg Press' }).click();
 await pa.getByLabel('Exercise').fill('Weighted Dip'); await pa.getByRole('button', { name: 'Body weight', exact: true }).click();
-await pa.getByLabel('Max added weight (kg), optional').fill('10');
+for (const n of [1, 2, 3, 4]) await pa.getByLabel(`Set ${n} weight (kg)`).fill('10');
 await pa.getByRole('button', { name: 'Save changes' }).click();
-check((await strength.innerText()).includes('Weighted Dip') && (await strength.innerText()).includes('4×10 · max BW + 10kg'), 'can change exercise and switch to body weight');
+check((await strength.innerText()).includes('Weighted Dip') && (await strength.innerText()).includes('4×10 · BW + 10kg each'), 'can change exercise and switch to body weight');
 
 // cardio
 await cardio.locator('button', { hasText: '+ Add' }).click();
@@ -110,11 +110,11 @@ check((await cardio.innerText()).includes('42 min') && !(await cardio.innerText(
 await pa.waitForTimeout(2500); await waitSynced(pa);
 await pb.goto('http://localhost:4190/?tab=log'); await pb.getByText('Connect Google Drive').click(); await waitSynced(pb);
 t = await pb.locator('body').innerText();
-check(t.includes('3×6 · max 105kg') && !t.includes('max 100kg') && t.includes('42 min') && !t.includes('30 min') && !t.includes('Leg Press'), 'other device gets the edits, not the old versions');
+check(t.includes('3×6 · 105 / 100 / 100kg') && !t.includes('100kg each') && t.includes('42 min') && !t.includes('30 min') && !t.includes('Leg Press'), 'other device gets the edits, not the old versions');
 // survives a further sync back
 await pa.getByText(/^Synced /).click(); await pa.waitForTimeout(500); await waitSynced(pa);
 t = await strength.innerText();
-check((t.match(/Back Squat/g) || []).length === 1 && !t.includes('max 100kg'), 'no duplicates after syncing both ways');
+check((t.match(/Back Squat/g) || []).length === 1 && !t.includes('100kg each'), 'no duplicates after syncing both ways');
 
 // food
 await pa.getByRole('button', { name: 'FOOD', exact: true }).click();

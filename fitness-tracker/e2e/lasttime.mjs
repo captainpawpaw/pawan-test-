@@ -39,9 +39,9 @@ check(t.trim() === 'Last time: max 100 kg, first set 70 kg', 'shows last time\'s
 check(await p.getByRole('button', { name: /warm-up/i }).count() === 0, 'no warm-up button');
 // sets and reps come back as they were for last time's top set
 check(await p.getByLabel('Sets').inputValue() === '4' && await p.getByLabel('Reps').inputValue() === '5', 'sets and reps are filled in from last time: ' + await p.getByLabel('Sets').inputValue() + ' x ' + await p.getByLabel('Reps').inputValue());
-check(await p.getByLabel('Max weight (kg)').inputValue() === '', 'the weight is left for you to enter');
+check(await p.getByLabel('Set 1 weight (kg)').inputValue() === '', 'the weight is left for you to enter');
 await p.screenshot({ path: 'last-time.png' });
-await p.getByLabel('Sets').fill('1'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('70');
+await p.getByLabel('Sets').fill('1'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Set 1 weight (kg)').fill('70');
 await p.getByRole('button', { name: 'Log a set' }).click();
 // tomorrow: last time is today's session
 await p.getByRole('button', { name: 'Next day' }).click();

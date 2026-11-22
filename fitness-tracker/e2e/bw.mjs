@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Set 1 weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -67,14 +67,14 @@ const strengthCard = pa.locator('.ft-section').first();
 await strengthCard.locator('button', { hasText: '+ Add' }).click();
 check(await pa.getByRole('button', { name: 'kg', exact: true }).getAttribute('aria-pressed') === 'true', 'kg selected by default');
 // manual kg set
-await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('5'); await pa.getByLabel('Max weight (kg)').fill('100');
+await pa.getByLabel('Exercise').fill('Back Squat'); await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('5'); await pa.getByLabel('Set 1 weight (kg)').fill('100');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 // body-weight exercise auto-switches
 await strengthCard.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('deficit push');
 await pa.getByRole('option', { name: /Deficit Push Up/ }).click();
 check(await pa.getByRole('button', { name: 'Body weight', exact: true }).getAttribute('aria-pressed') === 'true', 'body-weight exercise switches to Body weight');
-check(await pa.getByLabel('Max added weight (kg), optional').count() === 1, 'weight box becomes optional added weight');
+check(await pa.getByLabel('Set 1 weight (kg)').count() === 1 && (await strengthCard.innerText()).includes('Added weight per set (kg), optional'), 'weight boxes become optional added weight');
 await pa.screenshot({ path: 'bw-form.png' });
 await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('12');
 await pa.getByRole('button', { name: 'Log a set' }).click();
@@ -82,12 +82,12 @@ await pa.getByRole('button', { name: 'Log a set' }).click();
 await strengthCard.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Weighted Dip');
 await pa.getByRole('button', { name: 'Body weight', exact: true }).click();
-await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8'); await pa.getByLabel('Max added weight (kg), optional').fill('10');
+await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8'); await pa.getByLabel('Set 1 weight (kg)').fill('10');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 let t = await strengthCard.innerText();
-check(t.includes('3×5 · max 100kg'), 'kg set shown');
+check(t.includes('3×5 · 100kg each'), 'kg set shown');
 check(t.includes('3×12 · BW'), 'body-weight set shown as BW');
-check(t.includes('3×8 · max BW + 10kg'), 'weighted body-weight set shown');
+check(t.includes('3×8 · BW + 10kg each'), 'weighted body-weight set shown');
 check(t.includes('Volume (sets × reps × max weight): 1,740 kg · 60 body-weight reps not counted'), 'footer before body weight: ' + t.split('\n').find(l => l.includes('Volume')));
 check(t.includes('Add your body weight to count body-weight sets.'), 'prompt to set body weight');
 await strengthCard.getByRole('button', { name: 'Set body weight' }).click();
@@ -116,11 +116,11 @@ await strengthCard.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('deficit push');
 await pa.getByRole('option', { name: /Deficit Push Up/ }).click();
 await pa.getByRole('button', { name: 'kg', exact: true }).click();
-check(await pa.getByLabel('Max weight (kg)').count() === 1, 'can switch back to kg');
+check(await pa.getByLabel('Set 1 weight (kg)').count() === 1 && (await strengthCard.innerText()).includes('Weight per set (kg)'), 'can switch back to kg');
 await pa.locator('button', { hasText: 'Cancel' }).first().click();
 await pa.reload(); await pa.getByText('STRENGTH').waitFor();
 t = await pa.locator('.ft-section').first().innerText();
-check(t.includes('3×12 · BW') && t.includes('max BW + 10kg'), 'body-weight sets persist after reload');
+check(t.includes('3×12 · BW') && t.includes('BW + 10kg each'), 'body-weight sets persist after reload');
 check(t.includes('Body weight 78.5 kg included'), 'body weight persists after reload');
 await pa.getByText('Connect Google Drive').click(); await waitSynced(pa);
 check(book().profile?.bodyweight?.weights?.[0]?.kg === 78.5, 'body weight syncs to Drive');

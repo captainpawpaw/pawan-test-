@@ -49,7 +49,7 @@ const check = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if
 
 async function addLift(p, name) {
   await p.locator('button', { hasText: '+ Add' }).first().click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (kg)').fill('60');
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Set 1 weight (kg)').fill('60');
   await p.getByRole('button', { name: 'Log a set' }).click();
 }
 const status = p => p.locator('header').innerText();
@@ -65,45 +65,54 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 const strength = pa.locator('.ft-section').first();
 const foot = async () => ((await strength.innerText()).match(/Volume \(sets × reps × max weight\): [\d,.]+ kg/) || [''])[0];
+// With Sets filled in, there's a weight box per set: the min goes in set 1, the max in set 2, and the rest repeat it.
 async function logSet(name, sets, reps, max, min) {
   await strength.locator('button', { hasText: '+ Add' }).click();
   await pa.getByLabel('Exercise').fill(name); await pa.getByLabel('Sets').fill(sets); await pa.getByLabel('Reps').fill(reps);
-  await pa.getByLabel('Max weight (kg)').fill(max);
-  if (min != null) await pa.getByLabel('Min weight (kg), optional').fill(min);
+  if (min != null) { await pa.getByLabel('Set 1 weight (kg)').fill(min); await pa.getByLabel('Set 2 weight (kg)').fill(max); }
+  else await pa.getByLabel('Set 1 weight (kg)').fill(max);
   await pa.getByRole('button', { name: 'Log a set' }).click();
 }
 await strength.locator('button', { hasText: '+ Add' }).click();
-check(await pa.getByLabel('Min weight (kg), optional').count() === 1, 'form has a min weight box');
+check(await pa.getByLabel('Min weight (kg), optional').count() === 1, 'before Sets is filled in, the form has max and min boxes');
+await pa.getByLabel('Sets').fill('4');
+check(await pa.getByLabel('Min weight (kg), optional').count() === 0 && await pa.getByLabel('Set 4 weight (kg)').count() === 1 && await pa.getByLabel('Set 5 weight (kg)').count() === 0, '4 sets: four weight boxes in their place');
+await pa.getByLabel('Sets').fill('3');
+check(await pa.getByLabel('Set 3 weight (kg)').count() === 1 && await pa.getByLabel('Set 4 weight (kg)').count() === 0, '3 sets: three boxes');
 await pa.screenshot({ path: 'min-weight-form.png' });
 await strength.locator('button', { hasText: 'Cancel' }).click();
 
 await logSet('Bench Press', '4', '10', '60', '40');
 let t = await strength.innerText();
-check(t.includes('4×10 · 40–60kg'), 'row shows the weight range');
+check(t.includes('4×10 · 40 / 60 / 60 / 60kg'), 'row shows each set\'s weight');
 check((await foot()).endsWith(' 2,400 kg'), 'volume uses max weight (4×10×60): ' + await foot());
 await logSet('Back Squat', '2', '5', '100');
-check((await strength.innerText()).includes('2×5 · max 100kg') && (await foot()).endsWith(' 3,400 kg'), 'no min: counts at max weight (2,400 + 2×5×100): ' + await foot());
-await logSet('Leg Press', '1', '10', '50', '90');
-check((await strength.innerText()).includes('1×10 · 50–90kg'), 'min above max gets swapped');
-// edit keeps and changes the min
+check((await strength.innerText()).includes('2×5 · 100kg each') && (await foot()).endsWith(' 3,400 kg'), 'one weight for every set (2,400 + 2×5×100): ' + await foot());
+// more sets than boxes: back to max and min, kept the right way round
+await strength.locator('button', { hasText: '+ Add' }).click();
+await pa.getByLabel('Exercise').fill('Leg Press'); await pa.getByLabel('Sets').fill('13'); await pa.getByLabel('Reps').fill('10');
+await pa.getByLabel('Max weight (kg)').fill('50'); await pa.getByLabel('Min weight (kg), optional').fill('90');
+await pa.getByRole('button', { name: 'Log a set' }).click();
+check((await strength.innerText()).includes('13×10 · 50–90kg'), 'over 12 sets: max and min boxes, min above max gets swapped');
+// edit shows and changes each set
 await strength.getByRole('button', { name: 'Edit Bench Press' }).click();
-check(await pa.getByLabel('Min weight (kg), optional').inputValue() === '40', 'edit form shows the min weight');
-await pa.getByLabel('Min weight (kg), optional').fill('50');
+check(await pa.getByLabel('Set 1 weight (kg)').inputValue() === '40' && await pa.getByLabel('Set 4 weight (kg)').inputValue() === '60', 'edit form shows each set');
+await pa.getByLabel('Set 1 weight (kg)').fill('50');
 await pa.getByRole('button', { name: 'Save changes' }).click();
-check((await strength.innerText()).includes('4×10 · 50–60kg'), 'min weight edited');
-// clearing the min falls back to max
+check((await strength.innerText()).includes('4×10 · 50 / 60 / 60 / 60kg'), 'a set\'s weight edited');
+// an empty first box takes the first weight after it
 await strength.getByRole('button', { name: 'Edit Bench Press' }).click();
-await pa.getByLabel('Min weight (kg), optional').fill('');
+await pa.getByLabel('Set 1 weight (kg)').fill('');
 await pa.getByRole('button', { name: 'Save changes' }).click();
-check((await strength.innerText()).includes('4×10 · max 60kg'), 'clearing min shows max only');
-// body weight with added range
+check((await strength.innerText()).includes('4×10 · 60kg each'), 'clearing set 1 leaves the same weight throughout');
+// body weight with added weight per set
 await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Weighted Dip'); await pa.getByRole('button', { name: 'Body weight', exact: true }).click();
-check(await pa.getByLabel('Min added weight (kg), optional').count() === 1, 'body weight: min box is for added weight');
 await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('8');
-await pa.getByLabel('Max added weight (kg), optional').fill('10'); await pa.getByLabel('Min added weight (kg), optional').fill('5');
+check((await strength.innerText()).includes('Added weight per set (kg), optional'), 'body weight: the boxes are for added weight');
+await pa.getByLabel('Set 1 weight (kg)').fill('5'); await pa.getByLabel('Set 2 weight (kg)').fill('10');
 await pa.getByRole('button', { name: 'Log a set' }).click();
-check((await strength.innerText()).includes('3×8 · BW + 5–10kg'), 'body weight range shown');
+check((await strength.innerText()).includes('3×8 · BW + 5 / 10 / 10kg'), 'body weight with each set\'s added weight');
 // progress: min line uses the min weight
 await logSet('Bench Press', '3', '8', '70', '45');
 await pa.getByRole('button', { name: 'PROGRESS' }).click();
