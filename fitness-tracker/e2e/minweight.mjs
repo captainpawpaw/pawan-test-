@@ -113,6 +113,20 @@ check((await strength.innerText()).includes('Added weight per set (kg), optional
 await pa.getByLabel('Set 1 weight (kg)').fill('5'); await pa.getByLabel('Set 2 weight (kg)').fill('10');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 check((await strength.innerText()).includes('3×8 · BW + 5 / 10 / 10kg'), 'body weight with each set\'s added weight');
+// dumbbell exercises ask for the weight of one dumbbell
+await strength.locator('button', { hasText: '+ Add' }).click();
+await pa.getByLabel('Exercise').fill('Flat Dumbbell Flye'); await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('12');
+check((await strength.innerText()).includes('Weight of one dumbbell, per set (kg)'), 'dumbbell exercise: asks for one dumbbell\'s weight');
+await pa.screenshot({ path: 'dumbbell-form.png' });
+await pa.getByLabel('Set 1 weight (kg)').fill('12.5');
+await pa.getByRole('button', { name: 'Log a set' }).click();
+check((await strength.innerText()).includes('3×12 · 12.5kg per dumbbell'), 'row says the weight is per dumbbell');
+await strength.locator('button', { hasText: '+ Add' }).click();
+await pa.getByLabel('Exercise').fill('Seated DB Press'); await pa.getByLabel('Sets').fill('2'); await pa.getByLabel('Reps').fill('8');
+check((await strength.innerText()).includes('Weight of one dumbbell, per set (kg)'), 'a new exercise named with DB or Dumbbell counts too');
+await pa.getByLabel('Exercise').fill('Seated Press');
+check((await strength.innerText()).includes('Weight per set (kg)') && !(await strength.innerText()).includes('one dumbbell'), 'and other names don\'t');
+await strength.locator('button', { hasText: 'Cancel' }).click();
 // progress: min line uses the min weight
 await logSet('Bench Press', '3', '8', '70', '45');
 await pa.getByRole('button', { name: 'PROGRESS' }).click();
