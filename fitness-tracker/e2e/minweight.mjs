@@ -64,7 +64,7 @@ const errs = []; for (const p of [pa, pb]) p.on('pageerror', e => errs.push(e.me
 
 await pa.goto('http://localhost:4190/?tab=log'); await pa.getByText('STRENGTH').waitFor();
 const strength = pa.locator('.ft-section').first();
-const foot = async () => ((await strength.innerText()).match(/Volume \(sets × reps × max weight\): [\d,.]+ kg/) || [''])[0];
+const foot = async () => ((await strength.innerText()).match(/Volume \(reps × each set's weight\): [\d,.]+ kg/) || [''])[0];
 // With Sets filled in, there's a weight box per set: the min goes in set 1, the max in set 2, and the rest repeat it.
 async function logSet(name, sets, reps, max, min) {
   await strength.locator('button', { hasText: '+ Add' }).click();
@@ -85,9 +85,9 @@ await strength.locator('button', { hasText: 'Cancel' }).click();
 await logSet('Bench Press', '4', '10', '60', '40');
 let t = await strength.innerText();
 check(t.includes('4×10 · 40 / 60 / 60 / 60kg'), 'row shows each set\'s weight');
-check((await foot()).endsWith(' 2,400 kg'), 'volume uses max weight (4×10×60): ' + await foot());
+check((await foot()).endsWith(' 2,200 kg'), 'volume counts each set at its own weight (10 × (40+60+60+60)): ' + await foot());
 await logSet('Back Squat', '2', '5', '100');
-check((await strength.innerText()).includes('2×5 · 100kg each') && (await foot()).endsWith(' 3,400 kg'), 'one weight for every set (2,400 + 2×5×100): ' + await foot());
+check((await strength.innerText()).includes('2×5 · 100kg each') && (await foot()).endsWith(' 3,200 kg'), 'one weight for every set (2,200 + 2×5×100): ' + await foot());
 // more sets than boxes: back to max and min, kept the right way round
 await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Leg Press'); await pa.getByLabel('Sets').fill('13'); await pa.getByLabel('Reps').fill('10');
@@ -118,9 +118,12 @@ await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Flat Dumbbell Flye'); await pa.getByLabel('Sets').fill('3'); await pa.getByLabel('Reps').fill('12');
 check((await strength.innerText()).includes('Weight of one dumbbell, per set (kg)'), 'dumbbell exercise: asks for one dumbbell\'s weight');
 await pa.screenshot({ path: 'dumbbell-form.png' });
+const volNum = async () => Number((await foot()).replace(/[^\d.]/g, ''));
+const before = await volNum();
 await pa.getByLabel('Set 1 weight (kg)').fill('12.5');
 await pa.getByRole('button', { name: 'Log a set' }).click();
 check((await strength.innerText()).includes('3×12 · 12.5kg per dumbbell'), 'row says the weight is per dumbbell');
+check(await volNum() - before === 900, 'volume counts both dumbbells (12 × 3 × 12.5 × 2 = 900): +' + (await volNum() - before));
 await strength.locator('button', { hasText: '+ Add' }).click();
 await pa.getByLabel('Exercise').fill('Seated DB Press'); await pa.getByLabel('Sets').fill('2'); await pa.getByLabel('Reps').fill('8');
 check((await strength.innerText()).includes('Weight of one dumbbell, per set (kg)'), 'a new exercise named with DB or Dumbbell counts too');
@@ -137,7 +140,7 @@ await pa.getByText(/^Table of values in view/).click();
 const row = (await pa.locator('table tbody tr').first().innerText()).replace(/\s+/g, ' ');
 check(/70 45 10 8/.test(row), 'weight & reps min weight comes from the logged min: ' + row);
 await pa.getByRole('button', { name: 'Volume' }).click();
-check((await pa.locator('body').innerText()).includes('sets × reps × max weight'), 'progress volume says max weight');
+check((await pa.locator('body').innerText()).includes("reps × each set's weight; dumbbells count both"), 'progress volume explains itself');
 await pa.screenshot({ path: 'min-weight-progress.png' });
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

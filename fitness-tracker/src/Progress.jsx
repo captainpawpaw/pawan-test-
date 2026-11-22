@@ -43,7 +43,7 @@ function writeSaved(v) {
   try { window.localStorage.setItem(SEL_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg", bests = [], liftUnit = "kg" }) {
+export default function Progress({ loadAll, version, tagMap, bwOn, targets, weights = [], weighInText, onWeighInSettings, bwUnit = "kg", bests = [], liftUnit = "kg", isDumbbell }) {
   const [months, setMonths] = useState(null);
   const [selection, setSelection] = useState(() => {
     if (!openedThisVisit) { openedThisVisit = true; return { kind: "all", value: "strength" }; }
@@ -60,11 +60,12 @@ export default function Progress({ loadAll, version, tagMap, bwOn, targets, weig
   // In lb, strength weights (and body weight in body-weight sets) are converted
   // before charting; weights are stored in kg.
   const rows = useMemo(() => {
-    const all = flattenMonths(months || {});
+    // Dumbbell exercises logged before entries were marked count as dumbbells too.
+    const all = flattenMonths(months || {}).map((r) => (r.type === "strength" && r.e.perDumbbell == null && isDumbbell?.(r.name) ? { ...r, e: { ...r.e, perDumbbell: true } } : r));
     if (liftUnit !== "lb") return all;
     const lb = (v) => (v === "" || v == null ? v : Number(v) / LB);
-    return all.map((r) => (r.type === "strength" ? { ...r, e: { ...r.e, weight: lb(r.e.weight), minWeight: lb(r.e.minWeight) } } : r));
-  }, [months, liftUnit]);
+    return all.map((r) => (r.type === "strength" ? { ...r, e: { ...r.e, weight: lb(r.e.weight), minWeight: lb(r.e.minWeight), ...(Array.isArray(r.e.setWeights) ? { setWeights: r.e.setWeights.map(lb) } : {}) } } : r));
+  }, [months, liftUnit, isDumbbell]);
   const chartBwOn = useMemo(() => (liftUnit === "lb" ? (date) => { const kg = bwOn?.(date); return kg == null ? kg : Number(kg) / LB; } : bwOn), [bwOn, liftUnit]);
   const bodyRows = useMemo(() => weights.filter((w) => Number(w.kg) > 0).map((w) => ({ date: w.date, type: "body", name: "Body weight", e: { kg: bwValue(Number(w.kg), bwUnit), rawKg: Number(w.kg) } })), [weights, bwUnit]);
 
@@ -497,7 +498,7 @@ function Chart({ rows, metric, bwOn, title, target, targetLabel, bwUnit = "kg", 
           </>
         ) : (
           <>
-            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}${metric === "volume" ? " (max-weight volume)" : ""}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
+            <Tile label={m.agg === "max" ? `Best ${periodWord} in view` : `Most in a ${periodWord}`} value={best ? fmt(best.value, m.unit) : "–"} sub={best ? periodLabel(best.start, scale, true) : "No data in view"} />
             <Tile label={`Latest ${periodWord}`} value={latest ? fmt(latest.value, m.unit) : "–"} sub={latest ? periodLabel(latest.start, scale, true) : ""} />
             <Tile label="Workout days in view" value={String(sessions)} sub={`${SCALE_LABEL[scale].toLowerCase()} view`} />
           </>

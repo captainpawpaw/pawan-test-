@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adjustScale, bucketize, bucketizeScore, bucketizeWeightReps, scoreSessions, flattenMonths, metricsFor, niceRange, niceTicks, periodStart, DAY } from "../src/progress.js";
+import { adjustScale, bucketize, bucketizeScore, bucketizeWeightReps, scoreSessions, flattenMonths, entryVolume, metricsFor, niceRange, niceTicks, periodStart, DAY } from "../src/progress.js";
 
 const months = {
   "2026-09": {
@@ -101,4 +101,12 @@ test("Ledger score: a tag averages its exercises equally", () => {
 
 test("score is offered first for strength", () => {
   assert.equal(metricsFor(rows.filter((r) => r.name === "Back Squat"))[0], "score");
+});
+
+test("volume counts each set at its own weight, both dumbbells, and body weight", () => {
+  assert.equal(entryVolume({ sets: "3", reps: "10", setWeights: ["25", "25", "30"], weight: "30", minWeight: "25" }), 800);
+  assert.equal(entryVolume({ sets: "3", reps: "10", weight: "30" }), 900); // logged before a weight per set
+  assert.equal(entryVolume({ sets: "3", reps: "12", setWeights: ["12.5", "12.5", "12.5"], weight: "12.5", perDumbbell: true }), 900);
+  assert.equal(entryVolume({ sets: "2", reps: "8", bw: true, setWeights: ["5", "10"], weight: "10" }, 80), 8 * (85 + 90));
+  assert.equal(entryVolume({ sets: "3", reps: "12", bw: true }, 80), 3 * 12 * 80);
 });

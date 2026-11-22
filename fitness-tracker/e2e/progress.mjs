@@ -196,7 +196,7 @@ await pa.getByText(/^Table of values in view/).click();
 t = await pa.locator('table tbody').innerText();
 check(/3,600/.test(t), 'body-weight volume: 3x15x80 = 3,600 per week');
 const vt = await pa.locator('body').innerText();
-check(vt.includes('sets × reps × max weight') && vt.includes('(max-weight volume)'), 'volume says it is based on max weight');
+check(vt.includes("reps × each set's weight; dumbbells count both") && !vt.includes('max-weight'), 'volume says it counts each set');
 await pa.screenshot({ path: 'prog-volume.png' });
 await pa.locator('#progress-pick').selectOption('tag:legs');
 const tm = await pa.locator('[aria-label="Measure"] button').allTextContents();

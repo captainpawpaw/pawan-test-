@@ -6,7 +6,7 @@ import { getSample, getImageLimits, readWithClaude, readScreenshotsWithClaude } 
 import Progress from "./Progress";
 import FoodLog from "./FoodLog";
 import { sumFood } from "./food";
-import { flattenMonths, ledgerHeadline } from "./progress";
+import { flattenMonths, ledgerHeadline, entryVolume } from "./progress";
 import Backup from "./Backup";
 import { WeighInPrompt, WeighInSettings } from "./WeighIn";
 import { weighInDue, describeWeighIn } from "./weighin";
@@ -84,12 +84,12 @@ function buildGrid(d) {
   return cells;
 }
 
-// Volume counts each logged exercise at its max weight. Body-weight sets add
-// body weight (when known) to that.
-function strengthVolume(entries, bodyweightKg = null) {
+// The day's volume: each set at its own weight, body weight (when known) added
+// for body-weight sets, both dumbbells for dumbbell exercises (see entryVolume).
+function strengthVolume(entries, bodyweightKg = null, isDumbbell = null) {
   return (entries || []).reduce((sum, e) => {
-    const load = (Number(e.weight) || 0) + (e.bw ? Number(bodyweightKg) || 0 : 0);
-    return sum + (Number(e.sets) || 0) * (Number(e.reps) || 0) * load;
+    const db = e.perDumbbell ?? Boolean(isDumbbell?.(e.exercise));
+    return sum + entryVolume({ ...e, perDumbbell: db }, bodyweightKg);
   }, 0);
 }
 function bodyweightReps(entries) {
@@ -790,9 +790,9 @@ export default function App() {
 
   const maxVol = useMemo(() => {
     let m = 1;
-    Object.entries(monthData).forEach(([day, v]) => { m = Math.max(m, strengthVolume(v.strength, bwOnDay(cursor, day))); });
+    Object.entries(monthData).forEach(([day, v]) => { m = Math.max(m, strengthVolume(v.strength, bwOnDay(cursor, day), isDumbbell)); });
     return m;
-  }, [monthData, bwOnDay, cursor]);
+  }, [monthData, bwOnDay, cursor, isDumbbell]);
   // Food tab calendar: bars scale to the calorie target, or the month's biggest day.
   const maxKcal = useMemo(() => {
     let m = Number(profile.targets?.kcal) || 1;
@@ -980,7 +980,7 @@ export default function App() {
         className={slideDir ? `ft-slide-${slideDir}` : undefined}
       >
       {activeTab === "progress" ? (
-        <Progress bests={bestsList(bests)} liftUnit={liftUnit} bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
+        <Progress isDumbbell={isDumbbell} bests={bestsList(bests)} liftUnit={liftUnit} bwUnit={bwUnit} loadAll={loadAllMonths} version={dataVersion} tagMap={tagMap} bwOn={bwOnDate} targets={profile.targets} weights={weights} weighInText={weighIn?.on ? describeWeighIn(weighIn) : null} onWeighInSettings={() => openPanel("weighin")} />
       ) : activeTab === "exercises" ? (
         <ExerciseLibrary
           exercises={fullExercises}
@@ -1053,7 +1053,7 @@ export default function App() {
           {grid.map((day, i) => {
             if (!day) return <div key={i} style={styles.emptyCell} />;
             const data = monthData[day] || { strength: [], cardio: [] };
-            const vol = strengthVolume(data.strength, bwOnDay(cursor, day));
+            const vol = strengthVolume(data.strength, bwOnDay(cursor, day), isDumbbell);
             const dur = cardioDuration(data.cardio);
             const isSelected = day === selected;
             const isToday = isSameMonth(cursor) && day === todayDayNum();
@@ -1182,7 +1182,7 @@ export default function App() {
               liftUnit={liftUnit}
               defaults={{ sets: String(split.sets), reps: String(split.reps) }}
               footer={dayEntries.strength && dayEntries.strength.length > 0 ? (
-                <StrengthFooter
+                <StrengthFooter isDumbbell={isDumbbell}
                   entries={dayEntries.strength}
                   bodyweightKg={bwOnDay(cursor, selected)}
                   onSaveBodyweight={saveBodyweight}
@@ -1511,7 +1511,7 @@ function planValues(sectionType, plan) {
   return mins ? { duration: mins[1] } : {};
 }
 
-function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit, liftUnit = "kg" }) {
+function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit, liftUnit = "kg", isDumbbell }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState({ main: "", extra: "" });
   const [error, setError] = useState("");
@@ -1531,7 +1531,7 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit,
   return (
     <div style={styles.footerStack}>
       <span>
-        Volume<span className="ft-hint ft-hint-inline"> (sets × reps × max weight)</span>: {liftValue(strengthVolume(entries, bodyweightKg), liftUnit).toLocaleString(undefined, { maximumFractionDigits: 1 })} {liftUnit}
+        Volume<span className="ft-hint ft-hint-inline"> (reps × each set's weight)</span>: {liftValue(strengthVolume(entries, bodyweightKg, isDumbbell), liftUnit).toLocaleString(undefined, { maximumFractionDigits: 1 })} {liftUnit}
         {hasBw && !known && ` · ${bodyweightReps(entries).toLocaleString()} body-weight reps not counted`}
       </span>
       {hasBw && !editing && (

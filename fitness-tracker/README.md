@@ -114,7 +114,7 @@ profile, so it syncs through Google Drive.
 
 The Progress tab charts one exercise, one tag or all exercises: the Ledger
 score, weight & reps, best weight, estimated 1-rep max (Epley), volume
-(sets × reps × max weight), reps or sets for lifts, and minutes or distance
+(reps × each set's weight, with both dumbbells counted for dumbbell exercises), reps or sets for lifts, and minutes or distance
 for cardio.
 
 The **Ledger score** is one standard progress number that ignores warm-up
