@@ -38,17 +38,17 @@ check(await p.getByLabel('Max weight (lb)').count() === 1 && await p.getByLabel(
 await p.getByLabel('Exercise').fill('Back Squat');
 let t = (await p.getByRole('status', { name: 'Last time' }).innerText()).trim();
 check(t === 'Last time: max 220.5 lb, first set 155 lb', 'last time in lb, first set rounded to 5 lb: ' + t);
-await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Max weight (lb)').fill('225'); await p.getByLabel('Min weight (lb), optional').fill('185');
+await p.getByLabel('Sets').fill('3'); await p.getByLabel('Reps').fill('5'); await p.getByLabel('Set 1 weight (lb)').fill('185'); await p.getByLabel('Set 2 weight (lb)').fill('225'); // set 3 repeats set 2
 await p.getByRole('button', { name: 'Log a set' }).click();
 t = await p.getByRole('status', { name: 'New personal best' }).innerText();
 check(t.includes('Heaviest: 225 lb (was 220.5 lb)'), 'personal best in lb: ' + t.replace(/\n/g, ' | '));
 t = await strength.innerText();
-check(t.includes('3×5 · 185–225lb') && /Volume \(sets × reps × max weight\): 3,375 lb/.test(t), 'row and volume in lb: ' + t.replace(/\n/g, ' | '));
+check(t.includes('3×5 · 185 / 225 / 225lb') && /Volume \(sets × reps × max weight\): 3,375 lb/.test(t), 'row and volume in lb: ' + t.replace(/\n/g, ' | '));
 await p.screenshot({ path: 'lift-lb.png' });
 const day = await p.evaluate(() => { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return JSON.parse(localStorage.getItem(`fitness-tracker:month:${d.getFullYear()}-${pad(d.getMonth() + 1)}`))[pad(d.getDate())]; });
-check(day.strength[0].weight === '102.058' && day.strength[0].minWeight === '83.915', 'stored in kg: ' + day.strength[0].weight + ' / ' + day.strength[0].minWeight);
+check(day.strength[0].weight === '102.058' && day.strength[0].minWeight === '83.915' && day.strength[0].setWeights.join(',') === '83.915,102.058,102.058', 'stored in kg, each set too: ' + day.strength[0].weight + ' / ' + day.strength[0].minWeight + ' / ' + day.strength[0].setWeights);
 await p.getByRole('button', { name: 'Edit Back Squat' }).click();
-check(await p.getByLabel('Max weight (lb)').inputValue() === '225' && await p.getByLabel('Min weight (lb), optional').inputValue() === '185', 'editing shows lb');
+check(await p.getByLabel('Set 1 weight (lb)').inputValue() === '185' && await p.getByLabel('Set 3 weight (lb)').inputValue() === '225', 'editing shows each set in lb');
 await strength.getByRole('button', { name: 'Cancel' }).click();
 // Progress in lb
 await p.getByRole('button', { name: 'PROGRESS' }).click();
@@ -60,6 +60,6 @@ check(/Weekly best, lb/.test(t) && t.includes('225 lb'), 'charts in lb');
 // back to kg: same log, shown in kg
 await p.getByRole('button', { name: 'Menu' }).click(); await p.getByRole('menuitem', { name: /^Lifting weights/ }).click(); await p.getByRole('menuitemradio', { name: /Kilograms/ }).click();
 await p.getByRole('button', { name: 'LOG', exact: true }).click();
-check((await strength.innerText()).includes('3×5 · 83.92–102.06kg'), 'back in kg, nothing lost: ' + (await strength.innerText()).split('\n').find(l => l.includes('3×5')));
+check((await strength.innerText()).includes('3×5 · 83.92 / 102.06 / 102.06kg'), 'back in kg, nothing lost: ' + (await strength.innerText()).split('\n').find(l => l.includes('3×5')));
 check(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
 await b.close(); srv.close();

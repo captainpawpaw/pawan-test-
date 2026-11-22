@@ -31,7 +31,7 @@ const strength = p.locator('.ft-section').first();
 const banner = () => p.getByRole('status', { name: 'New personal best' });
 const logSet = async (name, sets, reps, kg) => {
   await strength.getByRole('button', { name: '+ Add' }).click();
-  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill(sets); await p.getByLabel('Reps').fill(reps); await p.getByLabel('Max weight (kg)').fill(kg);
+  await p.getByLabel('Exercise').fill(name); await p.getByLabel('Sets').fill(sets); await p.getByLabel('Reps').fill(reps); await p.getByLabel('Set 1 weight (kg)').fill(kg);
   await p.getByRole('button', { name: 'Log a set' }).click();
 };
 await p.goto('http://localhost:4190/?tab=log'); await p.getByText('STRENGTH', { exact: true }).waitFor(); await p.waitForTimeout(400);

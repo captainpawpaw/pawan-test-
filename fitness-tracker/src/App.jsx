@@ -110,9 +110,20 @@ function bodyweightOn(weights, date) {
 // Weights are stored in kg; u is the unit to show them in ("kg" or "lb").
 const weightLabel = (e, u = "kg") => (e.bw ? (Number(e.weight) ? `BW + ${liftValue(e.weight, u)}${u}` : "BW") : `${liftValue(e.weight || 0, u)}${u}`);
 const hasMin = (e) => e.minWeight !== "" && e.minWeight != null && Number(e.weight) > 0;
-// "4×10 · 20–23.75kg", "4×10 · max 23.75kg", "3×8 · BW + 5–10kg"
+// "4×10 · 20–23.75kg", "4×10 · max 23.75kg", "3×8 · BW + 5–10kg";
+// with a weight for each set, "3×10 · 25 / 27.5 / 30kg" or "3×10 · 30kg each".
 const weightRange = (e, u = "kg") => {
   if (e.bw && !Number(e.weight)) return "BW";
+  // Dumbbell weights are for one dumbbell: "3×10 · 12.5kg per dumbbell".
+  const db = e.perDumbbell && !e.bw;
+  return db ? `${weightRangeOf(e, u, true)} per dumbbell` : weightRangeOf(e, u, false);
+};
+const weightRangeOf = (e, u, db) => {
+  if (Array.isArray(e.setWeights) && e.setWeights.length) {
+    const ws = e.setWeights.map((w) => liftValue(w || 0, u));
+    const text = new Set(ws).size === 1 ? `${ws[0]}${u}${db ? "" : " each"}` : `${ws.join(" / ")}${u}`;
+    return e.bw ? `BW + ${text}` : text;
+  }
   if (!hasMin(e)) return `max ${weightLabel(e, u)}`;
   const lo = liftValue(Math.min(Number(e.minWeight), Number(e.weight)), u), hi = liftValue(e.weight, u);
   return e.bw ? `BW + ${lo}–${hi}${u}` : `${lo}–${hi}${u}`;
@@ -122,6 +133,8 @@ function cardioDuration(entries) {
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+// Up to this many sets get a weight box each; more falls back to max and min.
+const MAX_SET_BOXES = 12;
 
 // Always included in the exercise library, regardless of what the external dataset returns
 const CUSTOM_EXERCISES = [
@@ -480,6 +493,16 @@ export default function App() {
     [fullExercises],
   );
   const isBodyweight = useCallback((name) => bodyweightNames.has(name), [bodyweightNames]);
+  // Dumbbell exercises are logged at the weight of one dumbbell: by the
+  // library's equipment, else by the name ("Incline Dumbbell Curl", "DB Row").
+  const dumbbellNames = useMemo(
+    () => new Set(fullExercises.filter((e) => /dumbbell/i.test(e.equipment || "")).map((e) => e.name)),
+    [fullExercises],
+  );
+  const isDumbbell = useCallback(
+    (name) => !bodyweightNames.has(name) && (dumbbellNames.has(name) || /\b(dumbbells?|db)\b/i.test(name || "")),
+    [bodyweightNames, dumbbellNames],
+  );
   const plansByName = useMemo(() => {
     const out = {};
     fullExercises.forEach((e) => { if (e.plans?.length) out[e.name] = e.plans; });
@@ -1152,6 +1175,7 @@ export default function App() {
               onDelete={(id) => deleteEntry("strength", id)}
               onEdit={(id, e) => editEntry("strength", id, e)}
               isBodyweight={isBodyweight}
+              isDumbbell={isDumbbell}
               bodyweightKg={bwOnDay(cursor, selected)}
               bwUnit={bwUnit}
               lastFor={(name) => lastSession(history, name, `${key}-${selected}`, firstPct, liftUnit)}
@@ -1537,19 +1561,32 @@ function StrengthFooter({ entries, bodyweightKg, onSaveBodyweight, unit, onUnit,
   );
 }
 
-function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, bodyweightKg, bwUnit, lastFor, defaults, liftUnit = "kg" }) {
+function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd, onEdit, renderRow, entries, onDelete, footer, className, sectionType, prefill, tagMap, plansByName, isBodyweight, isDumbbell, bodyweightKg, bwUnit, lastFor, defaults, liftUnit = "kg" }) {
   // Strength weights are typed in liftUnit and stored in kg.
   const WEIGHT_KEYS = sectionType === "strength" ? ["weight", "minWeight"] : [];
   const hasBwToggle = fields.some((f) => f.bodyweightToggle);
   const bwFor = (name) => (hasBwToggle && isBodyweight ? { bw: isBodyweight(name) } : {});
+  const dbFor = (name) => (hasBwToggle && isDumbbell ? { perDumbbell: isDumbbell(name) } : {});
+  // "Max weight (kg)" -> "Max weight per dumbbell (kg)" for dumbbell exercises.
+  const perDb = (label) => (vals.perDumbbell ? label.replace(/weight \(/, "weight per dumbbell (") : label);
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
   const [editingId, setEditingId] = useState(null); // entry being edited in the form
 
+  // A weight box for each set, once Sets is a number from 1 to MAX_SET_BOXES.
+  const perSetCount = (v) => {
+    const n = Number(v.sets);
+    return hasBwToggle && Number.isInteger(n) && n >= 1 && n <= MAX_SET_BOXES ? n : 0;
+  };
   const startEdit = (e) => {
     const v = {};
     for (const f of fields) if (e[f.key] != null) v[f.key] = WEIGHT_KEYS.includes(f.key) ? liftField(e[f.key], liftUnit) : String(e[f.key]);
     if (e.bw) v.bw = true;
+    if (e.perDumbbell ?? (isDumbbell && isDumbbell(e[fields[0].key]))) v.perDumbbell = true;
+    const n = perSetCount(v);
+    if (Array.isArray(e.setWeights) && e.setWeights.length) v.setWeights = e.setWeights.map((w) => liftField(w, liftUnit));
+    // Logged before there was a box per set: the min (if any) first, then the max.
+    else if (n && e.weight != null && e.weight !== "") v.setWeights = Array.from({ length: n }, (_, i) => liftField(i === 0 && hasMin(e) ? Math.min(Number(e.minWeight), Number(e.weight)) : e.weight, liftUnit));
     setVals(v);
     setEditingId(e.id);
     setOpen(true);
@@ -1571,7 +1608,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
       if (last?.reps) fill.reps = String(last.reps);
     }
     setVals((cur) => {
-      const next = { ...cur, [key]: name, ...(known && (picked || !editingId) ? bwFor(name) : {}) };
+      const next = { ...cur, [key]: name, ...(known && (picked || !editingId) ? bwFor(name) : {}), ...(picked || !editingId ? dbFor(name) : {}) };
       const auto = autoFilled.current, now = {};
       for (const k of new Set([...Object.keys(fill), ...Object.keys(auto)])) {
         if (cur[k] && cur[k] !== auto[k]) continue; // typed by hand: leave it
@@ -1589,7 +1626,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
   useEffect(() => {
     if (prefill && prefill.type === sectionType) {
       setOpen(true);
-      setVals({ [fields[0].key]: prefill.value, ...planValues(sectionType, prefill.plan), ...bwFor(prefill.value) });
+      setVals({ [fields[0].key]: prefill.value, ...planValues(sectionType, prefill.plan), ...bwFor(prefill.value), ...dbFor(prefill.value) });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill]);
@@ -1598,8 +1635,24 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
     e.preventDefault();
     const primary = fields[0].key;
     if (!vals[primary]) return;
-    const { bw, ...rest } = vals;
+    const { bw, setWeights, perDumbbell, ...rest } = vals;
     const entry = bw ? { ...rest, bw: true } : rest;
+    if (perDumbbell) entry.perDumbbell = true;
+    const n = perSetCount(vals);
+    if (n) {
+      // An empty box repeats the set before it (the first filled one, for leading gaps).
+      const typed = Array.from({ length: n }, (_, i) => String(setWeights?.[i] ?? "").trim());
+      const firstFilled = typed.find((w) => w !== "");
+      delete entry.weight; delete entry.minWeight;
+      if (firstFilled !== undefined) {
+        let prev = firstFilled;
+        const each = typed.map((w) => (w === "" ? prev : (prev = w)));
+        const nums = each.map(Number);
+        entry.setWeights = each.map((w) => liftToKg(w, liftUnit));
+        entry.weight = String(Math.max(...nums));
+        if (Math.min(...nums) < Math.max(...nums)) entry.minWeight = String(Math.min(...nums));
+      }
+    }
     // A min weight above the max is a slip: keep the two the right way round.
     if (entry.minWeight !== undefined && entry.minWeight !== "" && entry.weight !== undefined && Number(entry.minWeight) > Number(entry.weight)) {
       [entry.minWeight, entry.weight] = [entry.weight, entry.minWeight];
@@ -1625,7 +1678,7 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
 
       {open && (
         <form ref={formRef} onSubmit={submit} style={styles.form}>
-          {fields.map((f) => f.options ? (
+          {fields.filter((f) => !(f.key === "minWeight" && perSetCount(vals))).map((f) => f.options ? (
             <React.Fragment key={f.key}>
             <ExercisePicker
               field={f}
@@ -1644,7 +1697,9 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
           ) : f.bodyweightToggle ? (
             <div key={f.key} style={styles.fieldLabel}>
               <div style={styles.weightHead}>
-                <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? `Max added weight (${liftUnit}), optional` : f.label}</label>
+                {perSetCount(vals)
+                  ? <span id={`${sectionType}-per-set`}>{vals.bw ? `Added weight per set (${liftUnit}), optional` : vals.perDumbbell ? `Weight of one dumbbell, per set (${liftUnit})` : `Weight per set (${liftUnit})`}</span>
+                  : <label htmlFor={`${sectionType}-${f.key}`}>{vals.bw ? `Max added weight (${liftUnit}), optional` : perDb(f.label)}</label>}
                 <div role="group" aria-label="Weight type" style={styles.unitToggle}>
                   {[[false, liftUnit], [true, "Body weight"]].map(([on, label], i) => {
                     const active = Boolean(vals.bw) === on;
@@ -1662,11 +1717,43 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                   })}
                 </div>
               </div>
+              {perSetCount(vals) ? (
+                <>
+                  <div role="group" aria-labelledby={`${sectionType}-per-set`} style={styles.setGrid}>
+                    {Array.from({ length: perSetCount(vals) }, (_, i) => {
+                      // Each empty box shows what it will repeat: the set before it.
+                      let shown = "";
+                      for (let k = i - 1; k >= 0 && shown === ""; k--) shown = String(vals.setWeights?.[k] ?? "").trim();
+                      return (
+                        <label key={i} style={styles.setBox}>
+                          <span>Set {i + 1}</span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            aria-label={`Set ${i + 1} weight (${liftUnit})`}
+                            placeholder={shown || (vals.bw ? "0" : vals.perDumbbell ? (liftUnit === "lb" ? "25" : "12.5") : f.placeholder)}
+                            value={vals.setWeights?.[i] ?? ""}
+                            onChange={(e) => {
+                              const w = e.target.value;
+                              setVals((v) => { const sw = [...(v.setWeights || [])]; sw[i] = w; return { ...v, setWeights: sw }; });
+                            }}
+                            style={styles.input}
+                            step="any"
+                            min="0"
+                            autoComplete="off"
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {perSetCount(vals) > 1 && <span style={styles.bwHint}>Leave a box empty to repeat the set before it.</span>}
+                </>
+              ) : (
               <input
                 id={`${sectionType}-${f.key}`}
                 type="number"
                 inputMode="decimal"
-                placeholder={vals.bw ? "0" : f.placeholder}
+                placeholder={vals.bw ? "0" : vals.perDumbbell ? (liftUnit === "lb" ? "25" : "12.5") : f.placeholder}
                 value={vals[f.key] || ""}
                 onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
                 style={styles.input}
@@ -1674,17 +1761,18 @@ function Section({ accent, accentSoft, title, emptyText, addLabel, fields, onAdd
                 min="0"
                 autoComplete="off"
               />
+              )}
               {vals.bw && (
                 <span style={styles.bwHint}>
                   {bodyweightKg != null
-                    ? `Counts as ${bwText(bodyweightKg, bwUnit)} body weight${Number(vals[f.key]) ? ` + ${vals[f.key]} ${liftUnit}` : ""}.`
+                    ? `Counts as ${bwText(bodyweightKg, bwUnit)} body weight${!perSetCount(vals) && Number(vals[f.key]) ? ` + ${vals[f.key]} ${liftUnit}` : ""}.`
                     : "Set your body weight under the day's sets to count it in volume."}
                 </span>
               )}
             </div>
           ) : (
             <label key={f.key} style={styles.fieldLabel}>
-              {vals.bw && f.bwLabel ? f.bwLabel : f.label}
+              {vals.bw && f.bwLabel ? f.bwLabel : perDb(f.label)}
               <input
                 type={f.type}
                 // Number boxes bring up the phone's number pad, not the full keyboard.
@@ -3203,6 +3291,8 @@ const styles = {
     fontWeight: 500,
   },
   rows: { display: "flex", flexDirection: "column", gap: 6 },
+  setGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: "4px 14px" },
+  setBox: { display: "flex", flexDirection: "column", gap: 2, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: inkFaint },
   emptyText: {
     fontFamily: C.sans,
     fontSize: 16,

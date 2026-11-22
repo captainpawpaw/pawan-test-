@@ -68,7 +68,7 @@ await p.screenshot({ path: 'split-day.png' });
 await p.getByRole('button', { name: '+ Barbell Bench Press - Medium Grip' }).click();
 check(await p.getByLabel('Exercise').inputValue() === 'Barbell Bench Press - Medium Grip' && await p.getByLabel('Sets').inputValue() === '4' && await p.getByLabel('Reps').inputValue() === '8', 'tapping one starts logging it at 4 × 8');
 check((await p.getByRole('status', { name: 'Last time' }).innerText()).trim() === 'Last time: max 100 kg, first set 70 kg', 'with last time and the first set');
-await p.getByLabel('Max weight (kg)').fill('70'); await p.getByRole('button', { name: 'Log a set' }).click();
+await p.getByLabel('Set 1 weight (kg)').fill('70'); await p.getByRole('button', { name: 'Log a set' }).click();
 check(!(await plan().innerText()).includes('Barbell Bench Press'), 'a logged exercise leaves the suggestions');
 // Tuesday: Lower A; Wednesday: rest
 await goTo('TUE');
